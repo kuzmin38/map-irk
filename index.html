@@ -1,0 +1,2955 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_231b8a6a9dd69ff408882ffa781a2e68 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+    <div style="position:fixed;bottom:30px;left:30px;z-index:1000;
+         background:white;padding:12px 16px;border-radius:8px;
+         border:1px solid #aaa;font-family:Arial;font-size:13px;min-width:270px;">
+        <b>Звенья сантехников УК Жемчужина</b><br><br>
+        <span style="color:red;font-size:16px">●</span>&nbsp;
+          Звено 1 — Север&nbsp;<b>2449</b><br>
+        <span style="color:blue;font-size:16px">●</span>&nbsp;
+          Звено 2 — Центр/ЦП&nbsp;<b>11657</b><br>
+        <span style="color:green;font-size:16px">●</span>&nbsp;
+          Звено 3 — Восток/Байкальская&nbsp;<b>3923</b><br>
+        <span style="color:gray;font-size:16px">○</span>&nbsp;
+          Звено 4 — Аварийное (весь город, нерабочее время)<br>
+        <br><small>Всего заявок: 18029 | Размер кружка = нагрузка</small>
+    </div>
+    
+    
+            <div class="folium-map" id="map_231b8a6a9dd69ff408882ffa781a2e68" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_231b8a6a9dd69ff408882ffa781a2e68 = L.map(
+                "map_231b8a6a9dd69ff408882ffa781a2e68",
+                {
+                    center: [52.295, 104.27],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 11,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_3a0e9a23c06f2c36c6a177fbfb57b2ad = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_3a0e9a23c06f2c36c6a177fbfb57b2ad.addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+            var circle_marker_b8616c62f793ef7e60064c801a55594b = L.circleMarker(
+                [52.3427544, 104.1931155],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_1f0002e82e10e0a9e0141037153168a9 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d039be817f5549f8428be1faf71ee871 = $(`<div id="html_d039be817f5549f8428be1faf71ee871" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 118</b><br>Звено 1<br>Заявок: 209</div>`)[0];
+                popup_1f0002e82e10e0a9e0141037153168a9.setContent(html_d039be817f5549f8428be1faf71ee871);
+            
+        
+
+        circle_marker_b8616c62f793ef7e60064c801a55594b.bindPopup(popup_1f0002e82e10e0a9e0141037153168a9)
+        ;
+
+        
+    
+    
+            circle_marker_b8616c62f793ef7e60064c801a55594b.bindTooltip(
+                `<div>
+                     Розы Люксембург 118 (209)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ceab16004820955f5ab5491b254c1406 = L.circleMarker(
+                [52.3431184, 104.1925566],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_0adb014911ccfdc979982d5e98191219 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_3755c5ffd46933d5f5031065998ba631 = $(`<div id="html_3755c5ffd46933d5f5031065998ba631" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 118/1</b><br>Звено 1<br>Заявок: 212</div>`)[0];
+                popup_0adb014911ccfdc979982d5e98191219.setContent(html_3755c5ffd46933d5f5031065998ba631);
+            
+        
+
+        circle_marker_ceab16004820955f5ab5491b254c1406.bindPopup(popup_0adb014911ccfdc979982d5e98191219)
+        ;
+
+        
+    
+    
+            circle_marker_ceab16004820955f5ab5491b254c1406.bindTooltip(
+                `<div>
+                     Розы Люксембург 118/1 (212)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ecf4d327c3f729db91c4c6fba31c0521 = L.circleMarker(
+                [52.3435118, 104.1920372],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_48212794b50ae9bece5c45752fa7eaeb = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_8a3bc111f495b28ac67a0c682bca874c = $(`<div id="html_8a3bc111f495b28ac67a0c682bca874c" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 118/2</b><br>Звено 1<br>Заявок: 201</div>`)[0];
+                popup_48212794b50ae9bece5c45752fa7eaeb.setContent(html_8a3bc111f495b28ac67a0c682bca874c);
+            
+        
+
+        circle_marker_ecf4d327c3f729db91c4c6fba31c0521.bindPopup(popup_48212794b50ae9bece5c45752fa7eaeb)
+        ;
+
+        
+    
+    
+            circle_marker_ecf4d327c3f729db91c4c6fba31c0521.bindTooltip(
+                `<div>
+                     Розы Люксембург 118/2 (201)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1fb49ad460eb4f0a5db3f5ef3091be3d = L.circleMarker(
+                [52.3436794, 104.1932795],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_3f7cf8923dbc70747caf47a7a525c7f3 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_43e50c5f35956077486219e324c3fcbd = $(`<div id="html_43e50c5f35956077486219e324c3fcbd" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 118/3</b><br>Звено 1<br>Заявок: 142</div>`)[0];
+                popup_3f7cf8923dbc70747caf47a7a525c7f3.setContent(html_43e50c5f35956077486219e324c3fcbd);
+            
+        
+
+        circle_marker_1fb49ad460eb4f0a5db3f5ef3091be3d.bindPopup(popup_3f7cf8923dbc70747caf47a7a525c7f3)
+        ;
+
+        
+    
+    
+            circle_marker_1fb49ad460eb4f0a5db3f5ef3091be3d.bindTooltip(
+                `<div>
+                     Розы Люксембург 118/3 (142)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_295e78e53a3e3002ca78da5fb172cb59 = L.circleMarker(
+                [52.3435257, 104.1949295],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_8560c70b23a0255ee687af5701acd755 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_512353bbf13b9f74a9437355a29fba8c = $(`<div id="html_512353bbf13b9f74a9437355a29fba8c" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 118/4</b><br>Звено 1<br>Заявок: 156</div>`)[0];
+                popup_8560c70b23a0255ee687af5701acd755.setContent(html_512353bbf13b9f74a9437355a29fba8c);
+            
+        
+
+        circle_marker_295e78e53a3e3002ca78da5fb172cb59.bindPopup(popup_8560c70b23a0255ee687af5701acd755)
+        ;
+
+        
+    
+    
+            circle_marker_295e78e53a3e3002ca78da5fb172cb59.bindTooltip(
+                `<div>
+                     Розы Люксембург 118/4 (156)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_e3ef8e47180db1a4df26f2001467d6ff = L.circleMarker(
+                [52.3430753, 104.1938599],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_82a5dd47ec8e97d03b3615f8137b3123 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f75d78fb2b152d2d73ec0d65fa2eb666 = $(`<div id="html_f75d78fb2b152d2d73ec0d65fa2eb666" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 118/5</b><br>Звено 1<br>Заявок: 339</div>`)[0];
+                popup_82a5dd47ec8e97d03b3615f8137b3123.setContent(html_f75d78fb2b152d2d73ec0d65fa2eb666);
+            
+        
+
+        circle_marker_e3ef8e47180db1a4df26f2001467d6ff.bindPopup(popup_82a5dd47ec8e97d03b3615f8137b3123)
+        ;
+
+        
+    
+    
+            circle_marker_e3ef8e47180db1a4df26f2001467d6ff.bindTooltip(
+                `<div>
+                     Розы Люксембург 118/5 (339)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_fc93f7d536b37c0d55f6ac1a24955370 = L.circleMarker(
+                [52.3340188, 104.2030865],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_01a7c440f6b11be68b4e054269895e49 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_1f8a616d58506a20cef693f5a6f5a071 = $(`<div id="html_1f8a616d58506a20cef693f5a6f5a071" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 23</b><br>Звено 1<br>Заявок: 26</div>`)[0];
+                popup_01a7c440f6b11be68b4e054269895e49.setContent(html_1f8a616d58506a20cef693f5a6f5a071);
+            
+        
+
+        circle_marker_fc93f7d536b37c0d55f6ac1a24955370.bindPopup(popup_01a7c440f6b11be68b4e054269895e49)
+        ;
+
+        
+    
+    
+            circle_marker_fc93f7d536b37c0d55f6ac1a24955370.bindTooltip(
+                `<div>
+                     Розы Люксембург 23 (26)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1a00a95b119dddabfd81492f46a1804c = L.circleMarker(
+                [52.3348029, 104.2020592],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_22cf49ddf4165158a21e6c8f839f37a3 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_cb9b1635ce1a1ccd7337b62275bb51be = $(`<div id="html_cb9b1635ce1a1ccd7337b62275bb51be" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 27</b><br>Звено 1<br>Заявок: 58</div>`)[0];
+                popup_22cf49ddf4165158a21e6c8f839f37a3.setContent(html_cb9b1635ce1a1ccd7337b62275bb51be);
+            
+        
+
+        circle_marker_1a00a95b119dddabfd81492f46a1804c.bindPopup(popup_22cf49ddf4165158a21e6c8f839f37a3)
+        ;
+
+        
+    
+    
+            circle_marker_1a00a95b119dddabfd81492f46a1804c.bindTooltip(
+                `<div>
+                     Розы Люксембург 27 (58)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_de5c5582b2406a25af55046239eaeb71 = L.circleMarker(
+                [52.3351009, 104.2011755],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_b7fb4f517026d70e58d6f3e455194a16 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_a356422009c6e415c6027675a9cd9a53 = $(`<div id="html_a356422009c6e415c6027675a9cd9a53" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 29</b><br>Звено 1<br>Заявок: 76</div>`)[0];
+                popup_b7fb4f517026d70e58d6f3e455194a16.setContent(html_a356422009c6e415c6027675a9cd9a53);
+            
+        
+
+        circle_marker_de5c5582b2406a25af55046239eaeb71.bindPopup(popup_b7fb4f517026d70e58d6f3e455194a16)
+        ;
+
+        
+    
+    
+            circle_marker_de5c5582b2406a25af55046239eaeb71.bindTooltip(
+                `<div>
+                     Розы Люксембург 29 (76)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_36b507258a0ffd92e09f68fa66e2cf70 = L.circleMarker(
+                [52.3561725, 104.1535885],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_96842f9ce2b011344cd5c620a50761a7 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_987b692109730127f3764a0800d046bb = $(`<div id="html_987b692109730127f3764a0800d046bb" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 295</b><br>Звено 1<br>Заявок: 84</div>`)[0];
+                popup_96842f9ce2b011344cd5c620a50761a7.setContent(html_987b692109730127f3764a0800d046bb);
+            
+        
+
+        circle_marker_36b507258a0ffd92e09f68fa66e2cf70.bindPopup(popup_96842f9ce2b011344cd5c620a50761a7)
+        ;
+
+        
+    
+    
+            circle_marker_36b507258a0ffd92e09f68fa66e2cf70.bindTooltip(
+                `<div>
+                     Розы Люксембург 295 (84)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_445c54d2f93e98974f673e23bddd6b52 = L.circleMarker(
+                [52.3554, 104.1542],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_d897922dd8aec0f8e91221f8ccf79ea9 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_b2c035001023a220acbbcec521fe2994 = $(`<div id="html_b2c035001023a220acbbcec521fe2994" style="width: 100.0%; height: 100.0%;"><b>Розы Люксембург 295б</b><br>Звено 1<br>Заявок: 89</div>`)[0];
+                popup_d897922dd8aec0f8e91221f8ccf79ea9.setContent(html_b2c035001023a220acbbcec521fe2994);
+            
+        
+
+        circle_marker_445c54d2f93e98974f673e23bddd6b52.bindPopup(popup_d897922dd8aec0f8e91221f8ccf79ea9)
+        ;
+
+        
+    
+    
+            circle_marker_445c54d2f93e98974f673e23bddd6b52.bindTooltip(
+                `<div>
+                     Розы Люксембург 295б (89)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_59361fb57774c03bce16ff4a709f0198 = L.circleMarker(
+                [52.348082, 104.17049],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_71ecb0d18e5e1c233d3715d1b2e339f3 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_a9835e46b509191c7b0ef19126c6cd0a = $(`<div id="html_a9835e46b509191c7b0ef19126c6cd0a" style="width: 100.0%; height: 100.0%;"><b>Павла Красильникова 217</b><br>Звено 1<br>Заявок: 160</div>`)[0];
+                popup_71ecb0d18e5e1c233d3715d1b2e339f3.setContent(html_a9835e46b509191c7b0ef19126c6cd0a);
+            
+        
+
+        circle_marker_59361fb57774c03bce16ff4a709f0198.bindPopup(popup_71ecb0d18e5e1c233d3715d1b2e339f3)
+        ;
+
+        
+    
+    
+            circle_marker_59361fb57774c03bce16ff4a709f0198.bindTooltip(
+                `<div>
+                     Павла Красильникова 217 (160)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_74c6ef560026d1454d253c523a59696f = L.circleMarker(
+                [52.3482322, 104.171281],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_40e3865b7e3d56fe45c73d70c2409dda = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_e72f25bd58c0a55672a86e52e00fb1b9 = $(`<div id="html_e72f25bd58c0a55672a86e52e00fb1b9" style="width: 100.0%; height: 100.0%;"><b>Павла Красильникова 219/3</b><br>Звено 1<br>Заявок: 69</div>`)[0];
+                popup_40e3865b7e3d56fe45c73d70c2409dda.setContent(html_e72f25bd58c0a55672a86e52e00fb1b9);
+            
+        
+
+        circle_marker_74c6ef560026d1454d253c523a59696f.bindPopup(popup_40e3865b7e3d56fe45c73d70c2409dda)
+        ;
+
+        
+    
+    
+            circle_marker_74c6ef560026d1454d253c523a59696f.bindTooltip(
+                `<div>
+                     Павла Красильникова 219/3 (69)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c584efffd003ad9f8c50d6e08d8c9fd1 = L.circleMarker(
+                [52.3439157, 104.2139996],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_8deb150cc781054a1ccdf09cc1eec5fc = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_ef4490630451c8cd5c9ab92c156f9443 = $(`<div id="html_ef4490630451c8cd5c9ab92c156f9443" style="width: 100.0%; height: 100.0%;"><b>Красный путь 72/1</b><br>Звено 1<br>Заявок: 56</div>`)[0];
+                popup_8deb150cc781054a1ccdf09cc1eec5fc.setContent(html_ef4490630451c8cd5c9ab92c156f9443);
+            
+        
+
+        circle_marker_c584efffd003ad9f8c50d6e08d8c9fd1.bindPopup(popup_8deb150cc781054a1ccdf09cc1eec5fc)
+        ;
+
+        
+    
+    
+            circle_marker_c584efffd003ad9f8c50d6e08d8c9fd1.bindTooltip(
+                `<div>
+                     Красный путь 72/1 (56)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_7b27b7e55efbf0f38cc99a3ba0dddb92 = L.circleMarker(
+                [52.3439873, 104.2143548],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_3ac14aedb343082bcf11b0aa07285817 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_10fa5967673a45909835046eb81a54e0 = $(`<div id="html_10fa5967673a45909835046eb81a54e0" style="width: 100.0%; height: 100.0%;"><b>Красный путь 72/2</b><br>Звено 1<br>Заявок: 68</div>`)[0];
+                popup_3ac14aedb343082bcf11b0aa07285817.setContent(html_10fa5967673a45909835046eb81a54e0);
+            
+        
+
+        circle_marker_7b27b7e55efbf0f38cc99a3ba0dddb92.bindPopup(popup_3ac14aedb343082bcf11b0aa07285817)
+        ;
+
+        
+    
+    
+            circle_marker_7b27b7e55efbf0f38cc99a3ba0dddb92.bindTooltip(
+                `<div>
+                     Красный путь 72/2 (68)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_76e78e4d01e368eeedc5410ede1d4b57 = L.circleMarker(
+                [52.3440769, 104.2146627],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_f60e21009d4d36fb3071ab1c4e5521ee = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d1a76b6d2b94ff259855a8e6249a81a2 = $(`<div id="html_d1a76b6d2b94ff259855a8e6249a81a2" style="width: 100.0%; height: 100.0%;"><b>Красный путь 72/3</b><br>Звено 1<br>Заявок: 35</div>`)[0];
+                popup_f60e21009d4d36fb3071ab1c4e5521ee.setContent(html_d1a76b6d2b94ff259855a8e6249a81a2);
+            
+        
+
+        circle_marker_76e78e4d01e368eeedc5410ede1d4b57.bindPopup(popup_f60e21009d4d36fb3071ab1c4e5521ee)
+        ;
+
+        
+    
+    
+            circle_marker_76e78e4d01e368eeedc5410ede1d4b57.bindTooltip(
+                `<div>
+                     Красный путь 72/3 (35)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_de9ec781a28584ccd41c1601ef0193d2 = L.circleMarker(
+                [52.3442936, 104.214772],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_99f8af19dd812d3842b3b02af76c0fd0 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_19909a6711e8a289225444fc789c87e7 = $(`<div id="html_19909a6711e8a289225444fc789c87e7" style="width: 100.0%; height: 100.0%;"><b>Красный путь 72/4</b><br>Звено 1<br>Заявок: 81</div>`)[0];
+                popup_99f8af19dd812d3842b3b02af76c0fd0.setContent(html_19909a6711e8a289225444fc789c87e7);
+            
+        
+
+        circle_marker_de9ec781a28584ccd41c1601ef0193d2.bindPopup(popup_99f8af19dd812d3842b3b02af76c0fd0)
+        ;
+
+        
+    
+    
+            circle_marker_de9ec781a28584ccd41c1601ef0193d2.bindTooltip(
+                `<div>
+                     Красный путь 72/4 (81)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a1fd1b425b96734cc23a298445d52ade = L.circleMarker(
+                [52.3456398, 104.2163158],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_9c6c0053dac52eb458de758c77f241dc = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_75852f5365f41a6c688d59573863c79d = $(`<div id="html_75852f5365f41a6c688d59573863c79d" style="width: 100.0%; height: 100.0%;"><b>Волгоградская 75</b><br>Звено 1<br>Заявок: 14</div>`)[0];
+                popup_9c6c0053dac52eb458de758c77f241dc.setContent(html_75852f5365f41a6c688d59573863c79d);
+            
+        
+
+        circle_marker_a1fd1b425b96734cc23a298445d52ade.bindPopup(popup_9c6c0053dac52eb458de758c77f241dc)
+        ;
+
+        
+    
+    
+            circle_marker_a1fd1b425b96734cc23a298445d52ade.bindTooltip(
+                `<div>
+                     Волгоградская 75 (14)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_764ff9322736d2f7385ebc3f47b1fcc8 = L.circleMarker(
+                [52.3459258, 104.2165707],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_4971db875383c23274b0fcf7abfe2e8e = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_4fe6812fa2a70edc815a49f5b2333ce2 = $(`<div id="html_4fe6812fa2a70edc815a49f5b2333ce2" style="width: 100.0%; height: 100.0%;"><b>Волгоградская 79</b><br>Звено 1<br>Заявок: 23</div>`)[0];
+                popup_4971db875383c23274b0fcf7abfe2e8e.setContent(html_4fe6812fa2a70edc815a49f5b2333ce2);
+            
+        
+
+        circle_marker_764ff9322736d2f7385ebc3f47b1fcc8.bindPopup(popup_4971db875383c23274b0fcf7abfe2e8e)
+        ;
+
+        
+    
+    
+            circle_marker_764ff9322736d2f7385ebc3f47b1fcc8.bindTooltip(
+                `<div>
+                     Волгоградская 79 (23)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_23563b9136d3dae35bbc676c56963903 = L.circleMarker(
+                [52.3460914, 104.2162914],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_9f5182fe86b4ce298e28851148c9092b = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_131528edf4d094ed84b72df8afabe41a = $(`<div id="html_131528edf4d094ed84b72df8afabe41a" style="width: 100.0%; height: 100.0%;"><b>Волгоградская 79/1</b><br>Звено 1<br>Заявок: 35</div>`)[0];
+                popup_9f5182fe86b4ce298e28851148c9092b.setContent(html_131528edf4d094ed84b72df8afabe41a);
+            
+        
+
+        circle_marker_23563b9136d3dae35bbc676c56963903.bindPopup(popup_9f5182fe86b4ce298e28851148c9092b)
+        ;
+
+        
+    
+    
+            circle_marker_23563b9136d3dae35bbc676c56963903.bindTooltip(
+                `<div>
+                     Волгоградская 79/1 (35)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f91cac89ed6b4366f61db49428f94106 = L.circleMarker(
+                [52.3447571, 104.2141236],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_223579f45f3083c10386d9d0c2ec5867 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f3ba52d06612196da9df2678cfe63e2c = $(`<div id="html_f3ba52d06612196da9df2678cfe63e2c" style="width: 100.0%; height: 100.0%;"><b>Муравьева 4</b><br>Звено 1<br>Заявок: 106</div>`)[0];
+                popup_223579f45f3083c10386d9d0c2ec5867.setContent(html_f3ba52d06612196da9df2678cfe63e2c);
+            
+        
+
+        circle_marker_f91cac89ed6b4366f61db49428f94106.bindPopup(popup_223579f45f3083c10386d9d0c2ec5867)
+        ;
+
+        
+    
+    
+            circle_marker_f91cac89ed6b4366f61db49428f94106.bindTooltip(
+                `<div>
+                     Муравьева 4 (106)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c3bfb91ee8591b70374ba0f8a9ef2f76 = L.circleMarker(
+                [52.3349538, 104.2062503],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_953974c939a30c3f9dcbdedd02861a4f = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_1e9e70ef3ba97c7a1b8fa7be919d368c = $(`<div id="html_1e9e70ef3ba97c7a1b8fa7be919d368c" style="width: 100.0%; height: 100.0%;"><b>Норильская 6/2</b><br>Звено 1<br>Заявок: 89</div>`)[0];
+                popup_953974c939a30c3f9dcbdedd02861a4f.setContent(html_1e9e70ef3ba97c7a1b8fa7be919d368c);
+            
+        
+
+        circle_marker_c3bfb91ee8591b70374ba0f8a9ef2f76.bindPopup(popup_953974c939a30c3f9dcbdedd02861a4f)
+        ;
+
+        
+    
+    
+            circle_marker_c3bfb91ee8591b70374ba0f8a9ef2f76.bindTooltip(
+                `<div>
+                     Норильская 6/2 (89)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f77954ab772b79eedf1f77110ba84f2d = L.circleMarker(
+                [52.3353259, 104.2053571],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_4cf8a40641da727b3f09550cb9f6b2fe = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f7437bbe1fc50ae74cf9c2554d35c82e = $(`<div id="html_f7437bbe1fc50ae74cf9c2554d35c82e" style="width: 100.0%; height: 100.0%;"><b>Норильская 6/4</b><br>Звено 1<br>Заявок: 74</div>`)[0];
+                popup_4cf8a40641da727b3f09550cb9f6b2fe.setContent(html_f7437bbe1fc50ae74cf9c2554d35c82e);
+            
+        
+
+        circle_marker_f77954ab772b79eedf1f77110ba84f2d.bindPopup(popup_4cf8a40641da727b3f09550cb9f6b2fe)
+        ;
+
+        
+    
+    
+            circle_marker_f77954ab772b79eedf1f77110ba84f2d.bindTooltip(
+                `<div>
+                     Норильская 6/4 (74)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_6df0619a7e0c696a2466d1e9e7b105e8 = L.circleMarker(
+                [52.3482844, 104.1547023],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_eb69ca772d4c4ce4ca2e0ef61fa5259a = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f605d0f5c2717a184f154008d5d5a3a5 = $(`<div id="html_f605d0f5c2717a184f154008d5d5a3a5" style="width: 100.0%; height: 100.0%;"><b>Баумана 235а/1</b><br>Звено 1<br>Заявок: 30</div>`)[0];
+                popup_eb69ca772d4c4ce4ca2e0ef61fa5259a.setContent(html_f605d0f5c2717a184f154008d5d5a3a5);
+            
+        
+
+        circle_marker_6df0619a7e0c696a2466d1e9e7b105e8.bindPopup(popup_eb69ca772d4c4ce4ca2e0ef61fa5259a)
+        ;
+
+        
+    
+    
+            circle_marker_6df0619a7e0c696a2466d1e9e7b105e8.bindTooltip(
+                `<div>
+                     Баумана 235а/1 (30)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f68512de1e237e621a021f0aba43f3f6 = L.circleMarker(
+                [52.339807, 104.198468],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_4263e57f0a0c7baae8d07629dc87abbb = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_fbf8fa1ddbedd44550f3d958bdc6351a = $(`<div id="html_fbf8fa1ddbedd44550f3d958bdc6351a" style="width: 100.0%; height: 100.0%;"><b>Западный 15</b><br>Звено 1<br>Заявок: 8</div>`)[0];
+                popup_4263e57f0a0c7baae8d07629dc87abbb.setContent(html_fbf8fa1ddbedd44550f3d958bdc6351a);
+            
+        
+
+        circle_marker_f68512de1e237e621a021f0aba43f3f6.bindPopup(popup_4263e57f0a0c7baae8d07629dc87abbb)
+        ;
+
+        
+    
+    
+            circle_marker_f68512de1e237e621a021f0aba43f3f6.bindTooltip(
+                `<div>
+                     Западный 15 (8)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3e2af822eda71b4825bdbb7ac2ffe270 = L.circleMarker(
+                [52.3311049, 104.2582534],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_0cd304f940a54ae4a52331b97832f8b4 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f793d3485ebb0eb62d6cff91cc3aebe3 = $(`<div id="html_f793d3485ebb0eb62d6cff91cc3aebe3" style="width: 100.0%; height: 100.0%;"><b>Генерала Доватора 3</b><br>Звено 1<br>Заявок: 6</div>`)[0];
+                popup_0cd304f940a54ae4a52331b97832f8b4.setContent(html_f793d3485ebb0eb62d6cff91cc3aebe3);
+            
+        
+
+        circle_marker_3e2af822eda71b4825bdbb7ac2ffe270.bindPopup(popup_0cd304f940a54ae4a52331b97832f8b4)
+        ;
+
+        
+    
+    
+            circle_marker_3e2af822eda71b4825bdbb7ac2ffe270.bindTooltip(
+                `<div>
+                     Генерала Доватора 3 (6)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_30f3f6b05784f0952b495cff3a77b316 = L.circleMarker(
+                [52.3317974, 104.2566208],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "red", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_043bae151b643a82d08a5109db8a4af4 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_527d5ae3ddfeaec5d18f7560d4583f79 = $(`<div id="html_527d5ae3ddfeaec5d18f7560d4583f79" style="width: 100.0%; height: 100.0%;"><b>Генерала Доватора 13</b><br>Звено 1<br>Заявок: 3</div>`)[0];
+                popup_043bae151b643a82d08a5109db8a4af4.setContent(html_527d5ae3ddfeaec5d18f7560d4583f79);
+            
+        
+
+        circle_marker_30f3f6b05784f0952b495cff3a77b316.bindPopup(popup_043bae151b643a82d08a5109db8a4af4)
+        ;
+
+        
+    
+    
+            circle_marker_30f3f6b05784f0952b495cff3a77b316.bindTooltip(
+                `<div>
+                     Генерала Доватора 13 (3)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_7a15f2a0d521b5baaf623750a3b2a083 = L.circleMarker(
+                [52.269891, 104.2999355],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 12, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_e520c8b1eec9d05116a978acaddab1d5 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d3fee4a9041cd0b7c41346ca4ce239ed = $(`<div id="html_d3fee4a9041cd0b7c41346ca4ce239ed" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 8/1</b><br>Звено 2<br>Заявок: 532</div>`)[0];
+                popup_e520c8b1eec9d05116a978acaddab1d5.setContent(html_d3fee4a9041cd0b7c41346ca4ce239ed);
+            
+        
+
+        circle_marker_7a15f2a0d521b5baaf623750a3b2a083.bindPopup(popup_e520c8b1eec9d05116a978acaddab1d5)
+        ;
+
+        
+    
+    
+            circle_marker_7a15f2a0d521b5baaf623750a3b2a083.bindTooltip(
+                `<div>
+                     Трилиссера 8/1 (532)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_9394abcd5781ae4bb44d099ca6e820f3 = L.circleMarker(
+                [52.2701169, 104.3002371],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_0cc2f7f0eca5f4cf3295ac56a12c1148 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_fa7a0ac77c664e351fbf960720e95ddd = $(`<div id="html_fa7a0ac77c664e351fbf960720e95ddd" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 8/2</b><br>Звено 2<br>Заявок: 470</div>`)[0];
+                popup_0cc2f7f0eca5f4cf3295ac56a12c1148.setContent(html_fa7a0ac77c664e351fbf960720e95ddd);
+            
+        
+
+        circle_marker_9394abcd5781ae4bb44d099ca6e820f3.bindPopup(popup_0cc2f7f0eca5f4cf3295ac56a12c1148)
+        ;
+
+        
+    
+    
+            circle_marker_9394abcd5781ae4bb44d099ca6e820f3.bindTooltip(
+                `<div>
+                     Трилиссера 8/2 (470)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_8cafa811735d55c82a3f9067dd10fee7 = L.circleMarker(
+                [52.2703281, 104.3005134],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_ac5b0dea10325cc028bc21dc2df91a25 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_61fbfd115115f4960b4b35016d39d647 = $(`<div id="html_61fbfd115115f4960b4b35016d39d647" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 8/3</b><br>Звено 2<br>Заявок: 385</div>`)[0];
+                popup_ac5b0dea10325cc028bc21dc2df91a25.setContent(html_61fbfd115115f4960b4b35016d39d647);
+            
+        
+
+        circle_marker_8cafa811735d55c82a3f9067dd10fee7.bindPopup(popup_ac5b0dea10325cc028bc21dc2df91a25)
+        ;
+
+        
+    
+    
+            circle_marker_8cafa811735d55c82a3f9067dd10fee7.bindTooltip(
+                `<div>
+                     Трилиссера 8/3 (385)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_429d9ffbe0ff70ee2eee21630f62589d = L.circleMarker(
+                [52.2705292, 104.3007767],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_0f4f098c236a26fb803c7ff3c4b56344 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_5ee75614b138327630ece8b675d03e7c = $(`<div id="html_5ee75614b138327630ece8b675d03e7c" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 8/4</b><br>Звено 2<br>Заявок: 378</div>`)[0];
+                popup_0f4f098c236a26fb803c7ff3c4b56344.setContent(html_5ee75614b138327630ece8b675d03e7c);
+            
+        
+
+        circle_marker_429d9ffbe0ff70ee2eee21630f62589d.bindPopup(popup_0f4f098c236a26fb803c7ff3c4b56344)
+        ;
+
+        
+    
+    
+            circle_marker_429d9ffbe0ff70ee2eee21630f62589d.bindTooltip(
+                `<div>
+                     Трилиссера 8/4 (378)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a6a21390b36857e2fd5077de2da9b21e = L.circleMarker(
+                [52.2707253, 104.3010322],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_d91849f490b0ad53d4ad4b64290f4697 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_10992460b84fd3d7669ca7e8bcc66f8c = $(`<div id="html_10992460b84fd3d7669ca7e8bcc66f8c" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 8/5</b><br>Звено 2<br>Заявок: 376</div>`)[0];
+                popup_d91849f490b0ad53d4ad4b64290f4697.setContent(html_10992460b84fd3d7669ca7e8bcc66f8c);
+            
+        
+
+        circle_marker_a6a21390b36857e2fd5077de2da9b21e.bindPopup(popup_d91849f490b0ad53d4ad4b64290f4697)
+        ;
+
+        
+    
+    
+            circle_marker_a6a21390b36857e2fd5077de2da9b21e.bindTooltip(
+                `<div>
+                     Трилиссера 8/5 (376)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_b66f8e434e11ee3909a187d7e88c9b3c = L.circleMarker(
+                [52.2698465, 104.3005607],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_9c2f0fec1c8bc4cab1f8db2bc41e0f5f = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_9f85561394f5c895894bf617ebcd6233 = $(`<div id="html_9f85561394f5c895894bf617ebcd6233" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 8/6</b><br>Звено 2<br>Заявок: 192</div>`)[0];
+                popup_9c2f0fec1c8bc4cab1f8db2bc41e0f5f.setContent(html_9f85561394f5c895894bf617ebcd6233);
+            
+        
+
+        circle_marker_b66f8e434e11ee3909a187d7e88c9b3c.bindPopup(popup_9c2f0fec1c8bc4cab1f8db2bc41e0f5f)
+        ;
+
+        
+    
+    
+            circle_marker_b66f8e434e11ee3909a187d7e88c9b3c.bindTooltip(
+                `<div>
+                     Трилиссера 8/6 (192)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f84863e6a3be3cd0335cb118188f0f25 = L.circleMarker(
+                [52.2716016, 104.3035567],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_f48a06dc756478b6d92395d7608cfe20 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_fd949fedbb100cd06e467f2c448a1185 = $(`<div id="html_fd949fedbb100cd06e467f2c448a1185" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 18б</b><br>Звено 2<br>Заявок: 16</div>`)[0];
+                popup_f48a06dc756478b6d92395d7608cfe20.setContent(html_fd949fedbb100cd06e467f2c448a1185);
+            
+        
+
+        circle_marker_f84863e6a3be3cd0335cb118188f0f25.bindPopup(popup_f48a06dc756478b6d92395d7608cfe20)
+        ;
+
+        
+    
+    
+            circle_marker_f84863e6a3be3cd0335cb118188f0f25.bindTooltip(
+                `<div>
+                     Трилиссера 18б (16)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3e5d6bf636cd861edac04e9d0f7bec49 = L.circleMarker(
+                [52.2716035, 104.3043993],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_2297339a7be30437a51deebf5c022e8b = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f2355114d24f5ea1b5fc15b2abe1c009 = $(`<div id="html_f2355114d24f5ea1b5fc15b2abe1c009" style="width: 100.0%; height: 100.0%;"><b>Трилиссера 22</b><br>Звено 2<br>Заявок: 24</div>`)[0];
+                popup_2297339a7be30437a51deebf5c022e8b.setContent(html_f2355114d24f5ea1b5fc15b2abe1c009);
+            
+        
+
+        circle_marker_3e5d6bf636cd861edac04e9d0f7bec49.bindPopup(popup_2297339a7be30437a51deebf5c022e8b)
+        ;
+
+        
+    
+    
+            circle_marker_3e5d6bf636cd861edac04e9d0f7bec49.bindTooltip(
+                `<div>
+                     Трилиссера 22 (24)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_baba0b533464263253fbcc5e06b0eec2 = L.circleMarker(
+                [52.2711955, 104.303688],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_fdb0dc400ea7cf52c4b85e69d4144a46 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_4ac036ac0632ebc2640554d6057644a6 = $(`<div id="html_4ac036ac0632ebc2640554d6057644a6" style="width: 100.0%; height: 100.0%;"><b>Лебедева-Кумача 29</b><br>Звено 2<br>Заявок: 21</div>`)[0];
+                popup_fdb0dc400ea7cf52c4b85e69d4144a46.setContent(html_4ac036ac0632ebc2640554d6057644a6);
+            
+        
+
+        circle_marker_baba0b533464263253fbcc5e06b0eec2.bindPopup(popup_fdb0dc400ea7cf52c4b85e69d4144a46)
+        ;
+
+        
+    
+    
+            circle_marker_baba0b533464263253fbcc5e06b0eec2.bindTooltip(
+                `<div>
+                     Лебедева-Кумача 29 (21)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_bbe3c9e21c3da6f4241c86f5d95179de = L.circleMarker(
+                [52.2719589, 104.2965863],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 16, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_efd71ced7437f690d9c9711bdcdb94b9 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_a03c808d2931d4da8bbb3431216db7dc = $(`<div id="html_a03c808d2931d4da8bbb3431216db7dc" style="width: 100.0%; height: 100.0%;"><b>Красных Мадьяр 14</b><br>Звено 2<br>Заявок: 1012</div>`)[0];
+                popup_efd71ced7437f690d9c9711bdcdb94b9.setContent(html_a03c808d2931d4da8bbb3431216db7dc);
+            
+        
+
+        circle_marker_bbe3c9e21c3da6f4241c86f5d95179de.bindPopup(popup_efd71ced7437f690d9c9711bdcdb94b9)
+        ;
+
+        
+    
+    
+            circle_marker_bbe3c9e21c3da6f4241c86f5d95179de.bindTooltip(
+                `<div>
+                     Красных Мадьяр 14 (1012)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_18e2a42d49f9233e87584ef6a5a6cbf3 = L.circleMarker(
+                [52.269823, 104.303062],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 16, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_5a0cd0c8f27b30bf3522b9b2aa77267c = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_8a29f7e776c1201a400c4d04592f2ccb = $(`<div id="html_8a29f7e776c1201a400c4d04592f2ccb" style="width: 100.0%; height: 100.0%;"><b>4-я Советская 28</b><br>Звено 2<br>Заявок: 1039</div>`)[0];
+                popup_5a0cd0c8f27b30bf3522b9b2aa77267c.setContent(html_8a29f7e776c1201a400c4d04592f2ccb);
+            
+        
+
+        circle_marker_18e2a42d49f9233e87584ef6a5a6cbf3.bindPopup(popup_5a0cd0c8f27b30bf3522b9b2aa77267c)
+        ;
+
+        
+    
+    
+            circle_marker_18e2a42d49f9233e87584ef6a5a6cbf3.bindTooltip(
+                `<div>
+                     4-я Советская 28 (1039)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_202840a1090fafb5ccc0375d0174d0ff = L.circleMarker(
+                [52.26929, 104.303367],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 16, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_d7975fee0d124b5e091752a649644c53 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f388e237c83aef1f45501e365af1a78f = $(`<div id="html_f388e237c83aef1f45501e365af1a78f" style="width: 100.0%; height: 100.0%;"><b>4-я Советская 30</b><br>Звено 2<br>Заявок: 1290</div>`)[0];
+                popup_d7975fee0d124b5e091752a649644c53.setContent(html_f388e237c83aef1f45501e365af1a78f);
+            
+        
+
+        circle_marker_202840a1090fafb5ccc0375d0174d0ff.bindPopup(popup_d7975fee0d124b5e091752a649644c53)
+        ;
+
+        
+    
+    
+            circle_marker_202840a1090fafb5ccc0375d0174d0ff.bindTooltip(
+                `<div>
+                     4-я Советская 30 (1290)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_4a4e37925fc5ea4299cf5f37d1ec04be = L.circleMarker(
+                [52.2877409, 104.253997],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_bf21757f374228e988520c1f3fbefcdf = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_145f6e42a69478f1c093bf2d98dddfc1 = $(`<div id="html_145f6e42a69478f1c093bf2d98dddfc1" style="width: 100.0%; height: 100.0%;"><b>Маяковского 12</b><br>Звено 2<br>Заявок: 32</div>`)[0];
+                popup_bf21757f374228e988520c1f3fbefcdf.setContent(html_145f6e42a69478f1c093bf2d98dddfc1);
+            
+        
+
+        circle_marker_4a4e37925fc5ea4299cf5f37d1ec04be.bindPopup(popup_bf21757f374228e988520c1f3fbefcdf)
+        ;
+
+        
+    
+    
+            circle_marker_4a4e37925fc5ea4299cf5f37d1ec04be.bindTooltip(
+                `<div>
+                     Маяковского 12 (32)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_84fb461a399f2af0d392fbe8d66b699c = L.circleMarker(
+                [52.2854997, 104.2433842],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_1100f94cf6b9553bdc5c036225e9874d = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_ddcdded0476e4b1120a1dcd7f7f5e187 = $(`<div id="html_ddcdded0476e4b1120a1dcd7f7f5e187" style="width: 100.0%; height: 100.0%;"><b>Маяковского 35</b><br>Звено 2<br>Заявок: 21</div>`)[0];
+                popup_1100f94cf6b9553bdc5c036225e9874d.setContent(html_ddcdded0476e4b1120a1dcd7f7f5e187);
+            
+        
+
+        circle_marker_84fb461a399f2af0d392fbe8d66b699c.bindPopup(popup_1100f94cf6b9553bdc5c036225e9874d)
+        ;
+
+        
+    
+    
+            circle_marker_84fb461a399f2af0d392fbe8d66b699c.bindTooltip(
+                `<div>
+                     Маяковского 35 (21)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a26bf53b7369b9a4842841be22477c99 = L.circleMarker(
+                [52.2767443, 104.2611558],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_45b4c9da412d341167b3ed278b323b29 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d7da109faecfc1a9be7c44ce4c15617b = $(`<div id="html_d7da109faecfc1a9be7c44ce4c15617b" style="width: 100.0%; height: 100.0%;"><b>Профсоюзная 77/6</b><br>Звено 2<br>Заявок: 4</div>`)[0];
+                popup_45b4c9da412d341167b3ed278b323b29.setContent(html_d7da109faecfc1a9be7c44ce4c15617b);
+            
+        
+
+        circle_marker_a26bf53b7369b9a4842841be22477c99.bindPopup(popup_45b4c9da412d341167b3ed278b323b29)
+        ;
+
+        
+    
+    
+            circle_marker_a26bf53b7369b9a4842841be22477c99.bindTooltip(
+                `<div>
+                     Профсоюзная 77/6 (4)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_2ef1fcc91a64083ecb69deb8ae2d1900 = L.circleMarker(
+                [52.2749453, 104.2438667],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_c34320371c16a3632e9ec87f90b46414 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_e756e6113f91a55e5baf35571af48bdb = $(`<div id="html_e756e6113f91a55e5baf35571af48bdb" style="width: 100.0%; height: 100.0%;"><b>Терешковой 47</b><br>Звено 2<br>Заявок: 18</div>`)[0];
+                popup_c34320371c16a3632e9ec87f90b46414.setContent(html_e756e6113f91a55e5baf35571af48bdb);
+            
+        
+
+        circle_marker_2ef1fcc91a64083ecb69deb8ae2d1900.bindPopup(popup_c34320371c16a3632e9ec87f90b46414)
+        ;
+
+        
+    
+    
+            circle_marker_2ef1fcc91a64083ecb69deb8ae2d1900.bindTooltip(
+                `<div>
+                     Терешковой 47 (18)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a8e9b8b6f15f4a8f326d3a88e77d64b0 = L.circleMarker(
+                [52.2703674, 104.2989899],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_73f9f393cb30e97bcd55a48cdc1e182c = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d492d932352d8b9f3aa9ed2cc3cd17be = $(`<div id="html_d492d932352d8b9f3aa9ed2cc3cd17be" style="width: 100.0%; height: 100.0%;"><b>Седова 65а/1</b><br>Звено 2<br>Заявок: 121</div>`)[0];
+                popup_73f9f393cb30e97bcd55a48cdc1e182c.setContent(html_d492d932352d8b9f3aa9ed2cc3cd17be);
+            
+        
+
+        circle_marker_a8e9b8b6f15f4a8f326d3a88e77d64b0.bindPopup(popup_73f9f393cb30e97bcd55a48cdc1e182c)
+        ;
+
+        
+    
+    
+            circle_marker_a8e9b8b6f15f4a8f326d3a88e77d64b0.bindTooltip(
+                `<div>
+                     Седова 65а/1 (121)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_73c3099cb1122db2d455060fe0b965e8 = L.circleMarker(
+                [52.270742, 104.2985524],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 12, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_cfe746b7ef1d4ae2df663450c9700d53 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f526aa381bac6bc4fef1649a9abef306 = $(`<div id="html_f526aa381bac6bc4fef1649a9abef306" style="width: 100.0%; height: 100.0%;"><b>Седова 65а/2</b><br>Звено 2<br>Заявок: 719</div>`)[0];
+                popup_cfe746b7ef1d4ae2df663450c9700d53.setContent(html_f526aa381bac6bc4fef1649a9abef306);
+            
+        
+
+        circle_marker_73c3099cb1122db2d455060fe0b965e8.bindPopup(popup_cfe746b7ef1d4ae2df663450c9700d53)
+        ;
+
+        
+    
+    
+            circle_marker_73c3099cb1122db2d455060fe0b965e8.bindTooltip(
+                `<div>
+                     Седова 65а/2 (719)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_03c1c9378f71c33860d1244465d4e878 = L.circleMarker(
+                [52.2710335, 104.2989401],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 16, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_4d6963ddd4ab7c56287916123efa8354 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_826aa3824ab413838dd1e923392f61f5 = $(`<div id="html_826aa3824ab413838dd1e923392f61f5" style="width: 100.0%; height: 100.0%;"><b>Седова 65а/3</b><br>Звено 2<br>Заявок: 1098</div>`)[0];
+                popup_4d6963ddd4ab7c56287916123efa8354.setContent(html_826aa3824ab413838dd1e923392f61f5);
+            
+        
+
+        circle_marker_03c1c9378f71c33860d1244465d4e878.bindPopup(popup_4d6963ddd4ab7c56287916123efa8354)
+        ;
+
+        
+    
+    
+            circle_marker_03c1c9378f71c33860d1244465d4e878.bindTooltip(
+                `<div>
+                     Седова 65а/3 (1098)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5f8964d6bc97d973a88432dde6e9385e = L.circleMarker(
+                [52.2712944, 104.299289],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 12, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_a80aea062bc42a66bfb62180c15bacc6 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_2b0f8f0ea10c30268a8e8643991486ae = $(`<div id="html_2b0f8f0ea10c30268a8e8643991486ae" style="width: 100.0%; height: 100.0%;"><b>Седова 65а/4</b><br>Звено 2<br>Заявок: 708</div>`)[0];
+                popup_a80aea062bc42a66bfb62180c15bacc6.setContent(html_2b0f8f0ea10c30268a8e8643991486ae);
+            
+        
+
+        circle_marker_5f8964d6bc97d973a88432dde6e9385e.bindPopup(popup_a80aea062bc42a66bfb62180c15bacc6)
+        ;
+
+        
+    
+    
+            circle_marker_5f8964d6bc97d973a88432dde6e9385e.bindTooltip(
+                `<div>
+                     Седова 65а/4 (708)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5f8174a6650883216f32450f3f2f8593 = L.circleMarker(
+                [52.2711461, 104.2998047],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_dbd1661af43d1de94ed99fd92c809ac8 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_9cb9c0c9bb8252aa4342fc4e60eb2d8b = $(`<div id="html_9cb9c0c9bb8252aa4342fc4e60eb2d8b" style="width: 100.0%; height: 100.0%;"><b>Седова 65а/5</b><br>Звено 2<br>Заявок: 428</div>`)[0];
+                popup_dbd1661af43d1de94ed99fd92c809ac8.setContent(html_9cb9c0c9bb8252aa4342fc4e60eb2d8b);
+            
+        
+
+        circle_marker_5f8174a6650883216f32450f3f2f8593.bindPopup(popup_dbd1661af43d1de94ed99fd92c809ac8)
+        ;
+
+        
+    
+    
+            circle_marker_5f8174a6650883216f32450f3f2f8593.bindTooltip(
+                `<div>
+                     Седова 65а/5 (428)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c248c00fbfb3b54f81d834be45cb6106 = L.circleMarker(
+                [52.2710021, 104.3001187],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_8c8a80b2f0db53fd0781af6181b7f00e = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_cd8f48d271e70a437276115a5329fc1b = $(`<div id="html_cd8f48d271e70a437276115a5329fc1b" style="width: 100.0%; height: 100.0%;"><b>Седова 65а/6</b><br>Звено 2<br>Заявок: 391</div>`)[0];
+                popup_8c8a80b2f0db53fd0781af6181b7f00e.setContent(html_cd8f48d271e70a437276115a5329fc1b);
+            
+        
+
+        circle_marker_c248c00fbfb3b54f81d834be45cb6106.bindPopup(popup_8c8a80b2f0db53fd0781af6181b7f00e)
+        ;
+
+        
+    
+    
+            circle_marker_c248c00fbfb3b54f81d834be45cb6106.bindTooltip(
+                `<div>
+                     Седова 65а/6 (391)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_11eb66abb4d8bdea493ae732dbc779d2 = L.circleMarker(
+                [52.2707745, 104.2999126],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_6a322beff993ff11fce8b0c35892a07e = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_43a903648e0d58d4c0be003691c41015 = $(`<div id="html_43a903648e0d58d4c0be003691c41015" style="width: 100.0%; height: 100.0%;"><b>Седова 65а/8</b><br>Звено 2<br>Заявок: 291</div>`)[0];
+                popup_6a322beff993ff11fce8b0c35892a07e.setContent(html_43a903648e0d58d4c0be003691c41015);
+            
+        
+
+        circle_marker_11eb66abb4d8bdea493ae732dbc779d2.bindPopup(popup_6a322beff993ff11fce8b0c35892a07e)
+        ;
+
+        
+    
+    
+            circle_marker_11eb66abb4d8bdea493ae732dbc779d2.bindTooltip(
+                `<div>
+                     Седова 65а/8 (291)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_baedd436952da978817d516f20d8a296 = L.circleMarker(
+                [52.269638, 104.3002792],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_1050deca68f808bdf4745dd961d86a1a = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_5656e55bc3ba15a5acd5163922fed2be = $(`<div id="html_5656e55bc3ba15a5acd5163922fed2be" style="width: 100.0%; height: 100.0%;"><b>Седова 67</b><br>Звено 2<br>Заявок: 426</div>`)[0];
+                popup_1050deca68f808bdf4745dd961d86a1a.setContent(html_5656e55bc3ba15a5acd5163922fed2be);
+            
+        
+
+        circle_marker_baedd436952da978817d516f20d8a296.bindPopup(popup_1050deca68f808bdf4745dd961d86a1a)
+        ;
+
+        
+    
+    
+            circle_marker_baedd436952da978817d516f20d8a296.bindTooltip(
+                `<div>
+                     Седова 67 (426)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f6f64b30c3fc9543537dc36966434178 = L.circleMarker(
+                [52.2688636, 104.3018493],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 12, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_4f1069cbc65822e1d7d6c09b076e8569 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_89ac76d8a7528418251fd69761accf4e = $(`<div id="html_89ac76d8a7528418251fd69761accf4e" style="width: 100.0%; height: 100.0%;"><b>Седова 71</b><br>Звено 2<br>Заявок: 853</div>`)[0];
+                popup_4f1069cbc65822e1d7d6c09b076e8569.setContent(html_89ac76d8a7528418251fd69761accf4e);
+            
+        
+
+        circle_marker_f6f64b30c3fc9543537dc36966434178.bindPopup(popup_4f1069cbc65822e1d7d6c09b076e8569)
+        ;
+
+        
+    
+    
+            circle_marker_f6f64b30c3fc9543537dc36966434178.bindTooltip(
+                `<div>
+                     Седова 71 (853)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5c247bb36826a957687268e8d512987c = L.circleMarker(
+                [52.2689026, 104.3035931],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 12, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_c61ad9595e6b326b4b0a26bd614c5fbc = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_e3696270fbf802d2bc97fac6ed0f5d22 = $(`<div id="html_e3696270fbf802d2bc97fac6ed0f5d22" style="width: 100.0%; height: 100.0%;"><b>Седова 71/1</b><br>Звено 2<br>Заявок: 812</div>`)[0];
+                popup_c61ad9595e6b326b4b0a26bd614c5fbc.setContent(html_e3696270fbf802d2bc97fac6ed0f5d22);
+            
+        
+
+        circle_marker_5c247bb36826a957687268e8d512987c.bindPopup(popup_c61ad9595e6b326b4b0a26bd614c5fbc)
+        ;
+
+        
+    
+    
+            circle_marker_5c247bb36826a957687268e8d512987c.bindTooltip(
+                `<div>
+                     Седова 71/1 (812)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a12f0dd3247da3da5b6e30f5e0054acf = L.circleMarker(
+                [52.2246271, 104.3008927],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_d8023c36f181be84871fd08a14b08ea6 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_be7146797ef3c59520eae32341c45b16 = $(`<div id="html_be7146797ef3c59520eae32341c45b16" style="width: 100.0%; height: 100.0%;"><b>Юбилейный 36а</b><br>Звено 3<br>Заявок: 66</div>`)[0];
+                popup_d8023c36f181be84871fd08a14b08ea6.setContent(html_be7146797ef3c59520eae32341c45b16);
+            
+        
+
+        circle_marker_a12f0dd3247da3da5b6e30f5e0054acf.bindPopup(popup_d8023c36f181be84871fd08a14b08ea6)
+        ;
+
+        
+    
+    
+            circle_marker_a12f0dd3247da3da5b6e30f5e0054acf.bindTooltip(
+                `<div>
+                     Юбилейный 36а (66)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_43e7d5058ebc8e0ed8f84bdd9bbcbb3f = L.circleMarker(
+                [52.2248878, 104.3005037],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_84933087e4f0cc4686386d1d4374ca57 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_ca3d6a8d8d041aaa56885e7bb5d914c7 = $(`<div id="html_ca3d6a8d8d041aaa56885e7bb5d914c7" style="width: 100.0%; height: 100.0%;"><b>Юбилейный 36б</b><br>Звено 3<br>Заявок: 32</div>`)[0];
+                popup_84933087e4f0cc4686386d1d4374ca57.setContent(html_ca3d6a8d8d041aaa56885e7bb5d914c7);
+            
+        
+
+        circle_marker_43e7d5058ebc8e0ed8f84bdd9bbcbb3f.bindPopup(popup_84933087e4f0cc4686386d1d4374ca57)
+        ;
+
+        
+    
+    
+            circle_marker_43e7d5058ebc8e0ed8f84bdd9bbcbb3f.bindTooltip(
+                `<div>
+                     Юбилейный 36б (32)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_42124407e1cf621dfbe81766e4eef709 = L.circleMarker(
+                [52.2690014, 104.3368005],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_97cedd908a6d213b2506a6bc5c46281e = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_6a3e3fff4bb72f286f318620e0beee75 = $(`<div id="html_6a3e3fff4bb72f286f318620e0beee75" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148</b><br>Звено 3<br>Заявок: 195</div>`)[0];
+                popup_97cedd908a6d213b2506a6bc5c46281e.setContent(html_6a3e3fff4bb72f286f318620e0beee75);
+            
+        
+
+        circle_marker_42124407e1cf621dfbe81766e4eef709.bindPopup(popup_97cedd908a6d213b2506a6bc5c46281e)
+        ;
+
+        
+    
+    
+            circle_marker_42124407e1cf621dfbe81766e4eef709.bindTooltip(
+                `<div>
+                     Пискунова 148 (195)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5b882e3ab8a63bd48592ae880e6d8e31 = L.circleMarker(
+                [52.2690113, 104.3371922],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_51b7eade68999f3e263e754c01ed0e76 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_63f5d65df367725a0247bad86730e4e1 = $(`<div id="html_63f5d65df367725a0247bad86730e4e1" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148/1</b><br>Звено 3<br>Заявок: 112</div>`)[0];
+                popup_51b7eade68999f3e263e754c01ed0e76.setContent(html_63f5d65df367725a0247bad86730e4e1);
+            
+        
+
+        circle_marker_5b882e3ab8a63bd48592ae880e6d8e31.bindPopup(popup_51b7eade68999f3e263e754c01ed0e76)
+        ;
+
+        
+    
+    
+            circle_marker_5b882e3ab8a63bd48592ae880e6d8e31.bindTooltip(
+                `<div>
+                     Пискунова 148/1 (112)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_d7fc8cf10787ed4a042d227d0d910a3e = L.circleMarker(
+                [52.2690096, 104.3376186],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_1038e2ceb3013516e96b473f91c8a9f5 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d8880894f2e73722a9423cd3a73dd7d5 = $(`<div id="html_d8880894f2e73722a9423cd3a73dd7d5" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148/2</b><br>Звено 3<br>Заявок: 78</div>`)[0];
+                popup_1038e2ceb3013516e96b473f91c8a9f5.setContent(html_d8880894f2e73722a9423cd3a73dd7d5);
+            
+        
+
+        circle_marker_d7fc8cf10787ed4a042d227d0d910a3e.bindPopup(popup_1038e2ceb3013516e96b473f91c8a9f5)
+        ;
+
+        
+    
+    
+            circle_marker_d7fc8cf10787ed4a042d227d0d910a3e.bindTooltip(
+                `<div>
+                     Пискунова 148/2 (78)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c836b9579cdfe9fdf5da0e7726f7ac9b = L.circleMarker(
+                [52.2690095, 104.3379825],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_0ab9fe4421a2ba9733bfa90f44b4796c = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_93580b0b03faa37b75520e7178da2dc4 = $(`<div id="html_93580b0b03faa37b75520e7178da2dc4" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148/3</b><br>Звено 3<br>Заявок: 83</div>`)[0];
+                popup_0ab9fe4421a2ba9733bfa90f44b4796c.setContent(html_93580b0b03faa37b75520e7178da2dc4);
+            
+        
+
+        circle_marker_c836b9579cdfe9fdf5da0e7726f7ac9b.bindPopup(popup_0ab9fe4421a2ba9733bfa90f44b4796c)
+        ;
+
+        
+    
+    
+            circle_marker_c836b9579cdfe9fdf5da0e7726f7ac9b.bindTooltip(
+                `<div>
+                     Пискунова 148/3 (83)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ec15faf0f6e03b7c5aae19b0336cba5b = L.circleMarker(
+                [52.2695907, 104.3368162],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_737c0e347841eb31ac770a4707c69555 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_3deac364318950925c7b09a3e4c7b654 = $(`<div id="html_3deac364318950925c7b09a3e4c7b654" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148/4</b><br>Звено 3<br>Заявок: 478</div>`)[0];
+                popup_737c0e347841eb31ac770a4707c69555.setContent(html_3deac364318950925c7b09a3e4c7b654);
+            
+        
+
+        circle_marker_ec15faf0f6e03b7c5aae19b0336cba5b.bindPopup(popup_737c0e347841eb31ac770a4707c69555)
+        ;
+
+        
+    
+    
+            circle_marker_ec15faf0f6e03b7c5aae19b0336cba5b.bindTooltip(
+                `<div>
+                     Пискунова 148/4 (478)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a1bd3a444ef6354c9330c3430aa67112 = L.circleMarker(
+                [52.2700014, 104.3367534],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_2be363d6216dd4959daec4d819da04f8 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_eeea1e3c8bf6ffaed27e63bdf506c045 = $(`<div id="html_eeea1e3c8bf6ffaed27e63bdf506c045" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148/5</b><br>Звено 3<br>Заявок: 30</div>`)[0];
+                popup_2be363d6216dd4959daec4d819da04f8.setContent(html_eeea1e3c8bf6ffaed27e63bdf506c045);
+            
+        
+
+        circle_marker_a1bd3a444ef6354c9330c3430aa67112.bindPopup(popup_2be363d6216dd4959daec4d819da04f8)
+        ;
+
+        
+    
+    
+            circle_marker_a1bd3a444ef6354c9330c3430aa67112.bindTooltip(
+                `<div>
+                     Пискунова 148/5 (30)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_42286a9a4871456d197c97d713f53979 = L.circleMarker(
+                [52.2698471, 104.3380249],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_190fc3589412d36ca3ccd88d98bc8668 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_72783ff7ffdd484292b7d178034c89bd = $(`<div id="html_72783ff7ffdd484292b7d178034c89bd" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148/7</b><br>Звено 3<br>Заявок: 20</div>`)[0];
+                popup_190fc3589412d36ca3ccd88d98bc8668.setContent(html_72783ff7ffdd484292b7d178034c89bd);
+            
+        
+
+        circle_marker_42286a9a4871456d197c97d713f53979.bindPopup(popup_190fc3589412d36ca3ccd88d98bc8668)
+        ;
+
+        
+    
+    
+            circle_marker_42286a9a4871456d197c97d713f53979.bindTooltip(
+                `<div>
+                     Пискунова 148/7 (20)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f548a0256eee84aebc4ac2baac14c072 = L.circleMarker(
+                [52.2693678, 104.3380394],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_39933510439179da4177bf1650c53ec0 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_349b3c37340f4e1780e031fb7399013d = $(`<div id="html_349b3c37340f4e1780e031fb7399013d" style="width: 100.0%; height: 100.0%;"><b>Пискунова 148/8</b><br>Звено 3<br>Заявок: 15</div>`)[0];
+                popup_39933510439179da4177bf1650c53ec0.setContent(html_349b3c37340f4e1780e031fb7399013d);
+            
+        
+
+        circle_marker_f548a0256eee84aebc4ac2baac14c072.bindPopup(popup_39933510439179da4177bf1650c53ec0)
+        ;
+
+        
+    
+    
+            circle_marker_f548a0256eee84aebc4ac2baac14c072.bindTooltip(
+                `<div>
+                     Пискунова 148/8 (15)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_bb9c12ea9a9f0011ca0ca9239ba0e8ca = L.circleMarker(
+                [52.26175, 104.303558],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_f466529e03e9548b373318a81c9ae6e3 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_4099079ca53ea51ff97e9bb07c8bcea1 = $(`<div id="html_4099079ca53ea51ff97e9bb07c8bcea1" style="width: 100.0%; height: 100.0%;"><b>Пограничный 1-А</b><br>Звено 3<br>Заявок: 105</div>`)[0];
+                popup_f466529e03e9548b373318a81c9ae6e3.setContent(html_4099079ca53ea51ff97e9bb07c8bcea1);
+            
+        
+
+        circle_marker_bb9c12ea9a9f0011ca0ca9239ba0e8ca.bindPopup(popup_f466529e03e9548b373318a81c9ae6e3)
+        ;
+
+        
+    
+    
+            circle_marker_bb9c12ea9a9f0011ca0ca9239ba0e8ca.bindTooltip(
+                `<div>
+                     Пограничный 1-А (105)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_746170de3b969f6c4b8aec73c0dfdee6 = L.circleMarker(
+                [52.261259, 104.303379],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_d58f89996108a98f5dc207feb4a9c665 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_8e9582a1aaf3fff22264dbe272d809e5 = $(`<div id="html_8e9582a1aaf3fff22264dbe272d809e5" style="width: 100.0%; height: 100.0%;"><b>Пограничный 1-Б</b><br>Звено 3<br>Заявок: 306</div>`)[0];
+                popup_d58f89996108a98f5dc207feb4a9c665.setContent(html_8e9582a1aaf3fff22264dbe272d809e5);
+            
+        
+
+        circle_marker_746170de3b969f6c4b8aec73c0dfdee6.bindPopup(popup_d58f89996108a98f5dc207feb4a9c665)
+        ;
+
+        
+    
+    
+            circle_marker_746170de3b969f6c4b8aec73c0dfdee6.bindTooltip(
+                `<div>
+                     Пограничный 1-Б (306)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_2f24162183e13d6d6fcaf58eeee305f5 = L.circleMarker(
+                [52.260388, 104.302705],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_2541f2889ee6f695ef51dd9bbaa4ea39 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_bcbc9d5d91042c4b7ef418c830ce7522 = $(`<div id="html_bcbc9d5d91042c4b7ef418c830ce7522" style="width: 100.0%; height: 100.0%;"><b>Пограничный 1-Г</b><br>Звено 3<br>Заявок: 305</div>`)[0];
+                popup_2541f2889ee6f695ef51dd9bbaa4ea39.setContent(html_bcbc9d5d91042c4b7ef418c830ce7522);
+            
+        
+
+        circle_marker_2f24162183e13d6d6fcaf58eeee305f5.bindPopup(popup_2541f2889ee6f695ef51dd9bbaa4ea39)
+        ;
+
+        
+    
+    
+            circle_marker_2f24162183e13d6d6fcaf58eeee305f5.bindTooltip(
+                `<div>
+                     Пограничный 1-Г (305)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f6a571cef8547965d941ae650bd392ac = L.circleMarker(
+                [52.261733, 104.303154],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_30d0da67eea164c41e42249e1afb2f0f = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_a381d5051d5b6b8fac7c40b12ee20b39 = $(`<div id="html_a381d5051d5b6b8fac7c40b12ee20b39" style="width: 100.0%; height: 100.0%;"><b>Пограничный 1-Д</b><br>Звено 3<br>Заявок: 177</div>`)[0];
+                popup_30d0da67eea164c41e42249e1afb2f0f.setContent(html_a381d5051d5b6b8fac7c40b12ee20b39);
+            
+        
+
+        circle_marker_f6a571cef8547965d941ae650bd392ac.bindPopup(popup_30d0da67eea164c41e42249e1afb2f0f)
+        ;
+
+        
+    
+    
+            circle_marker_f6a571cef8547965d941ae650bd392ac.bindTooltip(
+                `<div>
+                     Пограничный 1-Д (177)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_2eee43ec8315722ea70ceebf0606a2de = L.circleMarker(
+                [52.261287, 104.302876],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_20dbc21a9b83de1f7a454f22dfd62d2d = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_6b4eea296ac253ba0da71734991625f0 = $(`<div id="html_6b4eea296ac253ba0da71734991625f0" style="width: 100.0%; height: 100.0%;"><b>Пограничный 1-Е</b><br>Звено 3<br>Заявок: 148</div>`)[0];
+                popup_20dbc21a9b83de1f7a454f22dfd62d2d.setContent(html_6b4eea296ac253ba0da71734991625f0);
+            
+        
+
+        circle_marker_2eee43ec8315722ea70ceebf0606a2de.bindPopup(popup_20dbc21a9b83de1f7a454f22dfd62d2d)
+        ;
+
+        
+    
+    
+            circle_marker_2eee43ec8315722ea70ceebf0606a2de.bindTooltip(
+                `<div>
+                     Пограничный 1-Е (148)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_83212799b405d24c7143f65610bf2498 = L.circleMarker(
+                [52.26005, 104.3025],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_4144630196f96679d270264ea63e1c48 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d4851e7a96e2fa0ac2f7aea78329e3e7 = $(`<div id="html_d4851e7a96e2fa0ac2f7aea78329e3e7" style="width: 100.0%; height: 100.0%;"><b>Пограничный 1-Ж</b><br>Звено 3<br>Заявок: 124</div>`)[0];
+                popup_4144630196f96679d270264ea63e1c48.setContent(html_d4851e7a96e2fa0ac2f7aea78329e3e7);
+            
+        
+
+        circle_marker_83212799b405d24c7143f65610bf2498.bindPopup(popup_4144630196f96679d270264ea63e1c48)
+        ;
+
+        
+    
+    
+            circle_marker_83212799b405d24c7143f65610bf2498.bindTooltip(
+                `<div>
+                     Пограничный 1-Ж (124)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_be50bb7e3c5f461ae2504af1e96b8039 = L.circleMarker(
+                [52.2766301, 104.3291595],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_c14a6f886eb619c01827537f3b6efd0a = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_83fc18cd983ec8f1a9ef964abc1cf3f7 = $(`<div id="html_83fc18cd983ec8f1a9ef964abc1cf3f7" style="width: 100.0%; height: 100.0%;"><b>Красноярская 32</b><br>Звено 3<br>Заявок: 131</div>`)[0];
+                popup_c14a6f886eb619c01827537f3b6efd0a.setContent(html_83fc18cd983ec8f1a9ef964abc1cf3f7);
+            
+        
+
+        circle_marker_be50bb7e3c5f461ae2504af1e96b8039.bindPopup(popup_c14a6f886eb619c01827537f3b6efd0a)
+        ;
+
+        
+    
+    
+            circle_marker_be50bb7e3c5f461ae2504af1e96b8039.bindTooltip(
+                `<div>
+                     Красноярская 32 (131)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_452122be793a72fbb63be66fb96ef949 = L.circleMarker(
+                [52.2790553, 104.335619],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_144d959831a1e3977e960f7014f00a01 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_aee9e01e7edfe52c96ea99b67b099c8c = $(`<div id="html_aee9e01e7edfe52c96ea99b67b099c8c" style="width: 100.0%; height: 100.0%;"><b>Саянский 5-Б</b><br>Звено 3<br>Заявок: 20</div>`)[0];
+                popup_144d959831a1e3977e960f7014f00a01.setContent(html_aee9e01e7edfe52c96ea99b67b099c8c);
+            
+        
+
+        circle_marker_452122be793a72fbb63be66fb96ef949.bindPopup(popup_144d959831a1e3977e960f7014f00a01)
+        ;
+
+        
+    
+    
+            circle_marker_452122be793a72fbb63be66fb96ef949.bindTooltip(
+                `<div>
+                     Саянский 5-Б (20)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1cb4a70ed3a7a3af9ae4b37e996ee410 = L.circleMarker(
+                [52.2790311, 104.3347485],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_1c5a5cb3408d824410fa82252b2677d0 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_95e03671b45708c44d282819c35e27c5 = $(`<div id="html_95e03671b45708c44d282819c35e27c5" style="width: 100.0%; height: 100.0%;"><b>Саянский 5-Г</b><br>Звено 3<br>Заявок: 16</div>`)[0];
+                popup_1c5a5cb3408d824410fa82252b2677d0.setContent(html_95e03671b45708c44d282819c35e27c5);
+            
+        
+
+        circle_marker_1cb4a70ed3a7a3af9ae4b37e996ee410.bindPopup(popup_1c5a5cb3408d824410fa82252b2677d0)
+        ;
+
+        
+    
+    
+            circle_marker_1cb4a70ed3a7a3af9ae4b37e996ee410.bindTooltip(
+                `<div>
+                     Саянский 5-Г (16)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_9d7fda10895b5e9a31ada77bbfa4cdf8 = L.circleMarker(
+                [52.2778062, 104.3584314],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_76feb6c6eaf6f48f48b6b39ea1bd713f = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_1b0791ee9aef44dea05908a69febb898 = $(`<div id="html_1b0791ee9aef44dea05908a69febb898" style="width: 100.0%; height: 100.0%;"><b>Жигулевская 1а</b><br>Звено 3<br>Заявок: 21</div>`)[0];
+                popup_76feb6c6eaf6f48f48b6b39ea1bd713f.setContent(html_1b0791ee9aef44dea05908a69febb898);
+            
+        
+
+        circle_marker_9d7fda10895b5e9a31ada77bbfa4cdf8.bindPopup(popup_76feb6c6eaf6f48f48b6b39ea1bd713f)
+        ;
+
+        
+    
+    
+            circle_marker_9d7fda10895b5e9a31ada77bbfa4cdf8.bindTooltip(
+                `<div>
+                     Жигулевская 1а (21)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a7c0d74cff241554389241178ab95a6e = L.circleMarker(
+                [52.2778691, 104.3566628],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_42aff3dab81b5a0213c140ff80276b4a = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_9ec67b45be653cfd68232e784b777800 = $(`<div id="html_9ec67b45be653cfd68232e784b777800" style="width: 100.0%; height: 100.0%;"><b>Ширямова 5</b><br>Звено 3<br>Заявок: 41</div>`)[0];
+                popup_42aff3dab81b5a0213c140ff80276b4a.setContent(html_9ec67b45be653cfd68232e784b777800);
+            
+        
+
+        circle_marker_a7c0d74cff241554389241178ab95a6e.bindPopup(popup_42aff3dab81b5a0213c140ff80276b4a)
+        ;
+
+        
+    
+    
+            circle_marker_a7c0d74cff241554389241178ab95a6e.bindTooltip(
+                `<div>
+                     Ширямова 5 (41)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3a0a442b4790f739d9693829cc0f128c = L.circleMarker(
+                [52.2644591, 104.3250175],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_ea4f4b289cb3a64353c0cdab358b39b2 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_50b8f234fdd4efae90cc02e31ca34d9b = $(`<div id="html_50b8f234fdd4efae90cc02e31ca34d9b" style="width: 100.0%; height: 100.0%;"><b>Трудовая 117</b><br>Звено 3<br>Заявок: 25</div>`)[0];
+                popup_ea4f4b289cb3a64353c0cdab358b39b2.setContent(html_50b8f234fdd4efae90cc02e31ca34d9b);
+            
+        
+
+        circle_marker_3a0a442b4790f739d9693829cc0f128c.bindPopup(popup_ea4f4b289cb3a64353c0cdab358b39b2)
+        ;
+
+        
+    
+    
+            circle_marker_3a0a442b4790f739d9693829cc0f128c.bindTooltip(
+                `<div>
+                     Трудовая 117 (25)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_2d9f219640c4f06c7175314647a84402 = L.circleMarker(
+                [52.2613276, 104.3051323],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_aba7c278e11ca4ea303e61f228cf3b4a = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_c8c21b07f71d64d4b02bd7cb2bf0e2a3 = $(`<div id="html_c8c21b07f71d64d4b02bd7cb2bf0e2a3" style="width: 100.0%; height: 100.0%;"><b>Сибирская 25</b><br>Звено 3<br>Заявок: 81</div>`)[0];
+                popup_aba7c278e11ca4ea303e61f228cf3b4a.setContent(html_c8c21b07f71d64d4b02bd7cb2bf0e2a3);
+            
+        
+
+        circle_marker_2d9f219640c4f06c7175314647a84402.bindPopup(popup_aba7c278e11ca4ea303e61f228cf3b4a)
+        ;
+
+        
+    
+    
+            circle_marker_2d9f219640c4f06c7175314647a84402.bindTooltip(
+                `<div>
+                     Сибирская 25 (81)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_9ea152153c80aec4106169c5b51065be = L.circleMarker(
+                [52.2683127, 104.3089303],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_25005cb9653eb1cf17df162be7f6d11c = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_fe49757d459e611419b085f13c94902d = $(`<div id="html_fe49757d459e611419b085f13c94902d" style="width: 100.0%; height: 100.0%;"><b>Байкальская 99</b><br>Звено 3<br>Заявок: 113</div>`)[0];
+                popup_25005cb9653eb1cf17df162be7f6d11c.setContent(html_fe49757d459e611419b085f13c94902d);
+            
+        
+
+        circle_marker_9ea152153c80aec4106169c5b51065be.bindPopup(popup_25005cb9653eb1cf17df162be7f6d11c)
+        ;
+
+        
+    
+    
+            circle_marker_9ea152153c80aec4106169c5b51065be.bindTooltip(
+                `<div>
+                     Байкальская 99 (113)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_4ef4543511382957cd37fd1f2d39bce1 = L.circleMarker(
+                [52.262486, 104.3180356],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_c9639589d29ddae33193d09895f95dec = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_e79e4bf1ebc0be5cc2e54a36b3c3fe48 = $(`<div id="html_e79e4bf1ebc0be5cc2e54a36b3c3fe48" style="width: 100.0%; height: 100.0%;"><b>Байкальская 139</b><br>Звено 3<br>Заявок: 14</div>`)[0];
+                popup_c9639589d29ddae33193d09895f95dec.setContent(html_e79e4bf1ebc0be5cc2e54a36b3c3fe48);
+            
+        
+
+        circle_marker_4ef4543511382957cd37fd1f2d39bce1.bindPopup(popup_c9639589d29ddae33193d09895f95dec)
+        ;
+
+        
+    
+    
+            circle_marker_4ef4543511382957cd37fd1f2d39bce1.bindTooltip(
+                `<div>
+                     Байкальская 139 (14)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_638f29fbfebb86166ba8c0116852ee0c = L.circleMarker(
+                [52.2580843, 104.3257708],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_26bc104189c91eca8d24e46dd55a25e0 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_5d4de9815943a616f65908dbf2684cb7 = $(`<div id="html_5d4de9815943a616f65908dbf2684cb7" style="width: 100.0%; height: 100.0%;"><b>Байкальская 198а</b><br>Звено 3<br>Заявок: 178</div>`)[0];
+                popup_26bc104189c91eca8d24e46dd55a25e0.setContent(html_5d4de9815943a616f65908dbf2684cb7);
+            
+        
+
+        circle_marker_638f29fbfebb86166ba8c0116852ee0c.bindPopup(popup_26bc104189c91eca8d24e46dd55a25e0)
+        ;
+
+        
+    
+    
+            circle_marker_638f29fbfebb86166ba8c0116852ee0c.bindTooltip(
+                `<div>
+                     Байкальская 198а (178)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f7279ab76df23d7de6cb598a6bfbf7be = L.circleMarker(
+                [52.2566654, 104.3435641],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_559f850d0d451d7026c85eb72932b2db = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_31f607ebe800e857cb71652c6a202342 = $(`<div id="html_31f607ebe800e857cb71652c6a202342" style="width: 100.0%; height: 100.0%;"><b>Байкальская 237</b><br>Звено 3<br>Заявок: 126</div>`)[0];
+                popup_559f850d0d451d7026c85eb72932b2db.setContent(html_31f607ebe800e857cb71652c6a202342);
+            
+        
+
+        circle_marker_f7279ab76df23d7de6cb598a6bfbf7be.bindPopup(popup_559f850d0d451d7026c85eb72932b2db)
+        ;
+
+        
+    
+    
+            circle_marker_f7279ab76df23d7de6cb598a6bfbf7be.bindTooltip(
+                `<div>
+                     Байкальская 237 (126)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_72dca5ad7dd28c567bfaf4b4da54010a = L.circleMarker(
+                [52.2558631, 104.3602192],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_ad3c421ea3c044e470532535849c7a7b = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_d061c4d6c437698a12fafa6559ca384e = $(`<div id="html_d061c4d6c437698a12fafa6559ca384e" style="width: 100.0%; height: 100.0%;"><b>Байкальская 267а</b><br>Звено 3<br>Заявок: 44</div>`)[0];
+                popup_ad3c421ea3c044e470532535849c7a7b.setContent(html_d061c4d6c437698a12fafa6559ca384e);
+            
+        
+
+        circle_marker_72dca5ad7dd28c567bfaf4b4da54010a.bindPopup(popup_ad3c421ea3c044e470532535849c7a7b)
+        ;
+
+        
+    
+    
+            circle_marker_72dca5ad7dd28c567bfaf4b4da54010a.bindTooltip(
+                `<div>
+                     Байкальская 267а (44)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_dc8dbd677419a02057de034fe76f07dc = L.circleMarker(
+                [52.2634113, 104.3109716],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_56c8bce71a2784a352d12c8e3a6d8af4 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_1a165a5e58be957946650bc1c9b53c9f = $(`<div id="html_1a165a5e58be957946650bc1c9b53c9f" style="width: 100.0%; height: 100.0%;"><b>Байкальская 126/1</b><br>Звено 3<br>Заявок: 145</div>`)[0];
+                popup_56c8bce71a2784a352d12c8e3a6d8af4.setContent(html_1a165a5e58be957946650bc1c9b53c9f);
+            
+        
+
+        circle_marker_dc8dbd677419a02057de034fe76f07dc.bindPopup(popup_56c8bce71a2784a352d12c8e3a6d8af4)
+        ;
+
+        
+    
+    
+            circle_marker_dc8dbd677419a02057de034fe76f07dc.bindTooltip(
+                `<div>
+                     Байкальская 126/1 (145)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_2e8a2a44456ecfbe013ad16db172ced7 = L.circleMarker(
+                [52.263323, 104.3113838],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_01ca8e2d6128cb34404d497345a20cf0 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_63c698d7a31fce0c06e6d393f0c986e2 = $(`<div id="html_63c698d7a31fce0c06e6d393f0c986e2" style="width: 100.0%; height: 100.0%;"><b>Байкальская 126/2</b><br>Звено 3<br>Заявок: 221</div>`)[0];
+                popup_01ca8e2d6128cb34404d497345a20cf0.setContent(html_63c698d7a31fce0c06e6d393f0c986e2);
+            
+        
+
+        circle_marker_2e8a2a44456ecfbe013ad16db172ced7.bindPopup(popup_01ca8e2d6128cb34404d497345a20cf0)
+        ;
+
+        
+    
+    
+            circle_marker_2e8a2a44456ecfbe013ad16db172ced7.bindTooltip(
+                `<div>
+                     Байкальская 126/2 (221)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_87fecf5d728236d8e7139219605edb6d = L.circleMarker(
+                [52.2636, 104.3107],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_9eaddad0c9ff55f738e1d45a79da2b8f = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_ab69b43f4e81e96cfd23d7de9b68cf63 = $(`<div id="html_ab69b43f4e81e96cfd23d7de9b68cf63" style="width: 100.0%; height: 100.0%;"><b>Байкальская 126/3</b><br>Звено 3<br>Заявок: 267</div>`)[0];
+                popup_9eaddad0c9ff55f738e1d45a79da2b8f.setContent(html_ab69b43f4e81e96cfd23d7de9b68cf63);
+            
+        
+
+        circle_marker_87fecf5d728236d8e7139219605edb6d.bindPopup(popup_9eaddad0c9ff55f738e1d45a79da2b8f)
+        ;
+
+        
+    
+    
+            circle_marker_87fecf5d728236d8e7139219605edb6d.bindTooltip(
+                `<div>
+                     Байкальская 126/3 (267)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_058297258ab804b6c220fac3c3fd805d = L.circleMarker(
+                [52.2631018, 104.3118837],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_f482470bb321182c14a1a896f04c16f9 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_42cb46f912194b82575913f5f424e79b = $(`<div id="html_42cb46f912194b82575913f5f424e79b" style="width: 100.0%; height: 100.0%;"><b>Байкальская 126/4</b><br>Звено 3<br>Заявок: 203</div>`)[0];
+                popup_f482470bb321182c14a1a896f04c16f9.setContent(html_42cb46f912194b82575913f5f424e79b);
+            
+        
+
+        circle_marker_058297258ab804b6c220fac3c3fd805d.bindPopup(popup_f482470bb321182c14a1a896f04c16f9)
+        ;
+
+        
+    
+    
+            circle_marker_058297258ab804b6c220fac3c3fd805d.bindTooltip(
+                `<div>
+                     Байкальская 126/4 (203)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_cb64f0ada1e8985d5210c329750bd5cf = L.circleMarker(
+                [52.2700996, 104.3080679],
+                {"bubblingMouseEvents": true, "color": "green", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "green", "fillOpacity": 0.75, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 5, "stroke": true, "weight": 3}
+            ).addTo(map_231b8a6a9dd69ff408882ffa781a2e68);
+        
+    
+        var popup_b8d2c6369d343b6b552cddc9e65cf157 = L.popup({
+  "maxWidth": 200,
+});
+
+        
+            
+                var html_f46c399dbc0f5bd7a6b7d7f15fd30cae = $(`<div id="html_f46c399dbc0f5bd7a6b7d7f15fd30cae" style="width: 100.0%; height: 100.0%;"><b>Байкальская 87</b><br>Звено 3<br>Заявок: 3</div>`)[0];
+                popup_b8d2c6369d343b6b552cddc9e65cf157.setContent(html_f46c399dbc0f5bd7a6b7d7f15fd30cae);
+            
+        
+
+        circle_marker_cb64f0ada1e8985d5210c329750bd5cf.bindPopup(popup_b8d2c6369d343b6b552cddc9e65cf157)
+        ;
+
+        
+    
+    
+            circle_marker_cb64f0ada1e8985d5210c329750bd5cf.bindTooltip(
+                `<div>
+                     Байкальская 87 (3)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+</script>
+</html>
