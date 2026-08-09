@@ -69,14 +69,16 @@ def main_menu_kb() -> InlineKeyboardBuilder:
     return kb
 
 
+BOT_NAME = 'Жемчужинка'  # имя помощницы — поменяйте здесь, если выбрали другое
+
 MAIN_TEXT = (
-    '👋 Помощник сантехника УК «Жемчужина»\n\n'
-    'Что умею:\n'
-    '• 🔍 Поиск дома — какое звено обслуживает адрес, точка на карте\n'
-    '• 🗂 Паспорт дома — техданные: розливы, арматура, доступ\n'
-    '• 📋 Заявки — приём и учёт: новая → в работе → выполнена\n'
-    '• 📖 Справочник — телефоны, нормативы, сроки, трубы\n\n'
-    '💡 Просто напишите адрес (например: «Розы Люксембург 118/5») — я найду дом.'
+    f'👋 Привет! Я {BOT_NAME} — помощница сантехников УК «Жемчужина».\n\n'
+    'Чем помогу:\n'
+    '• 🔍 Найду дом — подскажу, чьё это звено, и покажу точку на карте\n'
+    '• 🗂 Паспорт дома — розливы, арматура, где перекрывать, доступ\n'
+    '• 📋 Заявки — запишу и буду вести: новая → в работе → выполнена\n'
+    '• 📖 Справочник — телефоны, нормативы, сроки, шпаргалка по трубам\n\n'
+    '💡 Просто напишите адрес (например: «Розы Люксембург 118/5») — я всё найду. 💅'
 )
 
 
@@ -187,7 +189,7 @@ async def on_text(event: MessageCreated):
                       'house_id': h['id'] if h else None,
                       'address': h['address'] if h else text}
         addr = h['address'] if h else text
-        note = '' if h else '\n⚠️ Адрес не найден в базе домов — запишу как есть.'
+        note = '' if h else '\n⚠️ Такого адреса у меня в базе нет — запишу как есть.'
         await send(event.message, f'🏠 Адрес: {addr}{note}\n\n📝 Теперь опишите проблему одним сообщением:')
         return
 
@@ -195,7 +197,7 @@ async def on_text(event: MessageCreated):
         req_id = db.add_request(state['house_id'], state['address'], text, uid, _uname(event))
         STATE.pop(uid, None)
         r = db.get_request(req_id)
-        await send(event.message, '✅ Заявка создана!\n\n' + request_card_text(r), request_card_kb(r))
+        await send(event.message, '✅ Записала заявку!\n\n' + request_card_text(r), request_card_kb(r))
         return
 
     if state and state['mode'] == 'pass_edit':
@@ -206,14 +208,14 @@ async def on_text(event: MessageCreated):
         kb.row(CallbackButton(text='✏️ Редактировать ещё', payload=f"pe:{h['id']}"),
                CallbackButton(text='🗂 Открыть паспорт', payload=f"p:{h['id']}"))
         await send(event.message,
-                   f"✅ Сохранено: {PASSPORT_LABELS[state['field']]} — {h['address']}", kb)
+                   f"✅ Записала: {PASSPORT_LABELS[state['field']]} — {h['address']}", kb)
         return
 
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
     if not found:
         await send(event.message,
-                   f'🤷 По запросу «{text}» дом не найден.\n'
+                   f'🤷‍♀️ По запросу «{text}» я ничего не нашла.\n'
                    'Попробуйте написать иначе, например: «Розы Люксембург 118» или «Байкальская 237».',
                    main_menu_kb())
     elif len(found) == 1:
@@ -223,7 +225,7 @@ async def on_text(event: MessageCreated):
         kb = InlineKeyboardBuilder()
         for h in found:
             kb.row(CallbackButton(text=h['address'], payload=f"h:{h['id']}"))
-        await send(event.message, f'🔍 Нашёл несколько домов по «{text}» — выберите:', kb)
+        await send(event.message, f'🔍 Нашла несколько домов по «{text}» — выберите:', kb)
 
 
 # ---------- Кнопки ----------
@@ -313,7 +315,7 @@ async def on_callback(event: MessageCallback):
             rows = db.list_requests()
             title = '📋 Открытые заявки (новые и в работе):'
         if not rows:
-            body = title + '\n\nПока пусто.'
+            body = title + '\n\nПока пусто — отдыхаем, мальчики! ☕'
         else:
             body = title + '\n\n' + '\n'.join(
                 f"№{r['id']} {db.STATUS_LABELS[r['status']].split()[0]} {r['address']} — "
