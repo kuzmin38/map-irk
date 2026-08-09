@@ -35,6 +35,47 @@ with open(os.path.join(houses.DATA_DIR, 'team.json'), encoding='utf-8') as f:
     TEAM = json.load(f)
 TEAM_BY_ID = {m['id']: m for m in TEAM}
 
+# Роли в порядке структуры УК: руководитель → инженер → мастера →
+# рабочие (сантехники, электрики, дворники, плотники)
+ROLES = {
+    'admin': '👑 Админ',
+    'director': '👔 Руководитель',
+    'engineer': '🛠 Инженер',
+    'master': '📋 Мастер',
+    'plumber': '🔧 Сантехник',
+    'electrician': '⚡ Электрик',
+    'janitor': '🧹 Дворник',
+    'carpenter': '🪚 Плотник',
+    'none': '⏳ Без роли',
+}
+ROLE_ORDER = {r: i for i, r in enumerate(ROLES)}
+# Кто может назначать роли и давать задания по ЖК
+MANAGER_ROLES = ('admin', 'engineer', 'master')
+# Кому доступен брифинг (руководство и ИТР)
+BRIEFING_ROLES = ('admin', 'director', 'engineer', 'master')
+
+
+def _role(uid) -> str:
+    u = db.get_user(uid)
+    return u['role'] if u else 'none'
+
+
+def _short_name(name: str) -> str:
+    return (name or '?').split()[0][:20]
+
+
+def assignable_users():
+    """Кому можно делегировать работу: зарегистрированные с рабочей ролью."""
+    return [u for u in db.list_users() if u['role'] not in ('none', 'director')]
+
+
+async def notify(bot, user_id, text):
+    """Личное сообщение пользователю; молча пропускаем, если не доставить."""
+    try:
+        await bot.send_message(user_id=user_id, text=text)
+    except Exception:
+        log.warning('Не удалось отправить уведомление пользователю %s', user_id)
+
 DOCS_DIR = os.path.join(houses.DATA_DIR, 'docs')
 
 PASSPORT_FIELDS = [
@@ -79,8 +120,13 @@ def main_menu_kb() -> InlineKeyboardBuilder:
            CallbackButton(text='🏘 Наши дома', payload='homes'))
     kb.row(CallbackButton(text='📋 Заявки', payload='rl'),
            CallbackButton(text='➕ Новая заявка', payload='nr'))
-    kb.row(CallbackButton(text='📅 Работы и дедлайны', payload='wl'),
-           CallbackButton(text='📖 Справочник', payload='dir'))
+    kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
+           CallbackButton(text='🧰 Мои работы', payload='myw'))
+    kb.row(CallbackButton(text='📢 Задание по ЖК', payload='camp'),
+           CallbackButton(text='👥 Люди', payload='ppl'))
+    kb.row(CallbackButton(text='📊 Брифинг', payload='brief'),
+           CallbackButton(text='🧮 Сводка счётчиков', payload='mtall'))
+    kb.row(CallbackButton(text='📖 Справочник', payload='dir'))
     return kb
 
 
@@ -120,6 +166,8 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
     kb.row(CallbackButton(text='📁 Документы', payload=f"dl:{h['id']}"),
            CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
     kb.row(CallbackButton(text='📅 Работы дома', payload=f"wlh:{h['id']}"),
+           CallbackButton(text='📜 История', payload=f"hist:{h['id']}"))
+    kb.row(CallbackButton(text='🧮 Счётчики', payload=f"mt:{h['id']}"),
            CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
 
@@ -224,8 +272,15 @@ def work_card_text(w) -> str:
 
 def work_card_kb(w) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
-    kb.row(*[CallbackButton(text=f"👤 {m['short']}", payload=f"wa:{w['id']}:{m['id']}")
-             for m in TEAM])
+    users = assignable_users()
+    if users:
+        for i in range(0, len(users), 3):
+            kb.row(*[CallbackButton(text=f"👤 {_short_name(u['name'])}",
+                                    payload=f"wa:{w['id']}:{u['user_id']}")
+                     for u in users[i:i + 3]])
+    else:
+        kb.row(*[CallbackButton(text=f"👤 {m['short']}", payload=f"wat:{w['id']}:{m['id']}")
+                 for m in TEAM])
     row = []
     if w['status'] != db.WORK_IN_PROGRESS:
         row.append(CallbackButton(text='🔧 В работу', payload=f"ws:{w['id']}:work"))
@@ -241,6 +296,63 @@ def work_card_kb(w) -> InlineKeyboardBuilder:
     return kb
 
 
+# ---------- Счётчики ----------
+
+METER_KINDS = {
+    'hvs': '💧 ХВС (водомер)',
+    'gvs': '🔥 ГВС (водомер)',
+    'heat': '♨️ Тепло (теплосчётчик)',
+    'other': '📟 Другой',
+}
+
+MONTHS_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
+             'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+
+
+def current_period() -> str:
+    from datetime import datetime
+    return datetime.now(db.IRKUTSK_TZ).strftime('%Y-%m')
+
+
+def fmt_period(period: str) -> str:
+    y, m = period.split('-')
+    return f'{MONTHS_RU[int(m) - 1]} {y}'
+
+
+def fmt_value(v: float) -> str:
+    return f'{v:g}'
+
+
+def meter_line(m, with_last=True) -> str:
+    line = f"{METER_KINDS.get(m['kind'], '📟')} {m['label']}"
+    if with_last:
+        rs = db.meter_readings(m['id'], limit=1)
+        if rs:
+            r = rs[0]
+            line += f"\n   последнее: {fmt_value(r['value'])} — {fmt_period(r['period'])} ({r['submitted_by_name'] or '—'})"
+        else:
+            line += '\n   показаний ещё нет'
+    return line
+
+
+def check_anomaly(meter_id, new_value):
+    """Сравнивает расход с прошлым периодом. Возвращает (delta, предупреждение | None)."""
+    rs = db.meter_readings(meter_id, limit=3)  # без нового показания
+    if not rs:
+        return None, None
+    delta = new_value - rs[0]['value']
+    if delta < 0:
+        return delta, ('показание МЕНЬШЕ предыдущего '
+                       f"({fmt_value(new_value)} < {fmt_value(rs[0]['value'])}). "
+                       'Проверьте, не перепутан ли счётчик.')
+    if len(rs) >= 2:
+        prev_delta = rs[0]['value'] - rs[1]['value']
+        if prev_delta > 0 and delta > prev_delta * 1.8:
+            return delta, (f'расход {fmt_value(delta)} заметно выше прошлого периода '
+                           f'({fmt_value(prev_delta)}). Возможна утечка — стоит проверить.')
+    return delta, None
+
+
 # ---------- Старт ----------
 
 @dp.bot_started()
@@ -251,6 +363,7 @@ async def on_bot_started(event: BotStarted):
 
 @dp.message_created(CommandStart())
 async def on_start(event: MessageCreated):
+    db.upsert_user(_uid(event), _uname(event))
     STATE.pop(_uid(event), None)
     await send(event.message, MAIN_TEXT, main_menu_kb())
 
@@ -317,6 +430,7 @@ async def _save_docs(event, state) -> int:
 async def on_text(event: MessageCreated):
     text = (event.message.body.text or '').strip()
     uid = _uid(event)
+    db.upsert_user(uid, _uname(event))
     state = STATE.get(uid)
 
     if state and state['mode'] == 'doc_wait':
@@ -414,6 +528,94 @@ async def on_text(event: MessageCreated):
         await send(event.message, work_card_text(w), work_card_kb(w))
         return
 
+    if state and state['mode'] == 'work_report':
+        if text not in ('-', '—'):
+            db.update_work(state['work_id'], report=text)
+        STATE.pop(uid, None)
+        w = db.get_work(state['work_id'])
+        h = houses.HOUSES_BY_ID.get(w['house_id'])
+        await send(event.message,
+                   f"✅ Спасибо! Отчёт записан в историю дома {h['address'] if h else ''}."
+                   if text not in ('-', '—') else '✅ Хорошо, без отчёта.',
+                   main_menu_kb())
+        return
+
+    if state and state['mode'] == 'meter_label':
+        m_id = db.add_meter(state['house_id'], state['kind'], text, _uname(event))
+        STATE.pop(uid, None)
+        h = houses.HOUSES_BY_ID[state['house_id']]
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='✍️ Внести первое показание', payload=f'mtr:{m_id}'),
+               CallbackButton(text='➕ Ещё счётчик', payload=f"mta:{h['id']}"))
+        kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
+        await send(event.message,
+                   f"✅ Запомнила: {METER_KINDS[state['kind']]} — «{text}» ({h['address']}).", kb)
+        return
+
+    if state and state['mode'] == 'meter_value':
+        try:
+            value = float(text.replace(',', '.').replace(' ', ''))
+        except ValueError:
+            await send(event.message, '🤔 Нужно число, например «1234,56». Попробуйте ещё раз:')
+            return
+        m = db.get_meter(state['meter_id'])
+        h = houses.HOUSES_BY_ID.get(m['house_id'])
+        delta, warning = check_anomaly(m['id'], value)
+        db.add_reading(m['id'], value, current_period(), uid, _uname(event))
+        STATE.pop(uid, None)
+        lines = [f"✅ Записала: {h['address'] if h else ''} — {m['label']}: "
+                 f'{fmt_value(value)} ({fmt_period(current_period())}).']
+        if delta is not None and delta >= 0:
+            lines.append(f'Расход за период: {fmt_value(delta)}')
+        if warning:
+            lines.append(f'⚠️ Внимание: {warning}')
+            # предупреждаем инженера и руководителя
+            for u in db.list_users():
+                if u['role'] in ('engineer', 'admin', 'director') and u['user_id'] != uid:
+                    await notify(event.bot, u['user_id'],
+                                 f"⚠️ Счётчики, {h['address'] if h else ''} — {m['label']}: {warning} "
+                                 f'(подал {_uname(event)})')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📈 История счётчика', payload=f"mth:{m['id']}"),
+               CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
+        await send(event.message, '\n'.join(lines), kb)
+        return
+
+    if state and state['mode'] == 'camp_title':
+        STATE[uid] = {'mode': 'camp_deadline', 'complex_id': state['complex_id'], 'title': text}
+        await send(event.message, '⏳ К какому сроку сдать по всем домам? '
+                                  'Дата («15.09» / «15.09.2026») или «-» — без срока.')
+        return
+
+    if state and state['mode'] == 'camp_deadline':
+        try:
+            deadline = parse_deadline(text)
+        except ValueError:
+            await send(event.message, '🤔 Не поняла дату. Напишите, например, «15.09.2026» или «-».')
+            return
+        cid = state['complex_id']
+        assigned = db.all_house_complexes()
+        house_ids = [h['id'] for h in houses.HOUSES if assigned.get(h['id']) == cid]
+        camp_id = db.add_campaign(state['title'], cid, deadline, uid, _uname(event))
+        for hid in house_ids:
+            db.add_work(hid, state['title'], deadline, _uname(event), user_id=uid, campaign_id=camp_id)
+        STATE.pop(uid, None)
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📊 Открыть задание', payload=f'campv:{camp_id}'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        # оповещаем всех с ролью — пусть разбирают работы
+        for u in assignable_users():
+            if u['user_id'] != uid:
+                await notify(event.bot, u['user_id'],
+                             f"📢 Новое задание по {COMPLEX_NAMES.get(cid, '')}: "
+                             f"«{state['title']}», срок — {fmt_deadline(deadline)}, "
+                             f'домов: {len(house_ids)}. Смотрите «📅 Все работы».')
+        await send(event.message,
+                   f"✅ Задание создано! «{state['title']}» — {COMPLEX_NAMES.get(cid, '')}, "
+                   f'работ: {len(house_ids)}, срок: {fmt_deadline(deadline)}.\n'
+                   'Я оповестила команду и буду следить за прогрессом.', kb)
+        return
+
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
     if not found:
@@ -437,6 +639,7 @@ async def on_text(event: MessageCreated):
 async def on_callback(event: MessageCallback):
     payload = event.callback.payload or ''
     uid = event.callback.user.user_id
+    db.upsert_user(uid, getattr(event.callback.user, 'full_name', None) or '')
     msg = event.message
     parts = payload.split(':')
     action = parts[0]
@@ -646,19 +849,247 @@ async def on_callback(event: MessageCallback):
     elif action == 'ws':
         work_id, status = int(parts[1]), parts[2]
         if status in (db.WORK_IN_PROGRESS, db.WORK_DONE):
-            db.update_work(work_id, status=status)
+            if status == db.WORK_DONE:
+                from datetime import datetime
+                db.update_work(work_id, status=status,
+                               done_at=datetime.now(db.IRKUTSK_TZ).date().isoformat())
+                STATE[uid] = {'mode': 'work_report', 'work_id': work_id}
+            else:
+                db.update_work(work_id, status=status)
+            w = db.get_work(work_id)
+            if w:
+                await send(msg, work_card_text(w), work_card_kb(w))
+                if status == db.WORK_DONE:
+                    h = houses.HOUSES_BY_ID.get(w['house_id'])
+                    addr = h['address'] if h else '?'
+                    actor = db.get_user(uid)
+                    actor_name = actor['name'] if actor else ''
+                    # сообщаем постановщику работы
+                    if w['created_by'] and w['created_by'] != uid:
+                        await notify(event.bot, w['created_by'],
+                                     f"✅ Работа №{w['id']} сдана: {addr} — {w['title']} ({actor_name})")
+                    # если работа из задания по ЖК — отслеживаем общий прогресс
+                    if w['campaign_id']:
+                        camp = db.get_campaign(w['campaign_id'])
+                        if camp:
+                            done, total = db.campaign_progress(camp['id'])
+                            if camp['created_by'] and camp['created_by'] != uid:
+                                extra = ' 🎉 Задание выполнено полностью!' if done == total else ''
+                                await notify(event.bot, camp['created_by'],
+                                             f"📊 «{camp['title']}»: сдано {done} из {total}. "
+                                             f'{addr} — готово ({actor_name}).{extra}')
+                    await send(msg, '📝 Напишите пару слов, что сделано (отчёт попадёт '
+                                    'в историю дома), или «-», если без отчёта.')
+
+    elif action == 'wa':
+        work_id, assignee_id = int(parts[1]), int(parts[2])
+        u = db.get_user(assignee_id)
+        if u:
+            db.update_work(work_id, assignee=u['name'], assignee_id=assignee_id)
+            w = db.get_work(work_id)
+            if w:
+                await send(msg, work_card_text(w), work_card_kb(w))
+                if assignee_id != uid:
+                    h = houses.HOUSES_BY_ID.get(w['house_id'])
+                    await notify(event.bot, assignee_id,
+                                 f"📬 Вам назначена работа №{w['id']}:\n"
+                                 f"🏠 {h['address'] if h else '?'}\n"
+                                 f"🔧 {w['title']}\n"
+                                 f"⏳ Срок: {fmt_deadline(w['deadline'])}\n\n"
+                                 'Открыть: меню → 🧰 Мои работы')
+
+    elif action == 'wat':
+        # запасной вариант: назначение из списка звена (пока человек не написал боту)
+        work_id, member_id = int(parts[1]), int(parts[2])
+        m = TEAM_BY_ID.get(member_id)
+        if m:
+            db.update_work(work_id, assignee=m['name'], assignee_id=None)
             w = db.get_work(work_id)
             if w:
                 await send(msg, work_card_text(w), work_card_kb(w))
 
-    elif action == 'wa':
-        work_id, member_id = int(parts[1]), int(parts[2])
-        m = TEAM_BY_ID.get(member_id)
-        if m:
-            db.update_work(work_id, assignee=m['name'])
-            w = db.get_work(work_id)
-            if w:
-                await send(msg, work_card_text(w), work_card_kb(w))
+    elif action == 'hist':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            done_works = db.list_done_works(house_id=h['id'])
+            lines = [f"📜 История работ — {h['address']}:", '']
+            if not done_works:
+                lines.append('Пока пусто: сданных работ по дому нет.')
+            for w in done_works:
+                when = ''
+                if w['done_at']:
+                    y, mo, d = w['done_at'].split('-')
+                    when = f'{d}.{mo}.{y} — '
+                line = f"✅ {when}{w['title']} ({w['assignee'] or '—'})"
+                if w['report']:
+                    line += f"\n   📝 {w['report']}"
+                lines.append(line)
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"),
+                   CallbackButton(text='🏠 Меню', payload='menu'))
+            await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'brief':
+        if _role(uid) not in BRIEFING_ROLES:
+            await send(msg, '📊 Брифинг доступен руководству: директору, инженеру, мастерам. '
+                            'Ваши задачи — в «🧰 Мои работы».')
+            return
+        from datetime import datetime, timedelta
+        today = datetime.now(db.IRKUTSK_TZ).date()
+        all_works = db.list_works(open_only=False, limit=500)
+        in_progress = [w for w in all_works if w['status'] == db.WORK_IN_PROGRESS]
+        overdue = [w for w in all_works if w['status'] != db.WORK_DONE and w['deadline']
+                   and w['deadline'] < today.isoformat()]
+        week = [w for w in all_works if w['status'] == db.WORK_PLAN and w['deadline']
+                and today.isoformat() <= w['deadline'] <= (today + timedelta(days=7)).isoformat()]
+        done_recent = [w for w in db.list_done_works(limit=100) if w['done_at']
+                       and w['done_at'] >= (today - timedelta(days=1)).isoformat()]
+        open_reqs = db.list_requests()
+        lines = [f"📊 БРИФИНГ на {today.strftime('%d.%m.%Y')}", '']
+        lines.append(f'🔧 В работе сейчас — {len(in_progress)}:')
+        for w in in_progress[:15]:
+            lines.append('  ' + work_line(w))
+        if overdue:
+            lines.append('')
+            lines.append(f'⚠️ Просрочено — {len(overdue)}:')
+            for w in overdue[:10]:
+                lines.append('  ' + work_line(w))
+        lines.append('')
+        lines.append(f'✅ Сдано вчера-сегодня — {len(done_recent)}:')
+        for w in done_recent[:15]:
+            h = houses.HOUSES_BY_ID.get(w['house_id'])
+            line = f"  ✅ {h['address'] if h else '?'} — {w['title']} ({w['assignee'] or '—'})"
+            if w['report']:
+                line += f" · «{w['report'][:60]}»"
+            lines.append(line)
+        if week:
+            lines.append('')
+            lines.append(f'📌 Ближайшая неделя — {len(week)}:')
+            for w in week[:15]:
+                lines.append('  ' + work_line(w))
+        camps = db.list_campaigns()
+        active = []
+        for camp in camps:
+            done, total = db.campaign_progress(camp['id'])
+            if total and done < total:
+                active.append(f"  📢 «{camp['title']}» ({COMPLEX_NAMES.get(camp['complex_id'], '')}): "
+                              f'{done}/{total}, срок {fmt_deadline(camp["deadline"])}')
+        if active:
+            lines.append('')
+            lines.append('📢 Задания в ходу:')
+            lines += active
+        with_meters = db.houses_with_meters()
+        if with_meters:
+            submitted = {r['house_id'] for r in db.readings_for_period(current_period())}
+            lines.append('')
+            lines.append(f'🧮 Показания за {fmt_period(current_period())}: '
+                         f'сдано {len(submitted)} из {len(with_meters)} домов')
+        lines.append('')
+        lines.append(f'📋 Открытых заявок: {len(open_reqs)}')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
+               CallbackButton(text='📋 Заявки', payload='rl'))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'myw':
+        works = db.list_my_works(uid)
+        if not works:
+            body = '🧰 На вас пока нет открытых работ. Отдыхайте, пока можно! ☕'
+        else:
+            body = '🧰 Ваши работы (по срокам):\n\n' + '\n'.join(work_line(w) for w in works)
+        kb = InlineKeyboardBuilder()
+        for w in works[:10]:
+            kb.row(CallbackButton(text=f"№{w['id']} · {w['title'][:35]}", payload=f"w:{w['id']}"))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, body, kb)
+
+    elif action == 'ppl':
+        users = sorted(db.list_users(), key=lambda u: ROLE_ORDER.get(u['role'], 99))
+        lines = ['👥 Кто есть в боте:', '']
+        lines += [f"• {u['name'] or 'Без имени'} — {ROLES.get(u['role'], u['role'])}" for u in users]
+        lines.append('')
+        if _role(uid) in MANAGER_ROLES:
+            lines.append('Нажмите на человека, чтобы назначить роль.')
+        else:
+            lines.append('Роли назначают админ, инженер и мастера.')
+        kb = InlineKeyboardBuilder()
+        if _role(uid) in MANAGER_ROLES:
+            for u in users[:15]:
+                kb.row(CallbackButton(text=f"{_short_name(u['name'])} · {ROLES.get(u['role'], '')}",
+                                      payload=f"pplu:{u['user_id']}"))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'pplu':
+        if _role(uid) not in MANAGER_ROLES:
+            return
+        u = db.get_user(int(parts[1]))
+        if u:
+            kb = InlineKeyboardBuilder()
+            role_items = [(r, label) for r, label in ROLES.items() if r != 'none']
+            for i in range(0, len(role_items), 2):
+                kb.row(*[CallbackButton(text=label, payload=f"pplr:{u['user_id']}:{r}")
+                         for r, label in role_items[i:i + 2]])
+            kb.row(CallbackButton(text='◀️ К людям', payload='ppl'))
+            await send(msg, f"👤 {u['name'] or 'Без имени'} — сейчас {ROLES.get(u['role'])}.\n"
+                            'Какую роль назначить?', kb)
+
+    elif action == 'pplr':
+        if _role(uid) not in MANAGER_ROLES:
+            return
+        target_id, role = int(parts[1]), parts[2]
+        if role in ROLES and role != 'none':
+            db.set_user_role(target_id, role)
+            u = db.get_user(target_id)
+            await send(msg, f"✅ {u['name'] or 'Без имени'} теперь {ROLES[role]}.")
+            if target_id != uid:
+                await notify(event.bot, target_id,
+                             f'👋 Вам назначена роль: {ROLES[role]}. Теперь вам можно поручать работы.')
+
+    elif action == 'camp':
+        if _role(uid) not in MANAGER_ROLES:
+            await send(msg, '📢 Задания по ЖК могут давать админ, инженер и мастера. '
+                            'Попросите назначить вам роль в разделе «👥 Люди».')
+            return
+        assigned = db.all_house_complexes()
+        kb = InlineKeyboardBuilder()
+        for c in COMPLEXES:
+            n = sum(1 for cid in assigned.values() if cid == c['id'])
+            kb.row(CallbackButton(text=f"{c['name']} ({n} домов)", payload=f"campc:{c['id']}"))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '📢 Задание по всем домам ЖК (например, «Опрессовка», «Сдача тепловых узлов»).\n'
+                        'По какому ЖК?', kb)
+
+    elif action == 'campc':
+        cid = parts[1]
+        assigned = db.all_house_complexes()
+        n = sum(1 for c in assigned.values() if c == cid)
+        if not n:
+            await send(msg, f'⚠️ К «{COMPLEX_NAMES.get(cid, cid)}» пока не привязан ни один дом. '
+                            'Сначала привяжите дома (карточка дома → «Указать ЖК»).')
+            return
+        STATE[uid] = {'mode': 'camp_title', 'complex_id': cid}
+        await send(msg, f'📢 {COMPLEX_NAMES[cid]} ({n} домов).\n'
+                        '🔧 Что нужно сделать по каждому дому? Например: «Опрессовка системы отопления».')
+
+    elif action == 'campv':
+        camp = db.get_campaign(int(parts[1]))
+        if camp:
+            done, total = db.campaign_progress(camp['id'])
+            works = [w for w in db.list_works(open_only=False, limit=200)
+                     if w['campaign_id'] == camp['id']]
+            lines = [f"📢 «{camp['title']}» — {COMPLEX_NAMES.get(camp['complex_id'], '')}",
+                     f"⏳ Срок: {fmt_deadline(camp['deadline'])}",
+                     f'📊 Сдано {done} из {total}', '']
+            lines += [work_line(w) for w in works]
+            kb = InlineKeyboardBuilder()
+            for w in works[:10]:
+                if w['status'] != db.WORK_DONE:
+                    kb.row(CallbackButton(text=f"№{w['id']} · {houses.HOUSES_BY_ID[w['house_id']]['address'][:30]}",
+                                          payload=f"w:{w['id']}"))
+            kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+            await send(msg, '\n'.join(lines), kb)
 
     elif action == 'wd':
         STATE[uid] = {'mode': 'work_dl_edit', 'work_id': int(parts[1])}
@@ -668,6 +1099,102 @@ async def on_callback(event: MessageCallback):
         STATE[uid] = {'mode': 'work_note', 'work_id': int(parts[1])}
         await send(msg, '📝 Напишите заметку: материалы, кто закупает, объём и т.п. '
                         '(заменит прежнюю заметку).')
+
+    elif action == 'mt':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            meters = db.list_meters(h['id'])
+            lines = [f"🧮 Счётчики — {h['address']}:", '']
+            if not meters:
+                lines.append('Пока не заведено ни одного счётчика.\n'
+                             'Добавьте один раз — дальше Люся будет помнить, где что стоит.')
+            else:
+                lines += [meter_line(m) for m in meters]
+            kb = InlineKeyboardBuilder()
+            for m in meters:
+                kb.row(CallbackButton(text=f"✍️ {m['label'][:35]}", payload=f"mtr:{m['id']}"))
+            kb.row(CallbackButton(text='➕ Добавить счётчик', payload=f"mta:{h['id']}"),
+                   CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
+            await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'mta':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            kb = InlineKeyboardBuilder()
+            for kind, label in METER_KINDS.items():
+                kb.row(CallbackButton(text=label, payload=f"mtak:{h['id']}:{kind}"))
+            kb.row(CallbackButton(text='◀️ Назад', payload=f"mt:{h['id']}"))
+            await send(msg, f"➕ {h['address']}: какой счётчик добавляем?", kb)
+
+    elif action == 'mtak':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        kind = parts[2]
+        if h and kind in METER_KINDS:
+            STATE[uid] = {'mode': 'meter_label', 'house_id': h['id'], 'kind': kind}
+            await send(msg, f'📟 Опишите счётчик одной строкой: где стоит и его номер.\n'
+                            'Например: «Подвал, 2-й подъезд, ввод ХВС, №123456».\n'
+                            'Люся запомнит — в следующие месяцы просто выберете его из списка.')
+
+    elif action == 'mtr':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            h = houses.HOUSES_BY_ID.get(m['house_id'])
+            STATE[uid] = {'mode': 'meter_value', 'meter_id': m['id']}
+            last = db.meter_readings(m['id'], limit=1)
+            last_line = (f"\nПрошлое: {fmt_value(last[0]['value'])} ({fmt_period(last[0]['period'])})"
+                         if last else '')
+            await send(msg, f"✍️ {h['address'] if h else ''} — {m['label']}.{last_line}\n"
+                            'Напишите текущее показание числом (например: 1234,56):')
+
+    elif action == 'mth':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            h = houses.HOUSES_BY_ID.get(m['house_id'])
+            rs = db.meter_readings(m['id'])
+            lines = [f"📈 {h['address'] if h else ''} — {m['label']}:", '']
+            prev = None
+            rows = list(reversed(rs))
+            for i, r in enumerate(rows):
+                delta = ''
+                if i > 0:
+                    delta = f' ({r["value"] - rows[i - 1]["value"]:+g})'
+                lines.append(f"• {fmt_period(r['period'])}: {fmt_value(r['value'])}{delta} — {r['submitted_by_name'] or '—'}")
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='✍️ Новое показание', payload=f"mtr:{m['id']}"),
+                   CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
+            await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'mtall':
+        if _role(uid) not in BRIEFING_ROLES:
+            await send(msg, '🧮 Сводка по всем домам доступна руководству. '
+                            'Показания по своему дому подавайте через карточку дома → «Счётчики».')
+            return
+        period = current_period()
+        rows = db.readings_for_period(period)
+        with_meters = db.houses_with_meters()
+        submitted_houses = {r['house_id'] for r in rows}
+        lines = [f'🧮 ПОКАЗАНИЯ ЗА {fmt_period(period).upper()}', '']
+        if not with_meters:
+            lines.append('Счётчики ещё не заведены ни по одному дому.')
+        else:
+            lines.append(f'Сдано: {len(submitted_houses)} из {len(with_meters)} домов со счётчиками.')
+            lines.append('')
+            cur_house = None
+            for r in rows:
+                if r['house_id'] != cur_house:
+                    cur_house = r['house_id']
+                    h = houses.HOUSES_BY_ID.get(cur_house)
+                    lines.append(f"🏠 {h['address'] if h else '?'}:")
+                lines.append(f"   {METER_KINDS.get(r['kind'], '📟').split()[0]} {r['label']}: "
+                             f"{fmt_value(r['value'])} ({r['submitted_by_name'] or '—'})")
+            missing = [houses.HOUSES_BY_ID[hid]['address'] for hid in with_meters
+                       if hid not in submitted_houses and hid in houses.HOUSES_BY_ID]
+            if missing:
+                lines.append('')
+                lines.append('⏳ Ещё не сдали: ' + ', '.join(sorted(missing)))
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
 
     elif action == 'dir':
         kb = InlineKeyboardBuilder()

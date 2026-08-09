@@ -48,10 +48,44 @@ def init():
             details TEXT,
             deadline TEXT,
             assignee TEXT,
+            assignee_id INTEGER,
+            campaign_id INTEGER,
+            last_reminded TEXT,
+            report TEXT,
+            done_at TEXT,
             status TEXT NOT NULL DEFAULT 'plan',
+            created_by INTEGER,
             created_by_name TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            name TEXT,
+            role TEXT NOT NULL DEFAULT 'none',
+            registered_at TEXT NOT NULL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS campaigns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            complex_id TEXT NOT NULL,
+            deadline TEXT,
+            created_by INTEGER,
+            created_by_name TEXT,
+            created_at TEXT NOT NULL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS meters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            house_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            label TEXT NOT NULL,
+            created_by_name TEXT,
+            created_at TEXT NOT NULL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meter_id INTEGER NOT NULL,
+            value REAL NOT NULL,
+            period TEXT NOT NULL,
+            submitted_by INTEGER,
+            submitted_by_name TEXT,
+            submitted_at TEXT NOT NULL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS docs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             house_id INTEGER NOT NULL,
@@ -97,6 +131,66 @@ def set_request_status(req_id, status):
                   (status, now(), req_id))
 
 
+# --- Пользователи и роли ---
+
+def upsert_user(user_id, name):
+    """Регистрирует пользователя при первом обращении. Первый зарегистрированный — админ."""
+    with _conn() as c:
+        row = c.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,)).fetchone()
+        if row:
+            if name:
+                c.execute('UPDATE users SET name = ? WHERE user_id = ?', (name, user_id))
+            return
+        n_users = c.execute('SELECT COUNT(*) AS n FROM users').fetchone()['n']
+        role = 'admin' if n_users == 0 else 'none'
+        c.execute('INSERT INTO users (user_id, name, role, registered_at) VALUES (?, ?, ?, ?)',
+                  (user_id, name or '', role, now()))
+
+
+def get_user(user_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM users WHERE user_id = ?', (user_id,)).fetchone()
+
+
+def list_users():
+    with _conn() as c:
+        return c.execute('SELECT * FROM users ORDER BY registered_at').fetchall()
+
+
+def set_user_role(user_id, role):
+    with _conn() as c:
+        c.execute('UPDATE users SET role = ? WHERE user_id = ?', (role, user_id))
+
+
+# --- Кампании (задания по ЖК: опрессовка, сдача ТУ и т.п.) ---
+
+def add_campaign(title, complex_id, deadline, user_id, user_name) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO campaigns (title, complex_id, deadline, created_by, created_by_name, created_at) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (title, complex_id, deadline, user_id, user_name, now()))
+        return cur.lastrowid
+
+
+def get_campaign(campaign_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM campaigns WHERE id = ?', (campaign_id,)).fetchone()
+
+
+def list_campaigns(limit=20):
+    with _conn() as c:
+        return c.execute('SELECT * FROM campaigns ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
+
+
+def campaign_progress(campaign_id):
+    with _conn() as c:
+        row = c.execute(
+            "SELECT COUNT(*) AS total, SUM(status = 'done') AS done "
+            'FROM works WHERE campaign_id = ?', (campaign_id,)).fetchone()
+    return (row['done'] or 0), (row['total'] or 0)
+
+
 # --- Работы по домам (график, дедлайны) ---
 
 WORK_PLAN = 'plan'
@@ -105,14 +199,44 @@ WORK_DONE = 'done'
 WORK_LABELS = {WORK_PLAN: '📌 План', WORK_IN_PROGRESS: '🔧 В работе', WORK_DONE: '✅ Сдано'}
 
 
-def add_work(house_id, title, deadline, user_name) -> int:
+def add_work(house_id, title, deadline, user_name, user_id=None, campaign_id=None) -> int:
     ts = now()
     with _conn() as c:
         cur = c.execute(
-            'INSERT INTO works (house_id, title, deadline, status, created_by_name, created_at, updated_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?)',
-            (house_id, title, deadline, WORK_PLAN, user_name, ts, ts))
+            'INSERT INTO works (house_id, title, deadline, status, created_by, created_by_name, '
+            'campaign_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (house_id, title, deadline, WORK_PLAN, user_id, user_name, campaign_id, ts, ts))
         return cur.lastrowid
+
+
+def list_my_works(user_id, limit=30):
+    with _conn() as c:
+        return c.execute(
+            "SELECT * FROM works WHERE assignee_id = ? AND status != 'done' "
+            'ORDER BY deadline IS NULL, deadline, id LIMIT ?', (user_id, limit)).fetchall()
+
+
+def list_done_works(house_id=None, limit=30):
+    q = "SELECT * FROM works WHERE status = 'done'"
+    args = []
+    if house_id is not None:
+        q += ' AND house_id = ?'
+        args.append(house_id)
+    q += ' ORDER BY done_at DESC, id DESC LIMIT ?'
+    args.append(limit)
+    with _conn() as c:
+        return c.execute(q, args).fetchall()
+
+
+def list_due_works(until_iso, today_iso):
+    """Открытые работы с назначенным исполнителем и сроком не позже until_iso,
+    по которым сегодня ещё не напоминали."""
+    with _conn() as c:
+        return c.execute(
+            "SELECT * FROM works WHERE status != 'done' AND assignee_id IS NOT NULL "
+            'AND deadline IS NOT NULL AND deadline <= ? '
+            'AND (last_reminded IS NULL OR last_reminded != ?)',
+            (until_iso, today_iso)).fetchall()
 
 
 def get_work(work_id):
@@ -140,6 +264,58 @@ def update_work(work_id, **fields):
     with _conn() as c:
         c.execute(f'UPDATE works SET {cols}, updated_at = ? WHERE id = ?',
                   (*fields.values(), now(), work_id))
+
+
+# --- Счётчики и показания ---
+
+def add_meter(house_id, kind, label, user_name) -> int:
+    with _conn() as c:
+        cur = c.execute('INSERT INTO meters (house_id, kind, label, created_by_name, created_at) '
+                        'VALUES (?, ?, ?, ?, ?)', (house_id, kind, label, user_name, now()))
+        return cur.lastrowid
+
+
+def get_meter(meter_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM meters WHERE id = ?', (meter_id,)).fetchone()
+
+
+def list_meters(house_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM meters WHERE house_id = ? ORDER BY id', (house_id,)).fetchall()
+
+
+def houses_with_meters() -> dict:
+    """house_id -> число счётчиков."""
+    with _conn() as c:
+        rows = c.execute('SELECT house_id, COUNT(*) AS n FROM meters GROUP BY house_id').fetchall()
+    return {r['house_id']: r['n'] for r in rows}
+
+
+def add_reading(meter_id, value, period, user_id, user_name) -> int:
+    with _conn() as c:
+        cur = c.execute('INSERT INTO readings (meter_id, value, period, submitted_by, '
+                        'submitted_by_name, submitted_at) VALUES (?, ?, ?, ?, ?, ?)',
+                        (meter_id, value, period, user_id, user_name, now()))
+        return cur.lastrowid
+
+
+def meter_readings(meter_id, limit=8):
+    """История показаний счётчика, свежие первыми."""
+    with _conn() as c:
+        return c.execute('SELECT * FROM readings WHERE meter_id = ? ORDER BY id DESC LIMIT ?',
+                         (meter_id, limit)).fetchall()
+
+
+def readings_for_period(period):
+    """Все показания за период (ГГГГ-ММ), по одному последнему на счётчик."""
+    with _conn() as c:
+        return c.execute(
+            'SELECT r.*, m.house_id, m.kind, m.label FROM readings r '
+            'JOIN meters m ON m.id = r.meter_id '
+            'WHERE r.period = ? AND r.id = (SELECT MAX(id) FROM readings '
+            'WHERE meter_id = r.meter_id AND period = ?) ORDER BY m.house_id, m.id',
+            (period, period)).fetchall()
 
 
 # --- Привязка домов к ЖК ---

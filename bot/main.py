@@ -18,6 +18,7 @@ from maxapi import Bot
 
 from . import db
 from .handlers import dp
+from .reminders import reminder_loop
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -32,6 +33,7 @@ async def main():
     db.init()
     bot = Bot(token)
     mode = os.environ.get('BOT_MODE', 'polling').lower()
+    asyncio.create_task(reminder_loop(bot))  # напоминания о сроках
 
     if mode == 'webhook':
         host = os.environ.get('WEBHOOK_HOST', '0.0.0.0')
