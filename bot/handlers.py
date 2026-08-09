@@ -19,7 +19,7 @@ from maxapi.types import (
 from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
-from . import db, houses
+from . import ai, db, houses
 
 log = logging.getLogger(__name__)
 dp = Dispatcher()
@@ -351,6 +351,67 @@ def check_anomaly(meter_id, new_value):
             return delta, (f'расход {fmt_value(delta)} заметно выше прошлого периода '
                            f'({fmt_value(prev_delta)}). Возможна утечка — стоит проверить.')
     return delta, None
+
+
+def _brief_lines() -> list:
+    """Собирает данные брифинга (общие для текстовой и ИИ-версии)."""
+    from datetime import datetime, timedelta
+    today = datetime.now(db.IRKUTSK_TZ).date()
+    all_works = db.list_works(open_only=False, limit=500)
+    in_progress = [w for w in all_works if w['status'] == db.WORK_IN_PROGRESS]
+    overdue = [w for w in all_works if w['status'] != db.WORK_DONE and w['deadline']
+               and w['deadline'] < today.isoformat()]
+    week = [w for w in all_works if w['status'] == db.WORK_PLAN and w['deadline']
+            and today.isoformat() <= w['deadline'] <= (today + timedelta(days=7)).isoformat()]
+    done_recent = [w for w in db.list_done_works(limit=100) if w['done_at']
+                   and w['done_at'] >= (today - timedelta(days=1)).isoformat()]
+    open_reqs = db.list_requests()
+    lines = [f"📊 БРИФИНГ на {today.strftime('%d.%m.%Y')}", '']
+    lines.append(f'🔧 В работе сейчас — {len(in_progress)}:')
+    for w in in_progress[:15]:
+        lines.append('  ' + work_line(w))
+    if overdue:
+        lines.append('')
+        lines.append(f'⚠️ Просрочено — {len(overdue)}:')
+        for w in overdue[:10]:
+            lines.append('  ' + work_line(w))
+    lines.append('')
+    lines.append(f'✅ Сдано вчера-сегодня — {len(done_recent)}:')
+    for w in done_recent[:15]:
+        h = houses.HOUSES_BY_ID.get(w['house_id'])
+        line = f"  ✅ {h['address'] if h else '?'} — {w['title']} ({w['assignee'] or '—'})"
+        if w['report']:
+            line += f" · «{w['report'][:60]}»"
+        lines.append(line)
+    if week:
+        lines.append('')
+        lines.append(f'📌 Ближайшая неделя — {len(week)}:')
+        for w in week[:15]:
+            lines.append('  ' + work_line(w))
+    camps = db.list_campaigns()
+    active = []
+    for camp in camps:
+        done, total = db.campaign_progress(camp['id'])
+        if total and done < total:
+            active.append(f"  📢 «{camp['title']}» ({COMPLEX_NAMES.get(camp['complex_id'], '')}): "
+                          f'{done}/{total}, срок {fmt_deadline(camp["deadline"])}')
+    if active:
+        lines.append('')
+        lines.append('📢 Задания в ходу:')
+        lines += active
+    with_meters = db.houses_with_meters()
+    if with_meters:
+        submitted = {r['house_id'] for r in db.readings_for_period(current_period())}
+        lines.append('')
+        lines.append(f'🧮 Показания за {fmt_period(current_period())}: '
+                     f'сдано {len(submitted)} из {len(with_meters)} домов')
+    lines.append('')
+    lines.append(f'📋 Открытых заявок: {len(open_reqs)}')
+    return lines
+
+
+def _brief_data_text() -> str:
+    return '\n'.join(_brief_lines())
 
 
 # ---------- Старт ----------
@@ -929,64 +990,35 @@ async def on_callback(event: MessageCallback):
                    CallbackButton(text='🏠 Меню', payload='menu'))
             await send(msg, '\n'.join(lines), kb)
 
+    elif action == 'aibrief':
+        if _role(uid) not in BRIEFING_ROLES:
+            await send(msg, '📊 Брифинг доступен руководству. Ваши задачи — в «🧰 Мои работы».')
+            return
+        if not ai.enabled():
+            await send(msg, '🧠 ИИ пока не подключён: задайте переменную окружения KIMI_API_KEY '
+                            'при запуске бота (ключ — тот же, что в телеграм-боте на Kimi).')
+            return
+        data = _brief_data_text()
+        await send(msg, '🧠 Секунду, пишу сводку...')
+        answer = await ai.ask(
+            'Вот сводные данные по хозяйству на сегодня:\n\n' + data +
+            '\n\nНапиши короткий утренний доклад для руководителя (5–8 предложений): '
+            'что происходит, что сдано, где риски (просрочки, подозрения на утечки), '
+            'на что обратить внимание. Без списков — живым связным текстом.')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📊 Полный брифинг', payload='brief'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, answer or '⚠️ Не получилось связаться с ИИ, попробуйте позже '
+                                  'или откройте обычный брифинг.', kb)
+
     elif action == 'brief':
         if _role(uid) not in BRIEFING_ROLES:
             await send(msg, '📊 Брифинг доступен руководству: директору, инженеру, мастерам. '
                             'Ваши задачи — в «🧰 Мои работы».')
             return
-        from datetime import datetime, timedelta
-        today = datetime.now(db.IRKUTSK_TZ).date()
-        all_works = db.list_works(open_only=False, limit=500)
-        in_progress = [w for w in all_works if w['status'] == db.WORK_IN_PROGRESS]
-        overdue = [w for w in all_works if w['status'] != db.WORK_DONE and w['deadline']
-                   and w['deadline'] < today.isoformat()]
-        week = [w for w in all_works if w['status'] == db.WORK_PLAN and w['deadline']
-                and today.isoformat() <= w['deadline'] <= (today + timedelta(days=7)).isoformat()]
-        done_recent = [w for w in db.list_done_works(limit=100) if w['done_at']
-                       and w['done_at'] >= (today - timedelta(days=1)).isoformat()]
-        open_reqs = db.list_requests()
-        lines = [f"📊 БРИФИНГ на {today.strftime('%d.%m.%Y')}", '']
-        lines.append(f'🔧 В работе сейчас — {len(in_progress)}:')
-        for w in in_progress[:15]:
-            lines.append('  ' + work_line(w))
-        if overdue:
-            lines.append('')
-            lines.append(f'⚠️ Просрочено — {len(overdue)}:')
-            for w in overdue[:10]:
-                lines.append('  ' + work_line(w))
-        lines.append('')
-        lines.append(f'✅ Сдано вчера-сегодня — {len(done_recent)}:')
-        for w in done_recent[:15]:
-            h = houses.HOUSES_BY_ID.get(w['house_id'])
-            line = f"  ✅ {h['address'] if h else '?'} — {w['title']} ({w['assignee'] or '—'})"
-            if w['report']:
-                line += f" · «{w['report'][:60]}»"
-            lines.append(line)
-        if week:
-            lines.append('')
-            lines.append(f'📌 Ближайшая неделя — {len(week)}:')
-            for w in week[:15]:
-                lines.append('  ' + work_line(w))
-        camps = db.list_campaigns()
-        active = []
-        for camp in camps:
-            done, total = db.campaign_progress(camp['id'])
-            if total and done < total:
-                active.append(f"  📢 «{camp['title']}» ({COMPLEX_NAMES.get(camp['complex_id'], '')}): "
-                              f'{done}/{total}, срок {fmt_deadline(camp["deadline"])}')
-        if active:
-            lines.append('')
-            lines.append('📢 Задания в ходу:')
-            lines += active
-        with_meters = db.houses_with_meters()
-        if with_meters:
-            submitted = {r['house_id'] for r in db.readings_for_period(current_period())}
-            lines.append('')
-            lines.append(f'🧮 Показания за {fmt_period(current_period())}: '
-                         f'сдано {len(submitted)} из {len(with_meters)} домов')
-        lines.append('')
-        lines.append(f'📋 Открытых заявок: {len(open_reqs)}')
+        lines = _brief_lines()
         kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🧠 Сводка от Люси (ИИ)', payload='aibrief'))
         kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
                CallbackButton(text='📋 Заявки', payload='rl'))
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
