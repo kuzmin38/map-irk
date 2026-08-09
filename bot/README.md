@@ -120,3 +120,21 @@ export KIMI_MODEL='модель_как_в_телеграм_боте'   # по у
 
 Без ключа всё остальное работает как обычно, кнопка «🧠 Сводка от Люси»
 просто подскажет, что ИИ не подключён.
+
+## 7. Деплой на Railway
+
+Люся живёт как отдельный сервис рядом с другими ботами:
+
+1. Railway → **New → GitHub Repo** → выберите `kuzmin38/map-irk`,
+   ветка `claude/plumber-work-bot-ofyv8j`. Python и `requirements.txt`
+   Railway определит сам, стартовая команда берётся из `Procfile`
+   (`python -m bot.main`, режим long polling — домен и порты не нужны).
+2. **Volume** (обязательно, иначе база сотрётся при redeploy):
+   в сервисе → Add Volume → mount path `/data`.
+3. **Variables** сервиса:
+   - `MAX_BOT_TOKEN` — токен бота из business.max.ru
+   - `KIMI_API_KEY` — ключ Kimi (тот же, что у телеграм-бота)
+   - `KIMI_MODEL` — модель как в телеграм-боте
+   - `BOT_DB=/data/bot.db` — база на томе
+   - `BOT_DOCS_DIR=/data/docs` — файлы документов на томе
+4. Deploy — в логах должно появиться «Запуск в режиме long polling».

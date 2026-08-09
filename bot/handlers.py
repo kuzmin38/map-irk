@@ -76,7 +76,8 @@ async def notify(bot, user_id, text):
     except Exception:
         log.warning('Не удалось отправить уведомление пользователю %s', user_id)
 
-DOCS_DIR = os.path.join(houses.DATA_DIR, 'docs')
+# На хостинге с томом (Railway и т.п.) задайте BOT_DOCS_DIR на смонтированный диск
+DOCS_DIR = os.environ.get('BOT_DOCS_DIR', os.path.join(houses.DATA_DIR, 'docs'))
 
 PASSPORT_FIELDS = [
     ('year', 'Год постройки'),
