@@ -2,6 +2,9 @@
 import json
 import logging
 import os
+import re
+
+import aiohttp
 
 from maxapi import Dispatcher
 from maxapi.types import (
@@ -13,6 +16,7 @@ from maxapi.types import (
     MessageCallback,
     MessageCreated,
 )
+from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
 from . import db, houses
@@ -22,6 +26,12 @@ dp = Dispatcher()
 
 with open(os.path.join(houses.DATA_DIR, 'directory.json'), encoding='utf-8') as f:
     DIRECTORY = json.load(f)['sections']
+
+with open(os.path.join(houses.DATA_DIR, 'complexes.json'), encoding='utf-8') as f:
+    COMPLEXES = json.load(f)
+COMPLEX_NAMES = {c['id']: c['name'] for c in COMPLEXES}
+
+DOCS_DIR = os.path.join(houses.DATA_DIR, 'docs')
 
 PASSPORT_FIELDS = [
     ('year', 'Год постройки'),
@@ -85,9 +95,14 @@ MAIN_TEXT = (
 # ---------- Карточки ----------
 
 def house_card_text(h) -> str:
+    cx = db.get_house_complex(h['id'])
+    cx_name = COMPLEX_NAMES.get(cx, 'не указан')
+    n_docs = len(db.list_docs(h['id']))
     return (f"🏠 {h['address']}\n"
+            f"🏙 ЖК: {cx_name}\n"
             f"👷 Наш дом (УК «Жемчужина»)\n"
-            f"📊 Заявок за год: {h['requests_year']}")
+            f"📊 Заявок за год: {h['requests_year']}\n"
+            f"📁 Документов: {n_docs}")
 
 
 def house_card_kb(h) -> InlineKeyboardBuilder:
@@ -97,6 +112,8 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
            LinkButton(text='🗺 Яндекс', url=ya))
     kb.row(CallbackButton(text='🗂 Паспорт дома', payload=f"p:{h['id']}"),
            CallbackButton(text='➕ Заявка сюда', payload=f"nrh:{h['id']}"))
+    kb.row(CallbackButton(text='📁 Документы', payload=f"dl:{h['id']}"),
+           CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
     kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
 
@@ -171,13 +188,77 @@ def _uname(event) -> str:
     return getattr(event.message.sender, 'full_name', None) or ''
 
 
+def _safe_filename(name: str) -> str:
+    name = re.sub(r'[^\w.\-() ]', '_', name)
+    return name[:80] or 'file'
+
+
+async def _download(url: str) -> bytes:
+    async with aiohttp.ClientSession() as s:
+        async with s.get(url) as resp:
+            resp.raise_for_status()
+            return await resp.read()
+
+
+async def _save_docs(event, state) -> int:
+    """Сохраняет вложения сообщения как документы дома. Возвращает число сохранённых."""
+    atts = event.message.body.attachments or []
+    house_id = state['house_id']
+    note = (event.message.body.text or '').strip() or None
+    os.makedirs(os.path.join(DOCS_DIR, str(house_id)), exist_ok=True)
+    saved = 0
+    for a in atts:
+        url = getattr(a.payload, 'url', None) if a.payload else None
+        if not url:
+            continue
+        a_type = getattr(a.type, 'value', str(a.type))
+        if a_type == 'file' and getattr(a, 'filename', None):
+            filename = _safe_filename(a.filename)
+        elif a_type == 'image':
+            filename = 'foto.jpg'
+        else:
+            base = os.path.basename(url.split('?')[0]) or 'file'
+            filename = _safe_filename(base)
+        data = await _download(url)
+        doc_id = db.add_doc(house_id, filename, '', note, _uname(event))
+        filename = f'{doc_id}_{filename}'
+        path = os.path.join(DOCS_DIR, str(house_id), filename)
+        with open(path, 'wb') as f:
+            f.write(data)
+        db.set_doc_file(doc_id, filename, path)
+        saved += 1
+    return saved
+
+
 @dp.message_created()
 async def on_text(event: MessageCreated):
     text = (event.message.body.text or '').strip()
-    if not text or text.startswith('/'):
-        return
     uid = _uid(event)
     state = STATE.get(uid)
+
+    if state and state['mode'] == 'doc_wait':
+        h = houses.HOUSES_BY_ID[state['house_id']]
+        try:
+            saved = await _save_docs(event, state)
+        except Exception:
+            log.exception('Не удалось сохранить документ')
+            await send(event.message, '⚠️ Не получилось сохранить файл, попробуйте ещё раз.')
+            return
+        if saved:
+            STATE.pop(uid, None)
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='📎 Добавить ещё', payload=f"da:{h['id']}"),
+                   CallbackButton(text='📁 Документы дома', payload=f"dl:{h['id']}"))
+            await send(event.message,
+                       f"✅ Сохранила ({saved} шт.) в документы дома {h['address']}.", kb)
+        else:
+            await send(event.message,
+                       '📎 Пришлите файл, фото или скан одним сообщением '
+                       '(текст в подписи сохраню как примечание).')
+        return
+
+    if not text or text.startswith('/'):
+        return
 
     if state and state['mode'] == 'req_addr':
         # Шаг 1 новой заявки: адрес свободным текстом
@@ -245,13 +326,85 @@ async def on_callback(event: MessageCallback):
         await send(msg, '🔍 Напишите адрес (улица и номер дома), например:\n«Розы Люксембург 118/5» или «Байкальская 237»')
 
     elif action == 'homes':
-        lines = [f'🏘 Наши дома — УК «Жемчужина», всего {len(houses.HOUSES)}:', '']
-        lines += [f"• {h['address']}" for h in houses.HOUSES]
-        lines.append('')
-        lines.append('💡 Напишите адрес, чтобы открыть карточку дома.')
+        assigned = db.all_house_complexes()
+        counts = {}
+        for cid in assigned.values():
+            counts[cid] = counts.get(cid, 0) + 1
+        n_unassigned = len(houses.HOUSES) - len(assigned)
         kb = InlineKeyboardBuilder()
+        for c in COMPLEXES:
+            kb.row(CallbackButton(text=f"{c['name']} ({counts.get(c['id'], 0)})",
+                                  payload=f"cxl:{c['id']}"))
+        if n_unassigned:
+            kb.row(CallbackButton(text=f'📍 Без привязки к ЖК ({n_unassigned})', payload='cxl:none'))
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, f'🏘 Наши дома — всего {len(houses.HOUSES)}.\nВыберите ЖК:', kb)
+
+    elif action == 'cxl':
+        cid = parts[1]
+        assigned = db.all_house_complexes()
+        if cid == 'none':
+            hs = [h for h in houses.HOUSES if h['id'] not in assigned]
+            title = '📍 Дома без привязки к ЖК'
+        else:
+            hs = [h for h in houses.HOUSES if assigned.get(h['id']) == cid]
+            title = f"🏙 {COMPLEX_NAMES.get(cid, cid)}"
+        lines = [f'{title} — {len(hs)} домов:', '']
+        lines += [f"• {h['address']}" for h in hs]
+        lines.append('')
+        lines.append('💡 Напишите адрес, чтобы открыть карточку дома. '
+                     'Привязать дом к ЖК можно кнопкой «Указать ЖК» в карточке.')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='◀️ К списку ЖК', payload='homes'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'cxs':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            kb = InlineKeyboardBuilder()
+            for c in COMPLEXES:
+                kb.row(CallbackButton(text=c['name'], payload=f"cxset:{h['id']}:{c['id']}"))
+            kb.row(CallbackButton(text='◀️ Назад', payload=f"h:{h['id']}"))
+            await send(msg, f"🏙 {h['address']}: к какому ЖК относится дом?", kb)
+
+    elif action == 'cxset':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        cid = parts[2]
+        if h and cid in COMPLEX_NAMES:
+            db.set_house_complex(h['id'], cid)
+            await send(msg, house_card_text(h), house_card_kb(h))
+
+    elif action == 'dl':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            docs = db.list_docs(h['id'])
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='📎 Добавить документ', payload=f"da:{h['id']}"),
+                   CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
+            if not docs:
+                await send(msg, f"📁 По дому {h['address']} документов пока нет.\n"
+                                'Нажмите «Добавить документ» и пришлите фото/скан/файл.', kb)
+            else:
+                await send(msg, f"📁 Документы дома {h['address']} — {len(docs)} шт., отправляю:")
+                for d in docs[-15:]:
+                    caption = d['filename']
+                    if d['note']:
+                        caption += f" — {d['note']}"
+                    caption += f" (загрузил: {d['uploaded_by'] or '—'}, {d['uploaded_at']})"
+                    try:
+                        await msg.answer(text=caption, attachments=[InputMedia(d['path'])])
+                    except Exception:
+                        log.exception('Не удалось отправить документ %s', d['path'])
+                        await msg.answer(text=f'⚠️ Не удалось отправить: {caption}')
+                await send(msg, 'Готово!', kb)
+
+    elif action == 'da':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            STATE[uid] = {'mode': 'doc_wait', 'house_id': h['id']}
+            await send(msg, f"📎 Пришлите фото, скан или файл для дома {h['address']} "
+                            '(можно несколько и с подписью — подпись сохраню как примечание).')
 
     elif action == 'h':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))

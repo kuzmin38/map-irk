@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 bot/data/bot.db
 .env
+bot/data/docs/
