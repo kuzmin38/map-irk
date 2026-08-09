@@ -31,6 +31,10 @@ with open(os.path.join(houses.DATA_DIR, 'complexes.json'), encoding='utf-8') as 
     COMPLEXES = json.load(f)
 COMPLEX_NAMES = {c['id']: c['name'] for c in COMPLEXES}
 
+with open(os.path.join(houses.DATA_DIR, 'team.json'), encoding='utf-8') as f:
+    TEAM = json.load(f)
+TEAM_BY_ID = {m['id']: m for m in TEAM}
+
 DOCS_DIR = os.path.join(houses.DATA_DIR, 'docs')
 
 PASSPORT_FIELDS = [
@@ -75,7 +79,8 @@ def main_menu_kb() -> InlineKeyboardBuilder:
            CallbackButton(text='🏘 Наши дома', payload='homes'))
     kb.row(CallbackButton(text='📋 Заявки', payload='rl'),
            CallbackButton(text='➕ Новая заявка', payload='nr'))
-    kb.row(CallbackButton(text='📖 Справочник', payload='dir'))
+    kb.row(CallbackButton(text='📅 Работы и дедлайны', payload='wl'),
+           CallbackButton(text='📖 Справочник', payload='dir'))
     return kb
 
 
@@ -114,7 +119,8 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
            CallbackButton(text='➕ Заявка сюда', payload=f"nrh:{h['id']}"))
     kb.row(CallbackButton(text='📁 Документы', payload=f"dl:{h['id']}"),
            CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
-    kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+    kb.row(CallbackButton(text='📅 Работы дома', payload=f"wlh:{h['id']}"),
+           CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
 
 
@@ -155,6 +161,83 @@ def request_card_kb(r) -> InlineKeyboardBuilder:
     kb.row(*row)
     kb.row(CallbackButton(text='📋 Все заявки', payload='rl'),
            CallbackButton(text='🏠 Меню', payload='menu'))
+    return kb
+
+
+# ---------- Работы (график, дедлайны) ----------
+
+def parse_deadline(text: str):
+    """'25.09' / '25.09.2026' → 'ГГГГ-ММ-ДД'; '-' → None; иначе ValueError."""
+    text = text.strip()
+    if text in ('-', '—', ''):
+        return None
+    m = re.match(r'^(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?$', text)
+    if not m:
+        raise ValueError
+    from datetime import date
+    d, mo = int(m.group(1)), int(m.group(2))
+    today = date.today()
+    y = int(m.group(3)) if m.group(3) else today.year
+    if y < 100:
+        y += 2000
+    dl = date(y, mo, d)
+    if not m.group(3) and dl < today:
+        dl = date(y + 1, mo, d)  # без года и дата прошла — значит, следующий год
+    return dl.isoformat()
+
+
+def fmt_deadline(iso: str | None) -> str:
+    if not iso:
+        return 'без срока'
+    from datetime import date
+    y, m, d = iso.split('-')
+    label = f'{d}.{m}.{y}'
+    days = (date(int(y), int(m), int(d)) - date.today()).days
+    if days < 0:
+        return f'⚠️ {label} (просрочено на {-days} дн.)'
+    if days == 0:
+        return f'🔥 {label} (сегодня!)'
+    if days <= 3:
+        return f'⏰ {label} (через {days} дн.)'
+    return label
+
+
+def work_line(w) -> str:
+    h = houses.HOUSES_BY_ID.get(w['house_id'])
+    addr = h['address'] if h else '?'
+    who = f" · {w['assignee']}" if w['assignee'] else ''
+    return f"№{w['id']} {db.WORK_LABELS[w['status']].split()[0]} {addr}: {w['title']} — {fmt_deadline(w['deadline'])}{who}"
+
+
+def work_card_text(w) -> str:
+    h = houses.HOUSES_BY_ID.get(w['house_id'])
+    lines = [f"📅 Работа №{w['id']} — {db.WORK_LABELS[w['status']]}",
+             f"🏠 {h['address'] if h else '?'}",
+             f"🔧 {w['title']}",
+             f"⏳ Срок: {fmt_deadline(w['deadline'])}",
+             f"👤 Ответственный: {w['assignee'] or 'не назначен'}"]
+    if w['details']:
+        lines.append(f"📝 {w['details']}")
+    lines.append(f"🕐 Создана: {w['created_at']} ({w['created_by_name'] or '—'})")
+    return '\n'.join(lines)
+
+
+def work_card_kb(w) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    kb.row(*[CallbackButton(text=f"👤 {m['short']}", payload=f"wa:{w['id']}:{m['id']}")
+             for m in TEAM])
+    row = []
+    if w['status'] != db.WORK_IN_PROGRESS:
+        row.append(CallbackButton(text='🔧 В работу', payload=f"ws:{w['id']}:work"))
+    if w['status'] != db.WORK_DONE:
+        row.append(CallbackButton(text='✅ Сдано', payload=f"ws:{w['id']}:done"))
+    else:
+        row.append(CallbackButton(text='↩️ Вернуть', payload=f"ws:{w['id']}:work"))
+    kb.row(*row)
+    kb.row(CallbackButton(text='⏳ Изменить срок', payload=f"wd:{w['id']}"),
+           CallbackButton(text='📝 Материалы/заметка', payload=f"wn:{w['id']}"))
+    kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
+           CallbackButton(text='🏠 К дому', payload=f"h:{w['house_id']}"))
     return kb
 
 
@@ -288,6 +371,47 @@ async def on_text(event: MessageCreated):
                CallbackButton(text='🗂 Открыть паспорт', payload=f"p:{h['id']}"))
         await send(event.message,
                    f"✅ Записала: {PASSPORT_LABELS[state['field']]} — {h['address']}", kb)
+        return
+
+    if state and state['mode'] == 'work_title':
+        STATE[uid] = {'mode': 'work_deadline', 'house_id': state['house_id'], 'title': text}
+        await send(event.message,
+                   '⏳ К какому сроку? Напишите дату:\n'
+                   '• «25.09» или «25.09.2026»\n'
+                   '• «-» — если без срока')
+        return
+
+    if state and state['mode'] == 'work_deadline':
+        try:
+            deadline = parse_deadline(text)
+        except ValueError:
+            await send(event.message, '🤔 Не поняла дату. Напишите, например, «25.09.2026» или «-» без срока.')
+            return
+        work_id = db.add_work(state['house_id'], state['title'], deadline, _uname(event))
+        STATE.pop(uid, None)
+        w = db.get_work(work_id)
+        await send(event.message,
+                   '✅ Записала работу! Назначьте ответственного кнопкой:\n\n' + work_card_text(w),
+                   work_card_kb(w))
+        return
+
+    if state and state['mode'] == 'work_dl_edit':
+        try:
+            deadline = parse_deadline(text)
+        except ValueError:
+            await send(event.message, '🤔 Не поняла дату. Напишите, например, «25.09.2026» или «-» без срока.')
+            return
+        db.update_work(state['work_id'], deadline=deadline)
+        STATE.pop(uid, None)
+        w = db.get_work(state['work_id'])
+        await send(event.message, work_card_text(w), work_card_kb(w))
+        return
+
+    if state and state['mode'] == 'work_note':
+        db.update_work(state['work_id'], details=text)
+        STATE.pop(uid, None)
+        w = db.get_work(state['work_id'])
+        await send(event.message, work_card_text(w), work_card_kb(w))
         return
 
     # Режим по умолчанию — поиск дома по адресу
@@ -483,6 +607,67 @@ async def on_callback(event: MessageCallback):
             r = db.get_request(req_id)
             if r:
                 await send(msg, request_card_text(r), request_card_kb(r))
+
+    elif action in ('wl', 'wlh'):
+        if action == 'wlh':
+            h = houses.HOUSES_BY_ID.get(int(parts[1]))
+            works = db.list_works(house_id=h['id'], open_only=False)
+            title = f"📅 Работы по дому {h['address']}:"
+            add_payload = f"nw:{h['id']}"
+        else:
+            works = db.list_works(open_only=True)
+            title = '📅 Открытые работы по всем домам (по срокам):'
+            add_payload = None
+        if not works:
+            body = title + '\n\nПока пусто.'
+        else:
+            body = title + '\n\n' + '\n'.join(work_line(w) for w in works)
+        kb = InlineKeyboardBuilder()
+        for w in works[:10]:
+            kb.row(CallbackButton(text=f"№{w['id']} · {w['title'][:35]}", payload=f"w:{w['id']}"))
+        if add_payload:
+            kb.row(CallbackButton(text='➕ Новая работа', payload=add_payload))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, body, kb)
+
+    elif action == 'nw':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            STATE[uid] = {'mode': 'work_title', 'house_id': h['id']}
+            await send(msg, f"➕ Новая работа по дому {h['address']}.\n"
+                            '🔧 Что нужно сделать? Например: «Опрессовка системы отопления», '
+                            '«Сдача теплового узла», «Дефектовка розлива ХВС», «Закупить задвижки ДУ50 — 2 шт».')
+
+    elif action == 'w':
+        w = db.get_work(int(parts[1]))
+        if w:
+            await send(msg, work_card_text(w), work_card_kb(w))
+
+    elif action == 'ws':
+        work_id, status = int(parts[1]), parts[2]
+        if status in (db.WORK_IN_PROGRESS, db.WORK_DONE):
+            db.update_work(work_id, status=status)
+            w = db.get_work(work_id)
+            if w:
+                await send(msg, work_card_text(w), work_card_kb(w))
+
+    elif action == 'wa':
+        work_id, member_id = int(parts[1]), int(parts[2])
+        m = TEAM_BY_ID.get(member_id)
+        if m:
+            db.update_work(work_id, assignee=m['name'])
+            w = db.get_work(work_id)
+            if w:
+                await send(msg, work_card_text(w), work_card_kb(w))
+
+    elif action == 'wd':
+        STATE[uid] = {'mode': 'work_dl_edit', 'work_id': int(parts[1])}
+        await send(msg, '⏳ Новый срок? Напишите дату («25.09.2026») или «-» — без срока.')
+
+    elif action == 'wn':
+        STATE[uid] = {'mode': 'work_note', 'work_id': int(parts[1])}
+        await send(msg, '📝 Напишите заметку: материалы, кто закупает, объём и т.п. '
+                        '(заменит прежнюю заметку).')
 
     elif action == 'dir':
         kb = InlineKeyboardBuilder()

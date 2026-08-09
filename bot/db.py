@@ -41,6 +41,17 @@ def init():
         c.execute('''CREATE TABLE IF NOT EXISTS house_complex (
             house_id INTEGER PRIMARY KEY,
             complex_id TEXT NOT NULL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS works (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            house_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            details TEXT,
+            deadline TEXT,
+            assignee TEXT,
+            status TEXT NOT NULL DEFAULT 'plan',
+            created_by_name TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS docs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             house_id INTEGER NOT NULL,
@@ -84,6 +95,51 @@ def set_request_status(req_id, status):
     with _conn() as c:
         c.execute('UPDATE requests SET status = ?, updated_at = ? WHERE id = ?',
                   (status, now(), req_id))
+
+
+# --- Работы по домам (график, дедлайны) ---
+
+WORK_PLAN = 'plan'
+WORK_IN_PROGRESS = 'work'
+WORK_DONE = 'done'
+WORK_LABELS = {WORK_PLAN: '📌 План', WORK_IN_PROGRESS: '🔧 В работе', WORK_DONE: '✅ Сдано'}
+
+
+def add_work(house_id, title, deadline, user_name) -> int:
+    ts = now()
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO works (house_id, title, deadline, status, created_by_name, created_at, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (house_id, title, deadline, WORK_PLAN, user_name, ts, ts))
+        return cur.lastrowid
+
+
+def get_work(work_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM works WHERE id = ?', (work_id,)).fetchone()
+
+
+def list_works(house_id=None, open_only=True, limit=40):
+    q = 'SELECT * FROM works WHERE 1=1'
+    args = []
+    if house_id is not None:
+        q += ' AND house_id = ?'
+        args.append(house_id)
+    if open_only:
+        q += " AND status != 'done'"
+    # deadline хранится как ГГГГ-ММ-ДД, пустые сроки в конце
+    q += " ORDER BY status = 'done', deadline IS NULL, deadline, id LIMIT ?"
+    args.append(limit)
+    with _conn() as c:
+        return c.execute(q, args).fetchall()
+
+
+def update_work(work_id, **fields):
+    cols = ', '.join(f'{k} = ?' for k in fields)
+    with _conn() as c:
+        c.execute(f'UPDATE works SET {cols}, updated_at = ? WHERE id = ?',
+                  (*fields.values(), now(), work_id))
 
 
 # --- Привязка домов к ЖК ---
