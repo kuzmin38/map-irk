@@ -1,0 +1,18 @@
+[Unit]
+Description=MAX-бот «Помощник сантехника» УК Жемчужина
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/map-irk
+Environment=MAX_BOT_TOKEN=ВПИШИТЕ_ТОКЕН
+Environment=BOT_MODE=webhook
+Environment=WEBHOOK_PORT=8080
+Environment=WEBHOOK_URL=https://ваш-домен.ru/
+ExecStart=/usr/bin/python3 -m bot.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
