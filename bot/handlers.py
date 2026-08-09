@@ -62,7 +62,7 @@ async def send(msg, text, kb: InlineKeyboardBuilder | None = None):
 def main_menu_kb() -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     kb.row(CallbackButton(text='🔍 Найти дом', payload='srch'),
-           CallbackButton(text='🏘 Дома по звеньям', payload='zv'))
+           CallbackButton(text='🏘 Наши дома', payload='homes'))
     kb.row(CallbackButton(text='📋 Заявки', payload='rl'),
            CallbackButton(text='➕ Новая заявка', payload='nr'))
     kb.row(CallbackButton(text='📖 Справочник', payload='dir'))
@@ -72,9 +72,9 @@ def main_menu_kb() -> InlineKeyboardBuilder:
 BOT_NAME = 'Люся'  # имя помощницы — поменяйте здесь, если выбрали другое
 
 MAIN_TEXT = (
-    f'👋 Привет, я {BOT_NAME} — помощница сантехников УК «Жемчужина».\n\n'
+    f'👋 Привет, я {BOT_NAME} — помощница нашего звена сантехников УК «Жемчужина».\n\n'
     'Чем помогу:\n'
-    '• 🔍 Найду дом — подскажу, чьё это звено, и покажу точку на карте\n'
+    '• 🔍 Найду дом — наш или нет, и покажу точку на карте\n'
     '• 🗂 Паспорт дома — розливы, арматура, где перекрывать, доступ\n'
     '• 📋 Заявки — запишу и буду вести: новая → в работе → выполнена\n'
     '• 📖 Справочник — телефоны, нормативы, сроки, шпаргалка по трубам\n\n'
@@ -85,9 +85,8 @@ MAIN_TEXT = (
 # ---------- Карточки ----------
 
 def house_card_text(h) -> str:
-    zv = houses.ZVENO_NAMES.get(h['zveno'], f"Звено {h['zveno']}")
     return (f"🏠 {h['address']}\n"
-            f"👷 {zv}\n"
+            f"👷 Наш дом (УК «Жемчужина»)\n"
             f"📊 Заявок за год: {h['requests_year']}")
 
 
@@ -104,8 +103,7 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
 
 def passport_text(h) -> str:
     data = db.get_passport(h['id'])
-    lines = [f"🗂 ПАСПОРТ ДОМА: {h['address']}",
-             f"👷 {houses.ZVENO_NAMES.get(h['zveno'], '')}", '']
+    lines = [f"🗂 ПАСПОРТ ДОМА: {h['address']}", '']
     filled = 0
     for key, label in PASSPORT_FIELDS:
         val = data.get(key)
@@ -246,22 +244,13 @@ async def on_callback(event: MessageCallback):
         STATE.pop(uid, None)
         await send(msg, '🔍 Напишите адрес (улица и номер дома), например:\n«Розы Люксембург 118/5» или «Байкальская 237»')
 
-    elif action == 'zv':
-        kb = InlineKeyboardBuilder()
-        for z in (1, 2, 3):
-            kb.row(CallbackButton(text=houses.ZVENO_NAMES[z], payload=f'zvl:{z}'))
-        await send(msg, '🏘 Выберите звено:', kb)
-
-    elif action == 'zvl':
-        z = int(parts[1])
-        hs = houses.by_zveno(z)
-        lines = [f'🏘 {houses.ZVENO_NAMES[z]} — {len(hs)} домов:', '']
-        lines += [f"• {h['address']}" for h in hs]
+    elif action == 'homes':
+        lines = [f'🏘 Наши дома — УК «Жемчужина», всего {len(houses.HOUSES)}:', '']
+        lines += [f"• {h['address']}" for h in houses.HOUSES]
         lines.append('')
         lines.append('💡 Напишите адрес, чтобы открыть карточку дома.')
         kb = InlineKeyboardBuilder()
-        kb.row(CallbackButton(text='◀️ К звеньям', payload='zv'),
-               CallbackButton(text='🏠 Меню', payload='menu'))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
 
     elif action == 'h':

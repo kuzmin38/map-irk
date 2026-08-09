@@ -1,19 +1,13 @@
-"""Работа со списком домов УК: загрузка, поиск по адресу, списки по звеньям."""
+"""Работа со списком домов УК «Жемчужина»: загрузка, поиск по адресу."""
 import json
 import os
 import re
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
-ZVENO_NAMES = {
-    1: 'Звено 1 — Север',
-    2: 'Звено 2 — Центр/ЦП',
-    3: 'Звено 3 — Восток/Байкальская',
-    4: 'Звено 4 — Аварийное (весь город, нерабочее время)',
-}
-
 with open(os.path.join(DATA_DIR, 'houses.json'), encoding='utf-8') as f:
     HOUSES = json.load(f)
+HOUSES.sort(key=lambda h: h['address'])
 
 HOUSES_BY_ID = {h['id']: h for h in HOUSES}
 
@@ -67,10 +61,6 @@ def search(query: str, limit: int = 8):
             scored.append((score, h))
     scored.sort(key=lambda t: (-t[0], t[1]['address']))
     return [h for _, h in scored[:limit]]
-
-
-def by_zveno(zveno: int):
-    return [h for h in HOUSES if h['zveno'] == zveno]
 
 
 def map_links(h) -> str:
