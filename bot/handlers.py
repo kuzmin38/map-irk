@@ -20,6 +20,7 @@ from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
 from . import ai, db, houses
+from . import risers as risers_mod
 
 log = logging.getLogger(__name__)
 dp = Dispatcher()
@@ -118,7 +119,8 @@ async def send(msg, text, kb: InlineKeyboardBuilder | None = None):
 def main_menu_kb() -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     kb.row(CallbackButton(text='🔍 Найти дом', payload='srch'),
-           CallbackButton(text='🏘 Наши дома', payload='homes'))
+           CallbackButton(text='🚿 Стояки квартир', payload='rsl'))
+    kb.row(CallbackButton(text='🏘 Наши дома', payload='homes'))
     kb.row(CallbackButton(text='📋 Заявки', payload='rl'),
            CallbackButton(text='➕ Новая заявка', payload='nr'))
     kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
@@ -137,6 +139,7 @@ MAIN_TEXT = (
     f'👋 Привет, я {BOT_NAME} — помощница нашего звена сантехников УК «Жемчужина».\n\n'
     'Чем помогу:\n'
     '• 🔍 Найду дом — наш или нет, и покажу точку на карте\n'
+    '• 🚿 Стояки — напишите «Седова 65а/2 кв 47», скажу этаж, стояк и соседей\n'
     '• 🗂 Паспорт дома — розливы, арматура, где перекрывать, доступ\n'
     '• 📋 Заявки — запишу и буду вести: новая → в работе → выполнена\n'
     '• 📖 Справочник — телефоны, нормативы, сроки, шпаргалка по трубам\n\n'
@@ -168,8 +171,12 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
            CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
     kb.row(CallbackButton(text='📅 Работы дома', payload=f"wlh:{h['id']}"),
            CallbackButton(text='📜 История', payload=f"hist:{h['id']}"))
-    kb.row(CallbackButton(text='🧮 Счётчики', payload=f"mt:{h['id']}"),
-           CallbackButton(text='🏠 Меню', payload='menu'))
+    row = [CallbackButton(text='🧮 Счётчики', payload=f"mt:{h['id']}")]
+    block, _ = risers_mod.find_block(h['address'])
+    if block:
+        row.append(CallbackButton(text='🚿 Стояки', payload=f"rsv:{block['id']}"))
+    kb.row(*row)
+    kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
 
 
@@ -294,6 +301,45 @@ def work_card_kb(w) -> InlineKeyboardBuilder:
            CallbackButton(text='📝 Материалы/заметка', payload=f"wn:{w['id']}"))
     kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
            CallbackButton(text='🏠 К дому', payload=f"h:{w['house_id']}"))
+    return kb
+
+
+# ---------- Стояки и квартиры ----------
+
+def riser_card_text(block, addr, flat, floor, riser, on_floor) -> str:
+    chain = risers_mod.riser_flats(block, riser)
+    partial = risers_mod.partial_floors(block)
+    lines = [f'🚿 {addr}, кв. {flat}',
+             f'🔢 Этаж: {floor}',
+             f"🚰 Стояк: {riser}-й из {block['risers']} (считая слева)", '']
+    if chain:
+        neighbours = []
+        for fl, fnum in chain:
+            mark = ' ⬅️' if fnum == flat else ''
+            neighbours.append(f'  {fl} эт. — кв. {fnum}{mark}')
+        lines.append('📍 Весь стояк снизу вверх:')
+        lines += neighbours
+        idx = next((i for i, (_, fnum) in enumerate(chain) if fnum == flat), None)
+        if idx is not None:
+            below = f'кв. {chain[idx - 1][1]}' if idx > 0 else 'нет (низ стояка)'
+            above = f'кв. {chain[idx + 1][1]}' if idx + 1 < len(chain) else 'нет (верх стояка)'
+            lines += ['', f'⬇️ Снизу: {below}', f'⬆️ Сверху: {above}']
+    if partial:
+        lines += ['', f"⚠️ На этаж{'ах' if len(partial) > 1 else 'е'} "
+                      f"{', '.join(map(str, partial))} квартир меньше "
+                      '(нежилые помещения) — там стояк уточните по месту.']
+    return '\n'.join(lines)
+
+
+def riser_card_kb(block, addr) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='🚿 Все стояки дома', payload=f"rsv:{block['id']}"))
+    hs = houses.search(addr, limit=1)
+    if hs:
+        kb.row(CallbackButton(text='🏠 Карточка дома', payload=f"h:{hs[0]['id']}"),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+    else:
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
 
 
@@ -677,6 +723,24 @@ async def on_text(event: MessageCreated):
                    f'работ: {len(house_ids)}, срок: {fmt_deadline(deadline)}.\n'
                    'Я оповестила команду и буду следить за прогрессом.', kb)
         return
+
+    # Запрос вида «Седова 65а/2 кв 47» — где квартира, какой стояк
+    addr_q, flat_q = risers_mod.parse_query(text)
+    if addr_q and flat_q:
+        found = risers_mod.locate(addr_q, flat_q)
+        if found:
+            block, addr, floor, riser, on_floor = found
+            await send(event.message, riser_card_text(block, addr, flat_q, floor, riser, on_floor),
+                       riser_card_kb(block, addr))
+            return
+        blocks = risers_mod.find_blocks(addr_q)
+        if blocks:
+            b, addr = blocks[0]
+            allf = [f for fl in b['floors'].values() for f in fl]
+            await send(event.message,
+                       f'🤔 По адресу {addr} есть таблица стояков, но квартиры {flat_q} в ней нет.\n'
+                       f'Здесь квартиры с {min(allf)} по {max(allf)}.')
+            return
 
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
@@ -1132,6 +1196,31 @@ async def on_callback(event: MessageCallback):
         STATE[uid] = {'mode': 'work_note', 'work_id': int(parts[1])}
         await send(msg, '📝 Напишите заметку: материалы, кто закупает, объём и т.п. '
                         '(заменит прежнюю заметку).')
+
+    elif action == 'rsl':
+        addrs = risers_mod.all_addresses()
+        lines = ['🚿 Раскладка квартир по стоякам есть по этим домам:', '']
+        lines += [f'• {a}' for a in addrs]
+        lines += ['', '💡 Напишите адрес и квартиру — скажу этаж, стояк и соседей '
+                      'сверху/снизу.\nНапример: «Седова 65а/2 кв 47»']
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'rsv':
+        block = risers_mod.BLOCKS_BY_ID.get(int(parts[1]))
+        if block:
+            lines = [f"🚿 {' / '.join(block['addresses'])}",
+                     f"Стояков: {block['risers']}", '',
+                     'Этаж: квартиры по стоякам (слева направо)', '']
+            for floor in sorted(block['floors'], key=int):
+                flats = block['floors'][floor]
+                lines.append(f"  {floor:>2} эт.: {', '.join(map(str, flats))}")
+            lines += ['', '💡 Напишите «адрес кв N» — покажу стояк и соседей по нему.']
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='🚿 Другие дома', payload='rsl'),
+                   CallbackButton(text='🏠 Меню', payload='menu'))
+            await send(msg, '\n'.join(lines), kb)
 
     elif action == 'mt':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
