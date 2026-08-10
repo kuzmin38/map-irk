@@ -3,10 +3,17 @@
   "provider": "python",
   "steps": {
     "install": {
+      "inputs": [
+        { "local": true, "include": ["."] }
+      ],
       "commands": ["pip install -r requirements.txt"]
     }
   },
   "deploy": {
+    "inputs": [
+      { "step": "install" },
+      { "local": true, "include": ["."] }
+    ],
     "startCommand": "python -m bot.main"
   }
 }
