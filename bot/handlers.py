@@ -766,6 +766,14 @@ async def on_text(event: MessageCreated):
 async def on_callback(event: MessageCallback):
     payload = event.callback.payload or ''
     uid = event.callback.user.user_id
+    log.info('Нажата кнопка: %s (пользователь %s)', payload, uid)
+
+    # Подтверждаем нажатие: без ответа на callback кнопка в MAX «зависает»
+    try:
+        await event.bot.send_callback(callback_id=event.callback.callback_id)
+    except Exception:
+        log.warning('Не удалось подтвердить нажатие кнопки', exc_info=True)
+
     db.upsert_user(uid, getattr(event.callback.user, 'full_name', None) or '')
     msg = event.message
     parts = payload.split(':')
