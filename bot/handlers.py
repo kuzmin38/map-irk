@@ -153,11 +153,12 @@ def house_card_text(h) -> str:
     cx = db.get_house_complex(h['id'])
     cx_name = COMPLEX_NAMES.get(cx, 'не указан')
     n_docs = len(db.list_docs(h['id']))
-    return (f"🏠 {h['address']}\n"
-            f"🏙 ЖК: {cx_name}\n"
-            f"👷 Наш дом (УК «Жемчужина»)\n"
-            f"📊 Заявок за год: {h['requests_year']}\n"
-            f"📁 Документов: {n_docs}")
+    kind = ('🏬 Нежилое' if h.get('kind') == 'nonres' else '👷 Наш дом (УК «Жемчужина»)')
+    lines = [f"🏠 {h['address']}", f'🏙 ЖК: {cx_name}', kind]
+    if h.get('note'):
+        lines.append(f"ℹ️ {h['note']}")
+    lines += [f"📊 Заявок за год: {h['requests_year']}", f'📁 Документов: {n_docs}']
+    return '\n'.join(lines)
 
 
 def house_card_kb(h) -> InlineKeyboardBuilder:
