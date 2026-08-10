@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "python",
+  "steps": {
+    "install": {
+      "commands": ["pip install -r requirements.txt"]
+    }
+  },
+  "deploy": {
+    "startCommand": "python -m bot.main"
+  }
+}
