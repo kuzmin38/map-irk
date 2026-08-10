@@ -111,15 +111,14 @@ python3 scripts/extract_houses.py
   `bot/data/bot.db`, сами файлы документов — в `bot/data/docs/`.
   Обе папки стоит регулярно бэкапить.
 
-## 6. ИИ-функции (Kimi)
+## 6. ИИ-функции (OpenRouter)
 
-Люся умеет писать связные сводки для руководства через Kimi (Moonshot AI).
-Для включения задайте при запуске (ключ — тот же, что в вашем телеграм-боте):
+Люся умеет писать связные сводки для руководства через OpenRouter (бесплатная
+модель по умолчанию). Для включения задайте при запуске:
 
 ```bash
-export KIMI_API_KEY='ключ'
-export KIMI_MODEL='модель_как_в_телеграм_боте'   # по умолчанию kimi-k2-turbo-preview
-# export KIMI_BASE_URL='https://api.moonshot.cn/v1'  # если ключ от китайского контура
+export OPENROUTER_API_KEY='ключ'
+export OPENROUTER_MODEL='moonshotai/kimi-k2:free'   # можно не задавать — это значение по умолчанию
 ```
 
 Без ключа всё остальное работает как обычно, кнопка «🧠 Сводка от Люси»
@@ -137,8 +136,7 @@ export KIMI_MODEL='модель_как_в_телеграм_боте'   # по у
    в сервисе → Add Volume → mount path `/data`.
 3. **Variables** сервиса:
    - `MAX_BOT_TOKEN` — токен бота из business.max.ru
-   - `KIMI_API_KEY` — ключ Kimi (тот же, что у телеграм-бота)
-   - `KIMI_MODEL` — модель как в телеграм-боте
+   - `OPENROUTER_API_KEY` — ключ OpenRouter
    - `BOT_DB=/data/bot.db` — база на томе
    - `BOT_DOCS_DIR=/data/docs` — файлы документов на томе
 4. Deploy — в логах должно появиться «Запуск в режиме long polling».

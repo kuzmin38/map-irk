@@ -1,12 +1,11 @@
-"""Подключение ИИ (Kimi / Moonshot AI, OpenAI-совместимый API).
+"""Подключение ИИ через OpenRouter (OpenAI-совместимый API, бесплатная модель).
 
 Переменные окружения:
-  KIMI_API_KEY  — ключ API (тот же, что в вашем телеграм-боте). Без него
-                  ИИ-функции просто отключены, остальное работает как обычно.
-  KIMI_BASE_URL — базовый URL API (по умолчанию https://api.moonshot.ai/v1;
-                  для китайского контура — https://api.moonshot.cn/v1).
-  KIMI_MODEL    — идентификатор модели. Поставьте ту же, что в телеграм-боте
-                  (по умолчанию kimi-k2-turbo-preview).
+  OPENROUTER_API_KEY — ключ OpenRouter (тот же, что в вашем телеграм-боте).
+                        Без него ИИ-функции просто отключены, остальное
+                        работает как обычно.
+  OPENROUTER_MODEL    — идентификатор модели (по умолчанию бесплатная
+                        moonshotai/kimi-k2:free).
 """
 import logging
 import os
@@ -15,9 +14,9 @@ import aiohttp
 
 log = logging.getLogger('ai')
 
-KIMI_API_KEY = os.environ.get('KIMI_API_KEY')
-KIMI_BASE_URL = os.environ.get('KIMI_BASE_URL', 'https://api.moonshot.ai/v1').rstrip('/')
-KIMI_MODEL = os.environ.get('KIMI_MODEL', 'kimi-k2-turbo-preview')
+OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+KIMI_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+KIMI_MODEL = os.environ.get('OPENROUTER_MODEL', 'moonshotai/kimi-k2:free')
 
 SYSTEM_PROMPT = (
     'Ты — Люся, помощница управляющей компании «Жемчужина» (Иркутск). '
@@ -45,17 +44,21 @@ async def ask(user_text: str, system: str = SYSTEM_PROMPT,
         'max_tokens': max_tokens,
         'temperature': temperature,
     }
-    headers = {'Authorization': f'Bearer {KIMI_API_KEY}'}
+    headers = {
+        'Authorization': f'Bearer {KIMI_API_KEY}',
+        'HTTP-Referer': 'https://github.com/kuzmin38/map-irk',
+        'X-Title': 'Lusya Bot',
+    }
     try:
         async with aiohttp.ClientSession() as s:
-            async with s.post(f'{KIMI_BASE_URL}/chat/completions',
+            async with s.post(f'{OPENROUTER_BASE_URL}/chat/completions',
                               json=payload, headers=headers,
                               timeout=aiohttp.ClientTimeout(total=90)) as resp:
                 data = await resp.json()
                 if resp.status != 200:
-                    log.error('Kimi API %s: %s', resp.status, data)
+                    log.error('OpenRouter API %s: %s', resp.status, data)
                     return None
                 return data['choices'][0]['message']['content'].strip()
     except Exception:
-        log.exception('Ошибка запроса к Kimi')
+        log.exception('Ошибка запроса к OpenRouter')
         return None
