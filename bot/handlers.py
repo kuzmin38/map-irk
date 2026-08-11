@@ -21,6 +21,7 @@ from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
 from . import ai, db, houses
+from . import project_docs
 from . import risers as risers_mod
 
 log = logging.getLogger(__name__)
@@ -910,18 +911,64 @@ async def on_callback(event: MessageCallback):
                 by_section.setdefault(d['section'], []).append(d)
             lines = [f"📐 Проектная документация — {h['address']}", '']
             kb = InlineKeyboardBuilder()
+            n_local = 0
             for section, items in by_section.items():
                 lines.append(f'▪️ {section}:')
                 for d in items:
-                    lines.append(f"   • {d['title']}")
+                    idx = project_docs.CATALOG.index(d)
+                    mark = ''
+                    if project_docs.local_path(d):
+                        n_local += 1
+                        mark = ' 📥'
+                        kb.row(CallbackButton(text=d['title'][:60], payload=f'pdf:{idx}'))
+                    else:
+                        kb.row(LinkButton(text=d['title'][:60], url=d['url']))
+                    lines.append(f"   • {d['title']}{mark}")
                     if d.get('note'):
                         lines.append(f"     ⚠️ {d['note']}")
-                    kb.row(LinkButton(text=d['title'][:60], url=d['url']))
                 lines.append('')
-            lines.append('💡 Документы открываются с Google Диска — нужен доступ к папке УК.')
+            lines.append('📥 — файл лежит у Люси, придёт прямо в чат.'
+                         if n_local else
+                         '💡 Документы открываются с Google Диска — нужен доступ к папке УК.')
             kb.row(CallbackButton(text='📁 Файлы дома', payload=f"dl:{h['id']}"),
                    CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
             await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'pdf':
+        doc = project_docs.CATALOG[int(parts[1])]
+        path = project_docs.local_path(doc)
+        if path:
+            try:
+                await msg.answer(text=doc['title'], attachments=[InputMedia(path)])
+            except Exception:
+                log.exception('Не удалось отправить проектный документ %s', path)
+                kb = InlineKeyboardBuilder()
+                kb.row(LinkButton(text='Открыть на Диске', url=doc['url']))
+                await send(msg, f"⚠️ Не получилось отправить «{doc['title']}» файлом.", kb)
+        else:
+            kb = InlineKeyboardBuilder()
+            kb.row(LinkButton(text='Открыть на Диске', url=doc['url']))
+            await send(msg, f"📎 {doc['title']} — файл ещё не загружен к Люсе.", kb)
+
+    elif action == 'pdsync':
+        if _role(uid) not in ('admin', 'engineer'):
+            await send(msg, '📥 Загружать документацию может админ или инженер.')
+            return
+        total = len(project_docs.CATALOG)
+        await send(msg, f'📥 Забираю документацию с Диска — {total} документов. '
+                        'Это займёт минуту, пришлю отчёт.')
+
+        async def progress(done, all_n):
+            log.info('Загрузка документации: %s/%s', done, all_n)
+
+        ok, total, report = await project_docs.download_all(progress)
+        head = f'📥 Загружено {ok} из {total}.'
+        if ok < total:
+            head += ('\nЧто не получилось — ниже. Чаще всего причина в том, '
+                     'что на Диске закрыт доступ по ссылке.')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, head + '\n\n' + '\n'.join(report), kb)
 
     elif action == 'da':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
@@ -1186,6 +1233,11 @@ async def on_callback(event: MessageCallback):
             for u in users[:15]:
                 kb.row(CallbackButton(text=f"{_short_name(u['name'])} · {ROLES.get(u['role'], '')}",
                                       payload=f"pplu:{u['user_id']}"))
+        if _role(uid) in ('admin', 'engineer'):
+            n_local = project_docs.downloaded_count()
+            total = len(project_docs.CATALOG)
+            kb.row(CallbackButton(text=f'📥 Документация с Диска ({n_local}/{total})',
+                                  payload='pdsync'))
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
 
