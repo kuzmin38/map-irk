@@ -3,3 +3,4 @@ __pycache__/
 bot/data/bot.db
 .env
 bot/data/docs/
+.worktrees/
