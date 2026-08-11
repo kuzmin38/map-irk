@@ -128,7 +128,7 @@
    "Седова 65а/6"
   ],
   "section": "ТП",
-  "note": "Формат .dwg — с телефона не открыть, нужен экспорт в PDF"
+  "note": "Исходник для правок. Для просмотра — PDF-чертежи ниже"
  },
  {
   "title": "🔥 Отопление, б/с 1 — чертёж",
@@ -291,5 +291,257 @@
   "url": "https://drive.google.com/file/d/111IO2NPAHsOWTrpbgE94J9FEgPQDoGek/view",
   "addresses": [],
   "section": "Общее"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 1 — зима",
+  "url": "https://drive.google.com/file/d/1bhVDwTG2ODgaq9277RwHNN6mq7LA4RYG/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 1 — лето",
+  "url": "https://drive.google.com/file/d/1WnfBxMWjryOKnGJx37MCJxTtYcS_UIou/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 1 — переходный",
+  "url": "https://drive.google.com/file/d/1s50abPZmc2iLtrICP9kEbywH96V4S8Fh/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 1 — зима",
+  "url": "https://drive.google.com/file/d/1OcwxXK4yLGixjrRbNhSRHP8BVmo8e2dG/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 1 — лето",
+  "url": "https://drive.google.com/file/d/1jTn1JHKu5XSpHv9WQr27CGEU1U0H3C1H/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 1 — переходный",
+  "url": "https://drive.google.com/file/d/1oDewWG33Lcg5uv-m8ginth7iLPRuSQeE/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 2-3 — зима",
+  "url": "https://drive.google.com/file/d/1zhBhPwmF-OQPuphzpdUI1J3daE3zFEMF/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 2-3 — лето",
+  "url": "https://drive.google.com/file/d/1BZl4gx-ikD3ZWgfJXiSDUXhmumPenWKo/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 2-3 — переходный",
+  "url": "https://drive.google.com/file/d/1cKpTBS8uxFK8slp6Y3H5CD_Bj4cYj0R2/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 2-3 — зима",
+  "url": "https://drive.google.com/file/d/1AWnz96eDUZx0HJj6nSNETdnVcKr9c66V/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 2-3 — лето",
+  "url": "https://drive.google.com/file/d/1iY7-D3aNFfEMiUw7jWzDTKXp32UKpyzn/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 2-3 — переходный",
+  "url": "https://drive.google.com/file/d/1zMPWpdJoM3VsNa9PG0mJOUbUyda5KJZf/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 4-5 — зима",
+  "url": "https://drive.google.com/file/d/16sF2xkUmrBKAxHS8DtawiS6W_PJJvtsn/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 4-5 — лето",
+  "url": "https://drive.google.com/file/d/1jb7VZmB04ZCQ-UwS18oIH4BwmgJt3VZ2/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 1 ступень, б/с 4-5 — переходный",
+  "url": "https://drive.google.com/file/d/1A5fPCn2grQtZmeS57yPBj5hwizBdyIHL/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 4-5 — лето",
+  "url": "https://drive.google.com/file/d/119tzv8Osn4T4x18ObwSg-Dnou1Hb3Cpq/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🌡 Расчёт подогревателя: 2 ступень, б/с 4-5 — переходный",
+  "url": "https://drive.google.com/file/d/16H0FAlxGx60JA81Dxi-Kz050ju8S6iNa/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Расчёты ГВС"
+ },
+ {
+  "title": "🔥 Чертёж 09-23",
+  "url": "https://drive.google.com/file/d/10J1Drknb7aAnMlzTV_XYZNRb5PZHW3UG/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Спецификация 09-23",
+  "url": "https://drive.google.com/file/d/1q0HgCzd7PwrgLLwEFBtNiFTgKX4cw1yD/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Паспорт К060-14",
+  "url": "https://drive.google.com/file/d/1mpa1-hoV0p8SZhS64J1Ql1sIkzLwxF93/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Паспорт K060-HNM-G6",
+  "url": "https://drive.google.com/file/d/1c38jfMkgztqNvCisRquX_t0ixbvj5IsI/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
  }
 ]
