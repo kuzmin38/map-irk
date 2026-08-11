@@ -86,6 +86,32 @@ def init():
             submitted_by INTEGER,
             submitted_by_name TEXT,
             submitted_at TEXT NOT NULL)''')
+        # Точки установки приборов на тепловом пункте (место живёт годами)
+        c.execute('''CREATE TABLE IF NOT EXISTS eq_points (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            house_id INTEGER NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'manometer',
+            tp TEXT,
+            place TEXT NOT NULL,
+            created_by_name TEXT,
+            created_at TEXT NOT NULL)''')
+        # Приборы в точках (сменяют друг друга)
+        c.execute('''CREATE TABLE IF NOT EXISTS eq_devices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            point_id INTEGER NOT NULL,
+            serial TEXT,
+            verified_until TEXT,
+            installed_at TEXT,
+            installed_by_id INTEGER,
+            installed_by TEXT,
+            photo_device TEXT,
+            photo_passport TEXT,
+            passport_info TEXT,
+            note TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            removed_at TEXT,
+            last_reminded TEXT,
+            created_at TEXT NOT NULL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS docs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             house_id INTEGER NOT NULL,
@@ -264,6 +290,89 @@ def update_work(work_id, **fields):
     with _conn() as c:
         c.execute(f'UPDATE works SET {cols}, updated_at = ? WHERE id = ?',
                   (*fields.values(), now(), work_id))
+
+
+# --- Оборудование ТП: точки установки и приборы ---
+
+def add_point(house_id, place, tp, user_name, kind='manometer') -> int:
+    with _conn() as c:
+        cur = c.execute('INSERT INTO eq_points (house_id, kind, tp, place, created_by_name, created_at) '
+                        'VALUES (?, ?, ?, ?, ?, ?)', (house_id, kind, tp, place, user_name, now()))
+        return cur.lastrowid
+
+
+def get_point(point_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM eq_points WHERE id = ?', (point_id,)).fetchone()
+
+
+def list_points(house_id, kind='manometer'):
+    with _conn() as c:
+        return c.execute('SELECT * FROM eq_points WHERE house_id = ? AND kind = ? '
+                         'ORDER BY tp, id', (house_id, kind)).fetchall()
+
+
+def points_count(house_id, kind='manometer') -> int:
+    with _conn() as c:
+        return c.execute('SELECT COUNT(*) AS n FROM eq_points WHERE house_id = ? AND kind = ?',
+                         (house_id, kind)).fetchone()['n']
+
+
+def add_device(point_id, serial, verified_until, user_id, user_name,
+               installed_at=None) -> int:
+    """Ставит новый прибор в точку, прежний уводит в историю."""
+    ts = now()
+    with _conn() as c:
+        c.execute("UPDATE eq_devices SET status = 'removed', removed_at = ? "
+                  "WHERE point_id = ? AND status = 'active'", (ts, point_id))
+        cur = c.execute(
+            'INSERT INTO eq_devices (point_id, serial, verified_until, installed_at, '
+            'installed_by_id, installed_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (point_id, serial, verified_until, installed_at or ts, user_id, user_name, ts))
+        return cur.lastrowid
+
+
+def get_device(device_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM eq_devices WHERE id = ?', (device_id,)).fetchone()
+
+
+def active_device(point_id):
+    with _conn() as c:
+        return c.execute("SELECT * FROM eq_devices WHERE point_id = ? AND status = 'active' "
+                         'ORDER BY id DESC LIMIT 1', (point_id,)).fetchone()
+
+
+def point_history(point_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM eq_devices WHERE point_id = ? ORDER BY id DESC',
+                         (point_id,)).fetchall()
+
+
+def update_device(device_id, **fields):
+    cols = ', '.join(f'{k} = ?' for k in fields)
+    with _conn() as c:
+        c.execute(f'UPDATE eq_devices SET {cols} WHERE id = ?', (*fields.values(), device_id))
+
+
+def devices_verification_due(until_iso, today_iso):
+    """Действующие приборы, у которых поверка истекает не позже until_iso."""
+    with _conn() as c:
+        return c.execute(
+            "SELECT d.*, p.house_id, p.place, p.tp FROM eq_devices d "
+            'JOIN eq_points p ON p.id = d.point_id '
+            "WHERE d.status = 'active' AND d.verified_until IS NOT NULL "
+            'AND d.verified_until <= ? '
+            'AND (d.last_reminded IS NULL OR d.last_reminded != ?)',
+            (until_iso, today_iso)).fetchall()
+
+
+def all_active_devices():
+    with _conn() as c:
+        return c.execute(
+            "SELECT d.*, p.house_id, p.place, p.tp FROM eq_points p "
+            "LEFT JOIN eq_devices d ON d.point_id = p.id AND d.status = 'active' "
+            'ORDER BY p.house_id, p.tp, p.id').fetchall()
 
 
 # --- Счётчики и показания ---

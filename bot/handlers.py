@@ -206,6 +206,9 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
     if block:
         row.append(CallbackButton(text='🚿 Стояки', payload=f"rsv:{block['id']}"))
     kb.row(*row)
+    n_points = db.points_count(h['id'])
+    kb.row(CallbackButton(text=f'🔧 Оборудование ТП{f" ({n_points})" if n_points else ""}',
+                          payload=f"eq:{h['id']}"))
     app = miniapp_button('🗺 Открыть в приложении', payload=f"house:{h['id']}")
     if app:
         kb.row(app)
@@ -376,6 +379,104 @@ def riser_card_kb(block, addr) -> InlineKeyboardBuilder:
     return kb
 
 
+# ---------- Оборудование ТП (манометры) ----------
+
+# Типовые места установки — чтобы в подвале не набирать текст
+PLACES = [
+    'Подача отопления',
+    'Обратка отопления',
+    'Подача ГВС',
+    'Циркуляция ГВС',
+    'До элеватора',
+    'После элеватора',
+    'Ввод ХВС',
+]
+TP_LIST = ['ТП №1', 'ТП №2', 'ТП №3', 'ТП №4', 'без номера']
+
+
+def fmt_date(iso: str | None) -> str:
+    """ГГГГ-ММ-ДД → ДД.ММ.ГГГГ."""
+    if not iso:
+        return '—'
+    try:
+        y, m, d = iso.split('-')
+        return f'{d}.{m}.{y}'
+    except ValueError:
+        return iso
+
+
+def fmt_verify(iso: str | None) -> str:
+    """Срок поверки с пометкой, если скоро истекает или уже истёк."""
+    if not iso:
+        return 'не указана'
+    from datetime import date
+    y, m, d = iso.split('-')
+    label = f'{d}.{m}.{y}'
+    days = (date(int(y), int(m), int(d)) - datetime_today()).days
+    if days < 0:
+        return f'❌ {label} (просрочена на {-days} дн.)'
+    if days <= 30:
+        return f'⚠️ {label} (осталось {days} дн.)'
+    return f'✅ {label}'
+
+
+def datetime_today():
+    from datetime import datetime
+    return datetime.now(db.IRKUTSK_TZ).date()
+
+
+def point_line(p) -> str:
+    dev = db.active_device(p['id'])
+    head = f"{p['tp'] + ', ' if p['tp'] else ''}{p['place']}"
+    if not dev:
+        return f'▫️ {head} — прибора нет'
+    return (f"▪️ {head}\n"
+            f"   № {dev['serial'] or '—'} · поверка: {fmt_verify(dev['verified_until'])}")
+
+
+def point_card_text(p) -> str:
+    h = houses.HOUSES_BY_ID.get(p['house_id'])
+    dev = db.active_device(p['id'])
+    lines = [f"🔧 {p['tp'] + ', ' if p['tp'] else ''}{p['place']}",
+             f"🏠 {h['address'] if h else '?'}", '']
+    if dev:
+        lines += [f"📟 Заводской номер: {dev['serial'] or '—'}",
+                  f"📅 Поверка до: {fmt_verify(dev['verified_until'])}",
+                  f"👤 Установил: {dev['installed_by'] or '—'}",
+                  f"🕐 Установлен: {dev['installed_at'] or '—'}"]
+        photos = []
+        if dev['photo_device']:
+            photos.append('прибор')
+        if dev['photo_passport']:
+            photos.append('паспорт')
+        lines.append(f"📷 Фото: {', '.join(photos) if photos else 'нет'}")
+        if dev['note']:
+            lines.append(f"📝 {dev['note']}")
+    else:
+        lines.append('Прибор не установлен.')
+    return '\n'.join(lines)
+
+
+def point_card_kb(p) -> InlineKeyboardBuilder:
+    dev = db.active_device(p['id'])
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='🔄 Заменить прибор' if dev else '➕ Поставить прибор',
+                          payload=f"eqnew:{p['id']}"))
+    if dev:
+        row = []
+        if dev['photo_device']:
+            row.append(CallbackButton(text='📷 Фото прибора', payload=f"eqph:{dev['id']}:device"))
+        if dev['photo_passport']:
+            row.append(CallbackButton(text='📄 Фото паспорта', payload=f"eqph:{dev['id']}:passport"))
+        if row:
+            kb.row(*row)
+        kb.row(CallbackButton(text='📷 Добавить фото', payload=f"eqphadd:{dev['id']}"),
+               CallbackButton(text='📜 История', payload=f"eqhist:{p['id']}"))
+    kb.row(CallbackButton(text='🔧 Все точки дома', payload=f"eq:{p['house_id']}"),
+           CallbackButton(text='🏠 К дому', payload=f"h:{p['house_id']}"))
+    return kb
+
+
 # ---------- Счётчики ----------
 
 METER_KINDS = {
@@ -525,6 +626,11 @@ def _uname(event) -> str:
     return getattr(event.message.sender, 'full_name', None) or ''
 
 
+def _uname_cb(event) -> str:
+    """Имя пользователя из callback-события."""
+    return getattr(event.callback.user, 'full_name', None) or ''
+
+
 def _safe_filename(name: str) -> str:
     name = re.sub(r'[^\w.\-() ]', '_', name)
     return name[:80] or 'file'
@@ -535,6 +641,29 @@ async def _download(url: str) -> bytes:
         async with s.get(url) as resp:
             resp.raise_for_status()
             return await resp.read()
+
+
+async def _save_equipment_photo(event, state) -> bool:
+    """Сохраняет фото прибора или его паспорта. True, если что-то сохранили."""
+    atts = event.message.body.attachments or []
+    dev_id, slot = state['device_id'], state['slot']
+    folder = os.path.join(DOCS_DIR, 'equipment')
+    os.makedirs(folder, exist_ok=True)
+    for a in atts:
+        url = getattr(a.payload, 'url', None) if a.payload else None
+        if not url:
+            continue
+        try:
+            data = await _download(url)
+        except Exception:
+            log.exception('Не удалось скачать фото прибора')
+            return False
+        path = os.path.join(folder, f'{dev_id}_{slot}.jpg')
+        with open(path, 'wb') as f:
+            f.write(data)
+        db.update_device(dev_id, **{f'photo_{slot}': path})
+        return True
+    return False
 
 
 async def _save_docs(event, state) -> int:
@@ -593,6 +722,29 @@ async def on_text(event: MessageCreated):
             await send(event.message,
                        '📎 Пришлите файл, фото или скан одним сообщением '
                        '(текст в подписи сохраню как примечание).')
+        return
+
+    # Фото прибора/паспорта: приходит вложением, часто вообще без подписи
+    if state and state['mode'] == 'eq_photo':
+        dev = db.get_device(state['device_id'])
+        p = db.get_point(dev['point_id']) if dev else None
+        slot = state['slot']
+        has_files = bool(event.message.body.attachments or [])
+        if has_files:
+            if not await _save_equipment_photo(event, state):
+                await send(event.message, '⚠️ Не получилось сохранить фото, пришлите ещё раз.')
+                return
+        elif text not in ('-', '—'):
+            await send(event.message, '📷 Пришлите фото или напишите «-», чтобы пропустить.')
+            return
+        if slot == 'device':
+            STATE[uid] = {'mode': 'eq_photo', 'device_id': state['device_id'], 'slot': 'passport'}
+            await send(event.message, '📄 Теперь фото паспорта манометра '
+                                      '(там номер, класс точности, диапазон), или «-»:')
+            return
+        STATE.pop(uid, None)
+        await send(event.message, '✅ Готово, манометр записан.\n\n' + point_card_text(p),
+                   point_card_kb(p))
         return
 
     if not text or text.startswith('/'):
@@ -679,6 +831,37 @@ async def on_text(event: MessageCreated):
                    f"✅ Спасибо! Отчёт записан в историю дома {h['address'] if h else ''}."
                    if text not in ('-', '—') else '✅ Хорошо, без отчёта.',
                    main_menu_kb())
+        return
+
+    # --- Манометры: место → номер → поверка → фото прибора → фото паспорта ---
+    if state and state['mode'] == 'eq_place':
+        point_id = db.add_point(state['house_id'], text, state.get('tp', ''), _uname(event))
+        STATE[uid] = {'mode': 'eq_serial', 'point_id': point_id}
+        await send(event.message, f'✅ Точка добавлена: {text}.\n\n'
+                                  '📟 Теперь заводской номер манометра (или «-»):')
+        return
+
+    if state and state['mode'] == 'eq_serial':
+        serial = None if text in ('-', '—') else text
+        STATE[uid] = {'mode': 'eq_verify', 'point_id': state['point_id'], 'serial': serial}
+        await send(event.message,
+                   '📅 До какого числа действует поверка?\n'
+                   'Дата — «25.09.2027», или «-», если неизвестна.')
+        return
+
+    if state and state['mode'] == 'eq_verify':
+        try:
+            verified = parse_deadline(text)
+        except ValueError:
+            await send(event.message, '🤔 Не поняла дату. Например: «25.09.2027» или «-».')
+            return
+        dev_id = db.add_device(state['point_id'], state['serial'], verified, uid, _uname(event))
+        STATE[uid] = {'mode': 'eq_photo', 'device_id': dev_id, 'slot': 'device'}
+        p = db.get_point(state['point_id'])
+        await send(event.message,
+                   f"✅ Записала манометр № {state['serial'] or '—'} "
+                   f"({p['place']}), поверка до {fmt_date(verified)}.\n\n"
+                   '📷 Пришлите фото манометра, или «-», чтобы пропустить.')
         return
 
     if state and state['mode'] == 'meter_label':
@@ -1344,6 +1527,123 @@ async def on_callback(event: MessageCallback):
             kb.row(CallbackButton(text='🚿 Другие дома', payload='rsl'),
                    CallbackButton(text='🏠 Меню', payload='menu'))
             await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'eq':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            points = db.list_points(h['id'])
+            lines = [f"🔧 Оборудование ТП — {h['address']}", '']
+            if not points:
+                lines.append('Точек установки пока нет.\n'
+                             'Добавьте точку — это место на тепловом пункте '
+                             '(например, «ТП №2, подача отопления»). Приборы в ней '
+                             'потом будут меняться, а история сохранится.')
+            else:
+                lines += [point_line(p) for p in points]
+                today = datetime_today().isoformat()
+                overdue = sum(1 for p in points
+                              if (d := db.active_device(p['id'])) and d['verified_until']
+                              and d['verified_until'] < today)
+                if overdue:
+                    lines += ['', f'❌ Поверка просрочена: {overdue} шт.']
+            kb = InlineKeyboardBuilder()
+            for p in points:
+                label = f"{p['tp'] + ' · ' if p['tp'] else ''}{p['place']}"
+                kb.row(CallbackButton(text=label[:60], payload=f"eqp:{p['id']}"))
+            kb.row(CallbackButton(text='➕ Добавить точку', payload=f"eqadd:{h['id']}"),
+                   CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
+            await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'eqadd':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            kb = InlineKeyboardBuilder()
+            for i in range(0, len(TP_LIST), 2):
+                kb.row(*[CallbackButton(text=t, payload=f"eqtp:{h['id']}:{j}")
+                         for j, t in enumerate(TP_LIST[i:i + 2], start=i)])
+            kb.row(CallbackButton(text='◀️ Назад', payload=f"eq:{h['id']}"))
+            await send(msg, f"➕ Новая точка, {h['address']}.\nНа каком тепловом пункте?", kb)
+
+    elif action == 'eqtp':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        tp = TP_LIST[int(parts[2])]
+        if h:
+            tp_val = '' if tp == 'без номера' else tp
+            kb = InlineKeyboardBuilder()
+            for i in range(0, len(PLACES), 2):
+                kb.row(*[CallbackButton(text=pl, payload=f"eqpl:{h['id']}:{j}:{int(parts[2])}")
+                         for j, pl in enumerate(PLACES[i:i + 2], start=i)])
+            kb.row(CallbackButton(text='✏️ Своё место', payload=f"eqplc:{h['id']}:{int(parts[2])}"))
+            await send(msg, f"{tp_val or 'Тепловой пункт'}: где стоит манометр?", kb)
+
+    elif action in ('eqpl', 'eqplc'):
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if not h:
+            return
+        if action == 'eqplc':
+            tp = TP_LIST[int(parts[2])]
+            STATE[uid] = {'mode': 'eq_place', 'house_id': h['id'],
+                          'tp': '' if tp == 'без номера' else tp}
+            await send(msg, '✏️ Напишите место установки одной строкой, '
+                            'например: «Обратка ГВС, после насоса».')
+            return
+        place = PLACES[int(parts[2])]
+        tp = TP_LIST[int(parts[3])]
+        point_id = db.add_point(h['id'], place, '' if tp == 'без номера' else tp, _uname_cb(event))
+        STATE[uid] = {'mode': 'eq_serial', 'point_id': point_id}
+        await send(msg, f"✅ Точка добавлена: {tp}, {place}.\n\n"
+                        '📟 Теперь заводской номер манометра (или «-», если без номера):')
+
+    elif action == 'eqp':
+        p = db.get_point(int(parts[1]))
+        if p:
+            await send(msg, point_card_text(p), point_card_kb(p))
+
+    elif action == 'eqnew':
+        p = db.get_point(int(parts[1]))
+        if p:
+            STATE[uid] = {'mode': 'eq_serial', 'point_id': p['id']}
+            await send(msg, f"📟 {p['place']}: заводской номер нового манометра "
+                            '(или «-», если без номера):')
+
+    elif action == 'eqhist':
+        p = db.get_point(int(parts[1]))
+        if p:
+            hist = db.point_history(p['id'])
+            lines = [f"📜 История точки: {p['tp'] + ', ' if p['tp'] else ''}{p['place']}", '']
+            if not hist:
+                lines.append('Приборов пока не было.')
+            for d in hist:
+                mark = ('▶️ стоит сейчас' if d['status'] == 'active'
+                        else f"снят {d['removed_at'] or ''}")
+                lines.append(f"• № {d['serial'] or '—'} — поверка до "
+                             f"{fmt_date(d['verified_until'])}, поставил "
+                             f"{d['installed_by'] or '—'} ({d['installed_at'] or '—'}) · {mark}")
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='◀️ К точке', payload=f"eqp:{p['id']}"))
+            await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'eqph':
+        dev = db.get_device(int(parts[1]))
+        which = parts[2]
+        path = dev['photo_device'] if which == 'device' else dev['photo_passport']
+        if dev and path and os.path.exists(path):
+            caption = 'Фото прибора' if which == 'device' else 'Фото паспорта'
+            try:
+                await msg.answer(text=f"{caption}: № {dev['serial'] or '—'}",
+                                 attachments=[InputMedia(path)])
+            except Exception:
+                log.exception('Не удалось отправить фото %s', path)
+                await send(msg, '⚠️ Не получилось отправить фото.')
+        else:
+            await send(msg, '📷 Фото не найдено.')
+
+    elif action == 'eqphadd':
+        dev = db.get_device(int(parts[1]))
+        if dev:
+            STATE[uid] = {'mode': 'eq_photo', 'device_id': dev['id'], 'slot': 'device'}
+            await send(msg, '📷 Пришлите фото манометра (общий вид с номером). '
+                            'Следом попрошу фото паспорта. Если фото нет — напишите «-».')
 
     elif action == 'mt':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
