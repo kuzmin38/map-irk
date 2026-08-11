@@ -295,10 +295,11 @@ function renderRisers(){
   }
   let head = '';
   if(flat && hitFloor){
+    // стояки считаются слева направо, от меньшего номера квартиры к большему
     const chain = [];
     floors.slice().reverse().forEach(f => {
       const row = b.floors[f];
-      if(row.length === b.risers && hitRiser <= row.length) chain.push([f, row[hitRiser - 1]]);
+      if(hitRiser <= row.length) chain.push([f, row[hitRiser - 1]]);
     });
     const pos = chain.findIndex(c => c[1] === flat);
     const below = pos > 0 ? 'кв. ' + chain[pos-1][1] : '— (низ стояка)';
@@ -326,7 +327,7 @@ function renderRisers(){
       Array.from({length: b.risers}, (_, i) => {
         const v = row[i];
         if(v === undefined) return '<td class="empty"></td>';
-        const cls = v === flat ? 'hit' : (hitRiser === i + 1 && row.length === b.risers ? 'col' : '');
+        const cls = v === flat ? 'hit' : (hitRiser === i + 1 ? 'col' : '');
         return `<td class="${cls}">${v}</td>`;
       }).join('') + '</tr>';
   });
@@ -335,8 +336,9 @@ function renderRisers(){
   $('#r-result').innerHTML = head + `<div class="card">
     <h2>Раскладка: этаж × стояк</h2>
     <div class="grid">${table}</div>
-    ${partial.length ? `<div class="muted" style="margin-top:10px">⚠️ На этаж${partial.length>1?'ах':'е'}
-      ${partial.join(', ')} квартир меньше (нежилые помещения) — стояк уточните по месту.</div>` : ''}
+    <div class="muted" style="margin-top:10px">Стояки считаются слева направо, от меньшего номера квартиры к большему.</div>
+    ${partial.length ? `<div class="muted">ℹ️ На этаж${partial.length>1?'ах':'е'}
+      ${partial.join(', ')} квартир меньше (нежилые помещения) — крайних стояков там нет.</div>` : ''}
   </div>`;
 }
 

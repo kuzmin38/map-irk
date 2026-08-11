@@ -343,7 +343,7 @@ def riser_card_text(block, addr, flat, floor, riser, on_floor) -> str:
     partial = risers_mod.partial_floors(block)
     lines = [f'🚿 {addr}, кв. {flat}',
              f'🔢 Этаж: {floor}',
-             f"🚰 Стояк: {riser}-й из {block['risers']} (считая слева)", '']
+             f"🚰 Стояк: {riser}-й из {block['risers']} (слева направо)", '']
     if chain:
         neighbours = []
         for fl, fnum in chain:
@@ -357,9 +357,9 @@ def riser_card_text(block, addr, flat, floor, riser, on_floor) -> str:
             above = f'кв. {chain[idx + 1][1]}' if idx + 1 < len(chain) else 'нет (верх стояка)'
             lines += ['', f'⬇️ Снизу: {below}', f'⬆️ Сверху: {above}']
     if partial:
-        lines += ['', f"⚠️ На этаж{'ах' if len(partial) > 1 else 'е'} "
+        lines += ['', f"ℹ️ На этаж{'ах' if len(partial) > 1 else 'е'} "
                       f"{', '.join(map(str, partial))} квартир меньше "
-                      '(нежилые помещения) — там стояк уточните по месту.']
+                      '(нежилые помещения) — крайних стояков там нет.']
     return '\n'.join(lines)
 
 

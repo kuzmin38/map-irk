@@ -74,21 +74,20 @@ def locate_flat(block, flat: int):
 def riser_flats(block, riser: int):
     """Все квартиры одного стояка снизу вверх: [(этаж, квартира), ...].
 
-    Ряды с неполным числом квартир (обычно первый жилой этаж, где часть
-    помещений нежилая) в стояк не включаем — их принадлежность по таблице
-    не определить однозначно.
+    Стояки считаются слева направо, от меньшего номера квартиры к большему.
+    На этаже с неполным рядом (часть помещений нежилая) крайние стояки
+    просто отсутствуют — такой этаж пропускаем только для них.
     """
-    full = block['risers']
     out = []
     for floor in sorted(block['floors'], key=int):
         flats = block['floors'][floor]
-        if len(flats) == full and riser <= len(flats):
+        if riser <= len(flats):
             out.append((int(floor), flats[riser - 1]))
     return out
 
 
 def partial_floors(block):
-    """Этажи с неполным рядом квартир — по ним предупреждаем."""
+    """Этажи, где квартир меньше, чем стояков (нежилые помещения)."""
     full = block['risers']
     return [int(f) for f, v in block['floors'].items() if len(v) != full]
 
