@@ -30,6 +30,8 @@ async def main():
     if not token:
         sys.exit('Задайте переменную окружения MAX_BOT_TOKEN (токен бота из @MasterBot)')
 
+    log.info('Версия сборки: %s', handlers.build_version())
+
     db.init()
     bot = Bot(token)
 

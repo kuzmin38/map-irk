@@ -46,6 +46,26 @@ with open(os.path.join(houses.DATA_DIR, 'docs_catalog.json'), encoding='utf-8') 
 # Мини-приложение MAX: заполняется в main.py при старте (username и id бота)
 BOT_ME = {}
 
+# Дата последнего изменения кода — чтобы видеть, какая сборка реально запущена
+BUILD_TIME = None
+
+
+def build_version() -> str:
+    """Версия запущенного кода: коммит (если Railway его отдал) и дата файла."""
+    global BUILD_TIME
+    if BUILD_TIME is None:
+        from datetime import datetime
+        ts = os.path.getmtime(__file__)
+        BUILD_TIME = datetime.fromtimestamp(ts, db.IRKUTSK_TZ).strftime('%d.%m.%Y %H:%M')
+    sha = (os.environ.get('RAILWAY_GIT_COMMIT_SHA') or '')[:7]
+    branch = os.environ.get('RAILWAY_GIT_BRANCH') or ''
+    parts = [BUILD_TIME]
+    if sha:
+        parts.append(f'коммит {sha}')
+    if branch:
+        parts.append(branch)
+    return ' · '.join(parts)
+
 
 def miniapp_button(text: str, payload: str | None = None):
     """Кнопка открытия мини-приложения; None, если приложение не настроено."""
@@ -627,6 +647,15 @@ async def on_start(event: MessageCreated):
 async def on_menu(event: MessageCreated):
     STATE.pop(_uid(event), None)
     await send(event.message, MAIN_TEXT, main_menu_kb())
+
+
+@dp.message_created(Command('version'))
+async def on_version(event: MessageCreated):
+    """Какая сборка сейчас работает — чтобы не гадать, доехало обновление или нет."""
+    await send(event.message,
+               f'🛠 Сборка: {build_version()}\n'
+               f"🤖 Бот: {BOT_ME.get('username') or 'username не получен'}\n"
+               f"🧠 ИИ: {'подключён' if ai.enabled() else 'выключен'}")
 
 
 # ---------- Текстовые сообщения (поиск + шаги диалогов) ----------
