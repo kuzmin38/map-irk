@@ -36,6 +36,17 @@ with open(os.path.join(houses.DATA_DIR, 'team.json'), encoding='utf-8') as f:
     TEAM = json.load(f)
 TEAM_BY_ID = {m['id']: m for m in TEAM}
 
+# Каталог проектной документации: файлы лежат на Google Диске, бот отдаёт ссылки
+with open(os.path.join(houses.DATA_DIR, 'docs_catalog.json'), encoding='utf-8') as f:
+    DOCS_CATALOG = json.load(f)
+
+
+def catalog_for_house(address: str) -> list:
+    """Документы каталога, относящиеся к дому."""
+    a = houses._norm(address)
+    return [d for d in DOCS_CATALOG
+            if any(houses._norm(x) == a for x in d['addresses'])]
+
 # Роли в порядке структуры УК: руководитель → инженер → мастера →
 # рабочие (сантехники, электрики, дворники, плотники)
 ROLES = {
@@ -841,12 +852,18 @@ async def on_callback(event: MessageCallback):
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
         if h:
             docs = db.list_docs(h['id'])
+            project = catalog_for_house(h['address'])
             kb = InlineKeyboardBuilder()
+            if project:
+                kb.row(CallbackButton(text=f'📐 Проектная документация ({len(project)})',
+                                      payload=f"pd:{h['id']}"))
             kb.row(CallbackButton(text='📎 Добавить документ', payload=f"da:{h['id']}"),
                    CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
             if not docs:
-                await send(msg, f"📁 По дому {h['address']} документов пока нет.\n"
-                                'Нажмите «Добавить документ» и пришлите фото/скан/файл.', kb)
+                extra = (f'\n📐 Зато есть проектная документация — {len(project)} документов, '
+                         'кнопка ниже.' if project else '')
+                await send(msg, f"📁 Своих файлов по дому {h['address']} пока нет.\n"
+                                'Нажмите «Добавить документ» и пришлите фото/скан/файл.' + extra, kb)
             else:
                 await send(msg, f"📁 Документы дома {h['address']} — {len(docs)} шт., отправляю:")
                 for d in docs[-15:]:
@@ -860,6 +877,31 @@ async def on_callback(event: MessageCallback):
                         log.exception('Не удалось отправить документ %s', d['path'])
                         await msg.answer(text=f'⚠️ Не удалось отправить: {caption}')
                 await send(msg, 'Готово!', kb)
+
+    elif action == 'pd':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            project = catalog_for_house(h['address'])
+            if not project:
+                await send(msg, f"📐 Проектной документации по дому {h['address']} в каталоге нет.")
+                return
+            by_section = {}
+            for d in project:
+                by_section.setdefault(d['section'], []).append(d)
+            lines = [f"📐 Проектная документация — {h['address']}", '']
+            kb = InlineKeyboardBuilder()
+            for section, items in by_section.items():
+                lines.append(f'▪️ {section}:')
+                for d in items:
+                    lines.append(f"   • {d['title']}")
+                    if d.get('note'):
+                        lines.append(f"     ⚠️ {d['note']}")
+                    kb.row(LinkButton(text=d['title'][:60], url=d['url']))
+                lines.append('')
+            lines.append('💡 Документы открываются с Google Диска — нужен доступ к папке УК.')
+            kb.row(CallbackButton(text='📁 Файлы дома', payload=f"dl:{h['id']}"),
+                   CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
+            await send(msg, '\n'.join(lines), kb)
 
     elif action == 'da':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))

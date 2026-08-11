@@ -1,0 +1,295 @@
+[
+ {
+  "title": "♨️ Отопление и вентиляция 65а.2 (рабочий, с изм.)",
+  "url": "https://drive.google.com/file/d/18wwG2YwW2O19SikT2W1fITKWa5rHYQFK/view",
+  "addresses": [
+   "Седова 65а/2"
+  ],
+  "section": "ОВ"
+ },
+ {
+  "title": "♨️ Отопление и вентиляция 65а.3 (рабочий, с изм.)",
+  "url": "https://drive.google.com/file/d/1ho5WHSN9gbHBkNqa0EIYmyEs63AeYiAo/view",
+  "addresses": [
+   "Седова 65а/3"
+  ],
+  "section": "ОВ"
+ },
+ {
+  "title": "♨️ Отопление и вентиляция 65а.4 (рабочий, с изм.)",
+  "url": "https://drive.google.com/file/d/1kkkv1i98-LmJn8VmfPztJpiLx9QfEW6K/view",
+  "addresses": [
+   "Седова 65а/4"
+  ],
+  "section": "ОВ"
+ },
+ {
+  "title": "♨️ Отопление и вентиляция 65а.5 (рабочий, с изм.)",
+  "url": "https://drive.google.com/file/d/1kJ7C8iK6LFkN913KAvjTDF1Tkv9swXeC/view",
+  "addresses": [
+   "Седова 65а/5"
+  ],
+  "section": "ОВ"
+ },
+ {
+  "title": "♨️ Отопление и вентиляция 65а.6 (рабочий, с изм.)",
+  "url": "https://drive.google.com/file/d/1zIKXrwjwXMrf1Crel8yV91dUyFRXyohn/view",
+  "addresses": [
+   "Седова 65а/6"
+  ],
+  "section": "ОВ"
+ },
+ {
+  "title": "💧 Водопровод и канализация, блок-секция 1",
+  "url": "https://drive.google.com/file/d/1sHCSty6KIBuNhegmA1taJravuS_bZUQK/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ВК",
+  "note": "Уточнить, какому адресу соответствует эта блок-секция"
+ },
+ {
+  "title": "💧 Водопровод и канализация, блок-секция 2",
+  "url": "https://drive.google.com/file/d/1hAAp-fh6XygHwE8i9ULZcdsmCMwYdWR2/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ВК",
+  "note": "Уточнить, какому адресу соответствует эта блок-секция"
+ },
+ {
+  "title": "💧 Водопровод и канализация, блок-секция 3",
+  "url": "https://drive.google.com/file/d/1KL2-1_fPfy2_TFKmSJ1ffHv0OAknVi7o/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ВК",
+  "note": "Уточнить, какому адресу соответствует эта блок-секция"
+ },
+ {
+  "title": "💧 Водопровод и канализация, блок-секция 4",
+  "url": "https://drive.google.com/file/d/1pVGy2cWkIu3MlVokrE2GvcHPVYYg4HaD/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ВК",
+  "note": "Уточнить, какому адресу соответствует эта блок-секция"
+ },
+ {
+  "title": "💧 Водопровод и канализация, блок-секция 5",
+  "url": "https://drive.google.com/file/d/1fXKVEbieik5lh9JozMRtypwEjlclabqn/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ВК",
+  "note": "Уточнить, какому адресу соответствует эта блок-секция"
+ },
+ {
+  "title": "💧 Канализация офисов, блок-секция 2",
+  "url": "https://drive.google.com/file/d/1wR_kLmNlybbd-WUbDnjX_x9TxBUBV4k_/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ВК",
+  "note": "Уточнить адрес блок-секции"
+ },
+ {
+  "title": "🔥 Тепловые пункты ТП №1–№4 (чертёж AutoCAD)",
+  "url": "https://drive.google.com/file/d/1yZIk6CDMftLbvadq6LGEMAcyX3xtn4c2/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП",
+  "note": "Формат .dwg — с телефона не открыть, нужен экспорт в PDF"
+ },
+ {
+  "title": "🔥 Отопление, б/с 1 — чертёж",
+  "url": "https://drive.google.com/file/d/1jnmZxa-3DhxNVICjAVKjCYvJbTpSCau7/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Отопление, б/с 1 — спецификация",
+  "url": "https://drive.google.com/file/d/1HMbICMgtcouG9suZntsZkau-yarYJLmD/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Отопление, б/с 2-3 — чертёж",
+  "url": "https://drive.google.com/file/d/1dUQbM1NpUNcmUQYvlnYB1TISe-EBfb4r/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Отопление, б/с 2-3 — спецификация",
+  "url": "https://drive.google.com/file/d/15dpkH9rO2nn4hVMX-wnSCTydVLeTMGBe/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Отопление, б/с 4-5 — чертёж",
+  "url": "https://drive.google.com/file/d/1qKFoK08ZZSYT-rSxzOB6WhcFDEHxm2Bc/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Отопление, б/с 4-5 — спецификация",
+  "url": "https://drive.google.com/file/d/1fLSl5Xu9Lf2N2ozVTQNYAkcefOSVeJV1/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Моноблок ГВС, б/с 1",
+  "url": "https://drive.google.com/file/d/19izIB1RvgK0TM-7Sc8IwjZExtgaRka6C/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Моноблок ГВС, б/с 2-3",
+  "url": "https://drive.google.com/file/d/1S2fjWnwW3Uf2Ga72b0z5ThL3CAlVQD2m/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "🔥 Моноблок ГВС, б/с 4-5",
+  "url": "https://drive.google.com/file/d/15r0HEenYiSOMvvIZJzgkgasnXN43Ohmi/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "ТП"
+ },
+ {
+  "title": "📟 Узел учёта тепла ТП №1 (проект)",
+  "url": "https://drive.google.com/file/d/1MFUcw2JPI1PdS-YnGI-oimqY_YEifta-/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Узлы учёта"
+ },
+ {
+  "title": "📟 Узел учёта тепла ТП №2 (проект)",
+  "url": "https://drive.google.com/file/d/18L8jdy0IfmaFYj9-ntulkpbCOeLwE2nM/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Узлы учёта"
+ },
+ {
+  "title": "📟 Узел учёта тепла ТП №3 (проект)",
+  "url": "https://drive.google.com/file/d/1KZORByZCR_ZbvuKeWqr5sCLdHU_zFI1U/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Узлы учёта"
+ },
+ {
+  "title": "📟 Узел учёта тепла ТП №4 (проект)",
+  "url": "https://drive.google.com/file/d/1aMDWbUOCMvfcag1QNbXnVG64UQFAzGdv/view",
+  "addresses": [
+   "Седова 65а/2",
+   "Седова 65а/3",
+   "Седова 65а/4",
+   "Седова 65а/5",
+   "Седова 65а/6"
+  ],
+  "section": "Узлы учёта"
+ },
+ {
+  "title": "📊 Раскладка квартир по стоякам (исходная таблица)",
+  "url": "https://drive.google.com/file/d/111IO2NPAHsOWTrpbgE94J9FEgPQDoGek/view",
+  "addresses": [],
+  "section": "Общее"
+ }
+]
