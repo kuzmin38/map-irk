@@ -191,28 +191,41 @@ def house_card_text(h) -> str:
 
 
 def house_card_kb(h) -> InlineKeyboardBuilder:
+    """Карточка дома: только частое, остальное — в разделе «Техника»."""
     gis, ya = houses.map_links(h)
     kb = InlineKeyboardBuilder()
     kb.row(LinkButton(text='🗺 2ГИС', url=gis),
            LinkButton(text='🗺 Яндекс', url=ya))
-    kb.row(CallbackButton(text='🗂 Паспорт дома', payload=f"p:{h['id']}"),
-           CallbackButton(text='➕ Заявка сюда', payload=f"nrh:{h['id']}"))
-    kb.row(CallbackButton(text='📁 Документы', payload=f"dl:{h['id']}"),
-           CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
-    kb.row(CallbackButton(text='📅 Работы дома', payload=f"wlh:{h['id']}"),
-           CallbackButton(text='📜 История', payload=f"hist:{h['id']}"))
-    row = [CallbackButton(text='🧮 Счётчики', payload=f"mt:{h['id']}")]
+    kb.row(CallbackButton(text='➕ Заявка сюда', payload=f"nrh:{h['id']}"),
+           CallbackButton(text='📅 Работы дома', payload=f"wlh:{h['id']}"))
+    row = [CallbackButton(text='🔧 Техника дома', payload=f"tech:{h['id']}")]
     block, _ = risers_mod.find_block(h['address'])
     if block:
         row.append(CallbackButton(text='🚿 Стояки', payload=f"rsv:{block['id']}"))
     kb.row(*row)
-    n_points = db.points_count(h['id'])
-    kb.row(CallbackButton(text=f'🔧 Оборудование ТП{f" ({n_points})" if n_points else ""}',
-                          payload=f"eq:{h['id']}"))
     app = miniapp_button('🗺 Открыть в приложении', payload=f"house:{h['id']}")
     if app:
-        kb.row(app)
-    kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        kb.row(app, CallbackButton(text='🏠 Меню', payload='menu'))
+    else:
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+    return kb
+
+
+def tech_kb(h) -> InlineKeyboardBuilder:
+    """Техника дома: паспорт, оборудование, счётчики, документы, история."""
+    kb = InlineKeyboardBuilder()
+    n_points = db.points_count(h['id'])
+    n_docs = len(db.list_docs(h['id'])) + len(catalog_for_house(h['address']))
+    kb.row(CallbackButton(text='🗂 Паспорт дома', payload=f"p:{h['id']}"),
+           CallbackButton(text=f'🔧 Оборудование ТП{f" ({n_points})" if n_points else ""}',
+                          payload=f"eq:{h['id']}"))
+    kb.row(CallbackButton(text='🧮 Счётчики', payload=f"mt:{h['id']}"),
+           CallbackButton(text=f'📁 Документы{f" ({n_docs})" if n_docs else ""}',
+                          payload=f"dl:{h['id']}"))
+    kb.row(CallbackButton(text='📜 История работ', payload=f"hist:{h['id']}"),
+           CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
+    kb.row(CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"),
+           CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
 
 
@@ -1527,6 +1540,28 @@ async def on_callback(event: MessageCallback):
             kb.row(CallbackButton(text='🚿 Другие дома', payload='rsl'),
                    CallbackButton(text='🏠 Меню', payload='menu'))
             await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'tech':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            data = db.get_passport(h['id'])
+            filled = sum(1 for k, _ in PASSPORT_FIELDS if data.get(k))
+            n_points = db.points_count(h['id'])
+            overdue = sum(1 for p in db.list_points(h['id'])
+                          if (d := db.active_device(p['id'])) and d['verified_until']
+                          and d['verified_until'] < datetime_today().isoformat())
+            meters = db.list_meters(h['id'])
+            submitted = {r['meter_id'] for r in db.readings_for_period(current_period())}
+            lines = [f"🔧 Техника — {h['address']}", '',
+                     f'🗂 Паспорт заполнен: {filled} из {len(PASSPORT_FIELDS)}',
+                     f'🔧 Точек на ТП: {n_points}' + (f' · ❌ поверка просрочена: {overdue}'
+                                                     if overdue else ''),
+                     f'🧮 Счётчиков: {len(meters)}' +
+                     (f' · сдано за {fmt_period(current_period())}: '
+                      f'{sum(1 for m in meters if m["id"] in submitted)}' if meters else ''),
+                     f"📁 Документов: {len(db.list_docs(h['id']))} своих + "
+                     f"{len(catalog_for_house(h['address']))} проектных"]
+            await send(msg, '\n'.join(lines), tech_kb(h))
 
     elif action == 'eq':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
