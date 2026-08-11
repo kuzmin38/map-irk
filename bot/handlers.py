@@ -15,6 +15,7 @@ from maxapi.types import (
     LinkButton,
     MessageCallback,
     MessageCreated,
+    OpenAppButton,
 )
 from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
@@ -39,6 +40,18 @@ TEAM_BY_ID = {m['id']: m for m in TEAM}
 # Каталог проектной документации: файлы лежат на Google Диске, бот отдаёт ссылки
 with open(os.path.join(houses.DATA_DIR, 'docs_catalog.json'), encoding='utf-8') as f:
     DOCS_CATALOG = json.load(f)
+
+
+# Мини-приложение MAX: заполняется в main.py при старте (username и id бота)
+BOT_ME = {}
+
+
+def miniapp_button(text: str, payload: str | None = None):
+    """Кнопка открытия мини-приложения; None, если приложение не настроено."""
+    if not BOT_ME.get('username'):
+        return None
+    return OpenAppButton(text=text, web_app=BOT_ME['username'],
+                         contact_id=BOT_ME.get('user_id'), payload=payload)
 
 
 def catalog_for_house(address: str) -> list:
@@ -140,7 +153,11 @@ def main_menu_kb() -> InlineKeyboardBuilder:
            CallbackButton(text='👥 Люди', payload='ppl'))
     kb.row(CallbackButton(text='📊 Брифинг', payload='brief'),
            CallbackButton(text='🧮 Сводка счётчиков', payload='mtall'))
-    kb.row(CallbackButton(text='📖 Справочник', payload='dir'))
+    app = miniapp_button('🗺 Карта и таблицы')
+    if app:
+        kb.row(app, CallbackButton(text='📖 Справочник', payload='dir'))
+    else:
+        kb.row(CallbackButton(text='📖 Справочник', payload='dir'))
     return kb
 
 
@@ -188,6 +205,9 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
     if block:
         row.append(CallbackButton(text='🚿 Стояки', payload=f"rsv:{block['id']}"))
     kb.row(*row)
+    app = miniapp_button('🗺 Открыть в приложении', payload=f"house:{h['id']}")
+    if app:
+        kb.row(app)
     kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
 

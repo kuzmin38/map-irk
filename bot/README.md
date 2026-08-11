@@ -140,3 +140,28 @@ export OPENROUTER_MODEL='moonshotai/kimi-k2:free'   # можно не задав
    - `BOT_DB=/data/bot.db` — база на томе
    - `BOT_DOCS_DIR=/data/docs` — файлы документов на томе
 4. Deploy — в логах должно появиться «Запуск в режиме long polling».
+
+## 8. Мини-приложение MAX
+
+Веб-приложение внутри мессенджера: карта домов, раскладка квартир по стоякам,
+проектная документация, справочник. Живёт на GitHub Pages, данные вшиты в
+страницу (сервер не нужен).
+
+Пересборка после обновления данных:
+
+```bash
+python3 scripts/build_miniapp.py     # miniapp/template.html + bot/data → miniapp/index.html
+```
+
+Публикация:
+
+1. GitHub → репозиторий → **Settings → Pages** → Source: *Deploy from a branch*,
+   ветка `claude/plumber-work-bot-ofyv8j`, папка `/ (root)` → Save.
+2. Через пару минут приложение доступно по адресу
+   `https://kuzmin38.github.io/map-irk/miniapp/`.
+3. business.max.ru → бот → вкладка **MiniApps** → указать этот URL.
+
+Кнопка «🗺 Карта и таблицы» появляется в меню бота автоматически, как только
+MAX отдаёт боту его username (проверяется при старте, см. лог «Бот: ...»).
+Из карточки дома кнопка открывает приложение сразу на этом доме
+(параметр запуска `house:<id>`).

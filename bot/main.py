@@ -16,7 +16,7 @@ import sys
 
 from maxapi import Bot
 
-from . import db
+from . import db, handlers
 from .handlers import dp
 from .reminders import reminder_loop
 
@@ -32,6 +32,17 @@ async def main():
 
     db.init()
     bot = Bot(token)
+
+    # Данные бота нужны для кнопки мини-приложения (MAX открывает его по username бота)
+    try:
+        me = await bot.get_me()
+        handlers.BOT_ME.update(username=me.username, user_id=me.user_id)
+        log.info('Бот: %s (id %s)', me.username, me.user_id)
+        if not me.username:
+            log.warning('У бота нет username — кнопка мини-приложения показана не будет')
+    except Exception:
+        log.exception('Не удалось получить данные бота')
+
     mode = os.environ.get('BOT_MODE', 'polling').lower()
     asyncio.create_task(reminder_loop(bot))  # напоминания о сроках
 

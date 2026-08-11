@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Люся — помощница УК «Жемчужина»</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#fff; --text:#14161a; --dim:#6b7280; --line:#e5e7eb;
+  --accent:#2563eb; --accent-soft:#dbeafe; --ok:#16a34a; --warn:#d97706; --danger:#dc2626;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1115; --card:#191c22; --text:#e8eaed; --dim:#9aa1ad; --line:#2a2f38;
+    --accent:#5b9dff; --accent-soft:#1c2c47; --ok:#3ecf7a; --warn:#f0b429; --danger:#ff6b6b;
+    --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding-bottom:calc(64px + env(safe-area-inset-bottom));
+}
+header{
+  position:sticky;top:0;z-index:500;background:var(--card);border-bottom:1px solid var(--line);
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px;
+}
+header .logo{width:32px;height:32px;border-radius:9px;background:var(--accent);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+header h1{font-size:16px;margin:0;font-weight:650}
+header .sub{font-size:12px;color:var(--dim);margin-top:1px}
+main{padding:12px}
+.page{display:none}.page.active{display:block}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;margin:0 0 8px}
+.muted{color:var(--dim);font-size:13px}
+input,select{
+  width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:11px;
+  background:var(--card);color:var(--text);font-size:16px;outline:none
+}
+input:focus,select:focus{border-color:var(--accent)}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.list{display:flex;flex-direction:column;gap:1px;background:var(--line);border-radius:12px;overflow:hidden}
+.item{background:var(--card);padding:12px 14px;display:flex;justify-content:space-between;
+  align-items:center;gap:10px;cursor:pointer}
+.item:active{background:var(--accent-soft)}
+.item .t{font-weight:550}
+.item .s{font-size:12px;color:var(--dim);margin-top:2px}
+.chip{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;
+  background:var(--accent-soft);color:var(--accent);font-weight:600;white-space:nowrap}
+.chip.gray{background:var(--line);color:var(--dim)}
+#map{height:calc(100vh - 210px);min-height:300px;border-radius:14px;box-shadow:var(--shadow)}
+nav{
+  position:fixed;bottom:0;left:0;right:0;z-index:600;background:var(--card);
+  border-top:1px solid var(--line);display:flex;
+  padding-bottom:env(safe-area-inset-bottom)
+}
+nav button{
+  flex:1;background:none;border:none;color:var(--dim);padding:9px 2px 8px;
+  font-size:10.5px;font-family:inherit;display:flex;flex-direction:column;
+  align-items:center;gap:3px;cursor:pointer
+}
+nav button .ic{font-size:19px;line-height:1}
+nav button.on{color:var(--accent)}
+.grid{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
+table.risers{border-collapse:separate;border-spacing:3px;font-size:13px}
+table.risers th{color:var(--dim);font-weight:600;font-size:11px;padding:2px 6px;white-space:nowrap}
+table.risers td{
+  background:var(--bg);border-radius:7px;padding:7px 9px;text-align:center;min-width:42px;
+  font-variant-numeric:tabular-nums
+}
+table.risers td.hit{background:var(--accent);color:#fff;font-weight:700}
+table.risers td.col{background:var(--accent-soft);color:var(--accent);font-weight:600}
+table.risers td.empty{background:transparent}
+table.risers th.floor{text-align:right;padding-right:8px}
+.back{background:none;border:none;color:var(--accent);font-size:14px;padding:6px 0;
+  cursor:pointer;font-family:inherit;font-weight:550}
+a.doc{display:flex;gap:10px;align-items:center;padding:12px 14px;background:var(--card);
+  color:var(--text);text-decoration:none;border-bottom:1px solid var(--line)}
+a.doc:last-child{border-bottom:none}
+.sec{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.4px;margin:14px 0 6px;padding-left:2px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--dim);font-size:13px}
+.kv .v{text-align:right;font-weight:550;font-size:13px}
+pre.ref{white-space:pre-wrap;font:13px/1.5 inherit;margin:0}
+.empty-note{text-align:center;color:var(--dim);padding:26px 12px;font-size:14px}
+.btn{display:block;width:100%;padding:13px;border-radius:11px;background:var(--accent);color:#fff;
+  border:none;font:600 15px inherit;text-align:center;text-decoration:none;cursor:pointer;margin-top:8px}
+.btn.sec2{background:var(--accent-soft);color:var(--accent)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🔧</div>
+  <div>
+    <h1>Люся</h1>
+    <div class="sub">помощница УК «Жемчужина»</div>
+  </div>
+</header>
+
+<main>
+  <!-- ДОМА -->
+  <section class="page active" id="p-homes">
+    <div class="card">
+      <input id="q-home" placeholder="🔍 Адрес дома — например, Байкальская 237" autocomplete="off">
+    </div>
+    <div id="homes-list"></div>
+  </section>
+
+  <!-- КАРТА -->
+  <section class="page" id="p-map">
+    <div id="map"></div>
+  </section>
+
+  <!-- СТОЯКИ -->
+  <section class="page" id="p-risers">
+    <div class="card">
+      <h2>🚿 Квартира → стояк</h2>
+      <div class="row">
+        <select id="r-house"></select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="r-flat" type="number" inputmode="numeric" placeholder="№ квартиры">
+      </div>
+      <div class="muted" style="margin-top:8px">
+        Введите номер квартиры — покажу этаж, стояк и соседей сверху и снизу.
+      </div>
+    </div>
+    <div id="r-result"></div>
+  </section>
+
+  <!-- СПРАВОЧНИК -->
+  <section class="page" id="p-ref">
+    <div id="ref-list"></div>
+  </section>
+</main>
+
+<nav>
+  <button class="on" data-page="homes"><span class="ic">🏠</span>Дома</button>
+  <button data-page="map"><span class="ic">🗺</span>Карта</button>
+  <button data-page="risers"><span class="ic">🚿</span>Стояки</button>
+  <button data-page="ref"><span class="ic">📖</span>Справка</button>
+</nav>
+
+<script>
+const DATA = /*__DATA__*/{};
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- нормализация адресов (как в боте) ---------- */
+function norm(s){
+  return String(s).toLowerCase().replace(/ё/g,'е')
+    .replace(/[.,;"]/g,' ')
+    .replace(/\b(ул|улица|мкр|микрорайон|дом|г|иркутск)\b/g,' ')
+    .replace(/\b(подъезд|под|п)\s*(\d)/g,'подъезд $2')
+    .replace(/\s+/g,' ').trim();
+}
+
+/* ---------- навигация ---------- */
+let mapReady = false;
+document.querySelectorAll('nav button').forEach(b => {
+  b.onclick = () => showPage(b.dataset.page);
+});
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.page === name));
+  $('#p-' + name).classList.add('active');
+  if(name === 'map') initMap();
+  window.scrollTo(0, 0);
+}
+
+/* ---------- список домов ---------- */
+function houseComplex(h){ return DATA.complexes[h.complex] || null; }
+
+function renderHomes(filter){
+  const q = norm(filter || '');
+  const list = DATA.houses.filter(h => !q || norm(h.address).includes(q));
+  const box = $('#homes-list');
+  if(!list.length){ box.innerHTML = '<div class="empty-note">Ничего не нашлось 🤷‍♀️</div>'; return; }
+  box.innerHTML = '<div class="list">' + list.map(h => {
+    const cx = houseComplex(h);
+    const tags = [];
+    if(h.kind === 'nonres') tags.push('<span class="chip gray">нежилое</span>');
+    if(cx) tags.push('<span class="chip">' + esc(cx) + '</span>');
+    return `<div class="item" onclick="openHouse(${h.id})">
+      <div><div class="t">${esc(h.address)}</div>
+      <div class="s">заявок за год: ${h.requests_year}</div></div>
+      <div>${tags.join(' ')}</div></div>`;
+  }).join('') + '</div>';
+}
+$('#q-home').oninput = e => renderHomes(e.target.value);
+
+/* ---------- карточка дома ---------- */
+function openHouse(id){
+  const h = DATA.houses.find(x => x.id === id);
+  if(!h) return;
+  const docs = DATA.docs.filter(d => d.addresses.some(a => norm(a) === norm(h.address)));
+  const riser = findRiserBlock(h.address);
+  const cx = houseComplex(h);
+  let html = `<button class="back" onclick="renderHomes($('#q-home').value)">‹ К списку домов</button>
+  <div class="card">
+    <h2>${esc(h.address)}</h2>
+    <div class="kv"><span class="k">ЖК</span><span class="v">${cx ? esc(cx) : '—'}</span></div>
+    <div class="kv"><span class="k">Тип</span><span class="v">${h.kind === 'nonres' ? '🏬 Нежилое' : '🏢 Жилой дом'}</span></div>
+    ${h.note ? `<div class="kv"><span class="k">Примечание</span><span class="v">${esc(h.note)}</span></div>` : ''}
+    <div class="kv"><span class="k">Заявок за год</span><span class="v">${h.requests_year}</span></div>
+    <a class="btn" target="_blank" rel="noopener"
+       href="https://2gis.ru/geo/${h.lng},${h.lat}">🗺 Открыть в 2ГИС</a>
+    <a class="btn sec2" target="_blank" rel="noopener"
+       href="https://yandex.ru/maps/?pt=${h.lng},${h.lat}&z=18&l=map">🗺 Открыть в Яндекс.Картах</a>
+  </div>`;
+
+  if(riser){
+    html += `<div class="card"><h2>🚿 Стояки</h2>
+      <div class="muted">Этажей: ${Object.keys(riser.floors).length}, стояков: ${riser.risers}</div>
+      <button class="btn sec2" onclick="gotoRisers('${esc(h.address)}')">Открыть раскладку квартир</button>
+    </div>`;
+  }
+
+  if(docs.length){
+    const bySec = {};
+    docs.forEach(d => (bySec[d.section] = bySec[d.section] || []).push(d));
+    html += '<div class="card"><h2>📐 Проектная документация</h2>';
+    for(const [sec, items] of Object.entries(bySec)){
+      html += `<div class="sec">${esc(sec)}</div><div class="list">` +
+        items.map(d => `<a class="doc" href="${esc(d.url)}" target="_blank" rel="noopener">
+          <span>${esc(d.title)}</span></a>`).join('') + '</div>';
+    }
+    html += '<div class="muted" style="margin-top:10px">Файлы открываются с Google Диска УК.</div></div>';
+  }
+  $('#homes-list').innerHTML = html;
+  window.scrollTo(0, 0);
+}
+
+function gotoRisers(address){
+  showPage('risers');
+  const sel = $('#r-house');
+  const idx = DATA.risers.findIndex(b => b.addresses.some(a => norm(a) === norm(address)));
+  if(idx >= 0){ sel.value = String(idx); }
+  renderRisers();
+}
+
+/* ---------- карта ---------- */
+function initMap(){
+  if(mapReady) return;
+  mapReady = true;
+  const map = L.map('map').setView([52.28, 104.29], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {attribution:'© OpenStreetMap', maxZoom:19}).addTo(map);
+  const pts = [];
+  DATA.houses.forEach(h => {
+    const cx = houseComplex(h);
+    const m = L.circleMarker([h.lat, h.lng], {
+      radius: 7, color:'#fff', weight: 2,
+      fillColor: h.kind === 'nonres' ? '#d97706' : '#2563eb', fillOpacity: .95
+    }).addTo(map);
+    m.bindPopup(`<b>${esc(h.address)}</b><br>${cx ? esc(cx) + '<br>' : ''}заявок за год: ${h.requests_year}`);
+    m.on('click', () => m.openPopup());
+    pts.push([h.lat, h.lng]);
+  });
+  if(pts.length) map.fitBounds(pts, {padding:[30,30]});
+  setTimeout(() => map.invalidateSize(), 100);
+}
+
+/* ---------- стояки ---------- */
+function findRiserBlock(address){
+  const a = norm(address);
+  return DATA.risers.find(b => b.addresses.some(x => norm(x) === a)) ||
+         DATA.risers.find(b => b.addresses.some(x => norm(x).includes(a) || a.includes(norm(x))));
+}
+
+$('#r-house').innerHTML = DATA.risers.map((b, i) =>
+  `<option value="${i}">${esc(b.addresses.join(' / '))}</option>`).join('');
+$('#r-house').onchange = renderRisers;
+$('#r-flat').oninput = renderRisers;
+
+function renderRisers(){
+  const b = DATA.risers[+$('#r-house').value];
+  const flat = parseInt($('#r-flat').value, 10);
+  if(!b) return;
+  const floors = Object.keys(b.floors).map(Number).sort((x, y) => y - x);
+  let hitFloor = null, hitRiser = null;
+  if(flat){
+    for(const f of floors){
+      const i = b.floors[f].indexOf(flat);
+      if(i >= 0){ hitFloor = f; hitRiser = i + 1; break; }
+    }
+  }
+  let head = '';
+  if(flat && hitFloor){
+    const chain = [];
+    floors.slice().reverse().forEach(f => {
+      const row = b.floors[f];
+      if(row.length === b.risers && hitRiser <= row.length) chain.push([f, row[hitRiser - 1]]);
+    });
+    const pos = chain.findIndex(c => c[1] === flat);
+    const below = pos > 0 ? 'кв. ' + chain[pos-1][1] : '— (низ стояка)';
+    const above = pos >= 0 && pos < chain.length - 1 ? 'кв. ' + chain[pos+1][1] : '— (верх стояка)';
+    head = `<div class="card">
+      <h2>Кв. ${flat}</h2>
+      <div class="kv"><span class="k">Этаж</span><span class="v">${hitFloor}</span></div>
+      <div class="kv"><span class="k">Стояк</span><span class="v">${hitRiser}-й из ${b.risers}</span></div>
+      <div class="kv"><span class="k">⬇️ Снизу</span><span class="v">${below}</span></div>
+      <div class="kv"><span class="k">⬆️ Сверху</span><span class="v">${above}</span></div>
+    </div>`;
+  } else if(flat){
+    const all = Object.values(b.floors).flat();
+    head = `<div class="card"><div class="muted">Квартиры ${Math.min(...all)}–${Math.max(...all)}.
+      Квартира ${flat} в этом доме не найдена.</div></div>`;
+  }
+
+  const partial = floors.filter(f => b.floors[f].length !== b.risers);
+  let table = '<table class="risers"><tr><th></th>' +
+    Array.from({length: b.risers}, (_, i) =>
+      `<th>${i + 1}${hitRiser === i + 1 ? ' ▾' : ''}</th>`).join('') + '</tr>';
+  floors.forEach(f => {
+    const row = b.floors[f];
+    table += `<tr><th class="floor">${f}</th>` +
+      Array.from({length: b.risers}, (_, i) => {
+        const v = row[i];
+        if(v === undefined) return '<td class="empty"></td>';
+        const cls = v === flat ? 'hit' : (hitRiser === i + 1 && row.length === b.risers ? 'col' : '');
+        return `<td class="${cls}">${v}</td>`;
+      }).join('') + '</tr>';
+  });
+  table += '</table>';
+
+  $('#r-result').innerHTML = head + `<div class="card">
+    <h2>Раскладка: этаж × стояк</h2>
+    <div class="grid">${table}</div>
+    ${partial.length ? `<div class="muted" style="margin-top:10px">⚠️ На этаж${partial.length>1?'ах':'е'}
+      ${partial.join(', ')} квартир меньше (нежилые помещения) — стояк уточните по месту.</div>` : ''}
+  </div>`;
+}
+
+/* ---------- справочник ---------- */
+$('#ref-list').innerHTML = DATA.directory.map(s =>
+  `<div class="card"><h2>${esc(s.title)}</h2><pre class="ref">${esc(s.text)}</pre></div>`).join('');
+
+/* ---------- старт ---------- */
+renderHomes('');
+renderRisers();
+// открытие сразу на нужном доме: ?house=<id> или initData из MAX
+const params = new URLSearchParams(location.search);
+const hp = params.get('house') || (location.hash.match(/house[:=](\d+)/) || [])[1];
+if(hp) openHouse(+hp);
+</script>
+</body>
+</html>
