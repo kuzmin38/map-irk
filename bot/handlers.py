@@ -20,7 +20,7 @@ from maxapi.types import (
 from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
-from . import ai, db, houses
+from . import agent, ai, db, houses
 from . import project_docs
 from . import risers as risers_mod
 
@@ -1003,10 +1003,14 @@ async def on_text(event: MessageCreated):
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
     if not found:
-        await send(event.message,
-                   f'🤷‍♀️ По запросу «{text}» я ничего не нашла.\n'
-                   'Попробуйте написать иначе, например: «Розы Люксембург 118» или «Байкальская 237».',
-                   main_menu_kb())
+        ai_answer = await agent.answer(uid, _uname(event), text)
+        if ai_answer:
+            await send(event.message, ai_answer)
+        else:
+            await send(event.message,
+                       f'🤷‍♀️ По запросу «{text}» я ничего не нашла.\n'
+                       'Попробуйте написать иначе, например: «Розы Люксембург 118» или «Байкальская 237».',
+                       main_menu_kb())
     elif len(found) == 1:
         h = found[0]
         await send(event.message, house_card_text(h), house_card_kb(h))
