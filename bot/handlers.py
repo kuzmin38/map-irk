@@ -1403,8 +1403,8 @@ async def on_callback(event: MessageCallback):
             await send(msg, '📊 Брифинг доступен руководству. Ваши задачи — в «🧰 Мои работы».')
             return
         if not ai.enabled():
-            await send(msg, '🧠 ИИ пока не подключён: задайте переменную окружения KIMI_API_KEY '
-                            'при запуске бота (ключ — тот же, что в телеграм-боте на Kimi).')
+            await send(msg, '🧠 ИИ пока не подключён: задайте переменную окружения '
+                            'OPENROUTER_API_KEY при запуске бота.')
             return
         data = _brief_data_text()
         await send(msg, '🧠 Секунду, пишу сводку...')

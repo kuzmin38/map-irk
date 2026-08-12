@@ -16,7 +16,7 @@ log = logging.getLogger('ai')
 
 OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 KIMI_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-KIMI_MODEL = os.environ.get('OPENROUTER_MODEL', 'moonshotai/kimi-k2:free')
+KIMI_MODEL = os.environ.get('OPENROUTER_MODEL', 'moonshotai/kimi-k2')
 
 SYSTEM_PROMPT = (
     'Ты — Люся, помощница управляющей компании «Жемчужина» (Иркутск). '
@@ -30,20 +30,21 @@ def enabled() -> bool:
     return bool(KIMI_API_KEY)
 
 
-async def ask(user_text: str, system: str = SYSTEM_PROMPT,
-              max_tokens: int = 900, temperature: float = 0.4) -> str | None:
-    """Один запрос к Kimi. Возвращает текст ответа или None при ошибке."""
+async def chat(messages: list[dict], tools: list[dict] | None = None,
+               max_tokens: int = 900, temperature: float = 0.4) -> dict | None:
+    """Запрос к OpenRouter chat.completions с произвольными messages и,
+    опционально, инструментами. Возвращает message модели (dict, может
+    содержать tool_calls) или None при ошибке/отключённом ИИ."""
     if not enabled():
         return None
     payload = {
         'model': KIMI_MODEL,
-        'messages': [
-            {'role': 'system', 'content': system},
-            {'role': 'user', 'content': user_text},
-        ],
+        'messages': messages,
         'max_tokens': max_tokens,
         'temperature': temperature,
     }
+    if tools:
+        payload['tools'] = tools
     headers = {
         'Authorization': f'Bearer {KIMI_API_KEY}',
         'HTTP-Referer': 'https://github.com/kuzmin38/map-irk',
@@ -58,7 +59,19 @@ async def ask(user_text: str, system: str = SYSTEM_PROMPT,
                 if resp.status != 200:
                     log.error('OpenRouter API %s: %s', resp.status, data)
                     return None
-                return data['choices'][0]['message']['content'].strip()
+                return data['choices'][0]['message']
     except Exception:
         log.exception('Ошибка запроса к OpenRouter')
         return None
+
+
+async def ask(user_text: str, system: str = SYSTEM_PROMPT,
+              max_tokens: int = 900, temperature: float = 0.4) -> str | None:
+    """Один запрос к модели без инструментов. Возвращает текст ответа или None."""
+    message = await chat(
+        [{'role': 'system', 'content': system}, {'role': 'user', 'content': user_text}],
+        max_tokens=max_tokens, temperature=temperature,
+    )
+    if message is None:
+        return None
+    return (message.get('content') or '').strip() or None
