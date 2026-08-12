@@ -89,3 +89,30 @@ async def test_private_chat_still_searches_houses():
     e = event('Байкальская 237', chat_type='dialog')
     await H.on_text(e)
     assert 'Байкальская 237' in e.message.sent[0]
+
+
+def event_with_mention(text, bot_user_id=555):
+    """Сообщение, где бота упомянули через @ — MAX передаёт это разметкой."""
+    e = event(text)
+    mention = types.SimpleNamespace(type='user_mention', from_=0, length=5,
+                                    user_id=bot_user_id)
+    e.message.body.markup = [mention]
+    return e
+
+
+async def test_group_mention_via_markup_wakes_bot(monkeypatch):
+    monkeypatch.setitem(H.BOT_ME, 'user_id', 555)
+
+    async def fake_answer(uid, name, text):
+        return 'Ответ по упоминанию'
+    monkeypatch.setattr(H.agent, 'answer', fake_answer)
+    e = event_with_mention('@Люся что по нормативам ГВС?')
+    await H.on_text(e)
+    assert e.message.sent == ['Ответ по упоминанию']
+
+
+async def test_group_mention_of_someone_else_is_ignored(monkeypatch):
+    monkeypatch.setitem(H.BOT_ME, 'user_id', 555)
+    e = event_with_mention('@Константин глянь подвал', bot_user_id=999)
+    await H.on_text(e)
+    assert e.message.sent == []

@@ -686,6 +686,18 @@ ADDRESS_RE = re.compile(
     r'^\s*@?(люс[яеию]|lusya|lyusya)\b[\s,:—-]*', re.IGNORECASE)
 
 
+def mentioned_in_markup(event) -> bool:
+    """Упомянули ли бота через @ — MAX передаёт это разметкой, а не текстом."""
+    me = BOT_ME.get('user_id')
+    if not me:
+        return False
+    for el in (getattr(event.message.body, 'markup', None) or []):
+        el_type = getattr(getattr(el, 'type', None), 'value', getattr(el, 'type', None))
+        if el_type == 'user_mention' and getattr(el, 'user_id', None) == me:
+            return True
+    return False
+
+
 def strip_address(text: str) -> tuple[bool, str]:
     """Позвали ли Люсю и что осталось от вопроса без обращения."""
     if not text:
@@ -775,8 +787,10 @@ async def on_text(event: MessageCreated):
     # В группах Люся молчит, пока её не позвали по имени: реагировать на каждое
     # сообщение рабочего чата — верный способ, чтобы бота оттуда выгнали.
     if is_group(event):
+        log.info('Сообщение из чата %s: %.60s',
+                 getattr(event.message.recipient, 'chat_id', '?'), text)
         addressed, text = strip_address(text)
-        if not addressed:
+        if not addressed and not mentioned_in_markup(event):
             return
         db.upsert_user(uid, _uname(event))
         reply = await agent.answer(uid, _uname(event), text) if text else None
