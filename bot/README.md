@@ -129,7 +129,7 @@ export OPENROUTER_MODEL='moonshotai/kimi-k2:free'   # можно не задав
 Люся живёт как отдельный сервис рядом с другими ботами:
 
 1. Railway → **New → GitHub Repo** → выберите `kuzmin38/map-irk`,
-   ветка `claude/plumber-work-bot-ofyv8j`. Python и `requirements.txt`
+   ветка `main`. Python и `requirements.txt`
    Railway определит сам, стартовая команда берётся из `Procfile`
    (`python -m bot.main`, режим long polling — домен и порты не нужны).
 2. **Volume** (обязательно, иначе база сотрётся при redeploy):
@@ -156,7 +156,7 @@ python3 scripts/build_miniapp.py     # miniapp/template.html + bot/data → mini
 Публикация:
 
 1. GitHub → репозиторий → **Settings → Pages** → Source: *Deploy from a branch*,
-   ветка `claude/plumber-work-bot-ofyv8j`, папка `/ (root)` → Save.
+   ветка `main`, папка `/ (root)` → Save.
 2. Через пару минут приложение доступно по адресу
    `https://kuzmin38.github.io/map-irk/miniapp/`.
 3. business.max.ru → бот → вкладка **MiniApps** → указать этот URL.
