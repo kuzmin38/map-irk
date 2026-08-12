@@ -120,6 +120,17 @@ def init():
             note TEXT,
             uploaded_by TEXT,
             uploaded_at TEXT NOT NULL)''')
+        # Память агента: что Люся знает о человеке и о чём с ним говорила
+        c.execute('''CREATE TABLE IF NOT EXISTS user_notes (
+            user_id INTEGER PRIMARY KEY,
+            profile TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL)''')
 
 
 def now() -> str:
@@ -483,3 +494,33 @@ def set_passport_field(house_id, field, value, user_name):
                   'ON CONFLICT(house_id, field) DO UPDATE SET value = excluded.value, '
                   'updated_by = excluded.updated_by, updated_at = excluded.updated_at',
                   (house_id, field, value, user_name, now()))
+
+
+# --- Память диалогов (агент) ---
+
+def get_user_notes(user_id) -> str:
+    with _conn() as c:
+        row = c.execute('SELECT profile FROM user_notes WHERE user_id = ?', (user_id,)).fetchone()
+    return row['profile'] if row else ''
+
+
+def set_user_notes(user_id, profile):
+    with _conn() as c:
+        c.execute('INSERT INTO user_notes (user_id, profile, updated_at) VALUES (?, ?, ?) '
+                  'ON CONFLICT(user_id) DO UPDATE SET profile = excluded.profile, '
+                  'updated_at = excluded.updated_at',
+                  (user_id, profile, now()))
+
+
+def add_chat_message(user_id, role, content):
+    with _conn() as c:
+        c.execute('INSERT INTO chat_history (user_id, role, content, created_at) '
+                  'VALUES (?, ?, ?, ?)', (user_id, role, content, now()))
+
+
+def recent_chat_history(user_id, limit=6) -> list:
+    """Последние сообщения пользователя, от старых к новым."""
+    with _conn() as c:
+        rows = c.execute('SELECT role, content FROM chat_history WHERE user_id = ? '
+                         'ORDER BY id DESC LIMIT ?', (user_id, limit)).fetchall()
+    return [{'role': r['role'], 'content': r['content']} for r in reversed(rows)]

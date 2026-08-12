@@ -1,2 +1,4 @@
 maxapi[webhook]
 aiohttp
+pytest
+pytest-asyncio
