@@ -673,6 +673,35 @@ def _uname_cb(event) -> str:
     return getattr(event.callback.user, 'full_name', None) or ''
 
 
+def is_group(event) -> bool:
+    """Групповой чат или канал (в отличие от лички)."""
+    recipient = getattr(event.message, 'recipient', None)
+    chat_type = getattr(recipient, 'chat_type', None)
+    chat_type = getattr(chat_type, 'value', chat_type)
+    return chat_type in ('chat', 'channel')
+
+
+# Как к Люсе обращаются в чате: по имени, с @ или без
+ADDRESS_RE = re.compile(
+    r'^\s*@?(люс[яеию]|lusya|lyusya)\b[\s,:—-]*', re.IGNORECASE)
+
+
+def strip_address(text: str) -> tuple[bool, str]:
+    """Позвали ли Люсю и что осталось от вопроса без обращения."""
+    if not text:
+        return False, ''
+    m = ADDRESS_RE.match(text)
+    if m:
+        return True, text[m.end():].strip()
+    # обращение в конце: «что по нормативам ГВС, Люся?»
+    m = re.search(r'[\s,]@?(люс[яеию]|lusya|lyusya)\s*[?!.]*\s*$', text, re.IGNORECASE)
+    if m:
+        return True, text[:m.start()].strip(' ,')
+    if BOT_ME.get('username') and f"@{BOT_ME['username']}".lower() in text.lower():
+        return True, re.sub(f"@{BOT_ME['username']}", '', text, flags=re.IGNORECASE).strip()
+    return False, text
+
+
 def _safe_filename(name: str) -> str:
     name = re.sub(r'[^\w.\-() ]', '_', name)
     return name[:80] or 'file'
@@ -742,6 +771,20 @@ async def _save_docs(event, state) -> int:
 async def on_text(event: MessageCreated):
     text = (event.message.body.text or '').strip()
     uid = _uid(event)
+
+    # В группах Люся молчит, пока её не позвали по имени: реагировать на каждое
+    # сообщение рабочего чата — верный способ, чтобы бота оттуда выгнали.
+    if is_group(event):
+        addressed, text = strip_address(text)
+        if not addressed:
+            return
+        db.upsert_user(uid, _uname(event))
+        reply = await agent.answer(uid, _uname(event), text) if text else None
+        await send(event.message,
+                   reply or f'{BOT_NAME} на связи 🙂 Спроси что-нибудь по домам, '
+                            'заявкам или нормативам.')
+        return
+
     db.upsert_user(uid, _uname(event))
     state = STATE.get(uid)
 
