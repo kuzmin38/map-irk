@@ -730,43 +730,108 @@ def speech_url(body) -> str | None:
     return None
 
 
-async def short_summary(text: str, address: str | None) -> str:
-    """Сжимает расшифровку до одной-двух строк для ответа в чат."""
-    summary = await ai.ask(
-        f'Отчёт сантехника: «{text}»\n\n'
-        'Перескажи сутью в одну-две строки: что случилось и что сделали. '
-        'Без вступлений и без адреса — только суть.',
-        max_tokens=120, temperature=0.2)
+async def short_summary(parts: list[str], address: str | None) -> str:
+    """Сжимает серию отчётов до пересказа: что случилось и что сделали."""
+    if len(parts) == 1:
+        task = ('Отчёт сантехника с объекта: «{}»\n\n'
+                'Перескажи сутью в одну-две строки: что случилось и что сделали. '
+                'Без вступлений и без адреса — только суть.').format(parts[0])
+    else:
+        joined = '\n'.join(f'{i}. {p}' for i, p in enumerate(parts, 1))
+        task = ('Сантехник прислал несколько видео с одного объекта по порядку. '
+                'Обычно на первом — сама проблема, на следующих — ход и результат работы.\n\n'
+                f'{joined}\n\n'
+                'Сведи в короткий отчёт из двух строк:\n'
+                'Проблема: ...\nСделано: ...\n'
+                'Без вступлений и без адреса.')
+    summary = await ai.ask(task, max_tokens=200, temperature=0.2)
     if not summary:
-        summary = text[:200] + ('…' if len(text) > 200 else '')
-    head = f'🎙 {address}\n' if address else '🎙 Из видеоотчёта\n'
-    return head + summary.strip()
+        full = ' '.join(parts)
+        summary = full[:250] + ('…' if len(full) > 250 else '')
+    head = f'🎙 {address}' if address else '🎙 Видеоотчёт'
+    if len(parts) > 1:
+        head += f' · {len(parts)} видео'
+    return head + '\n' + summary.strip()
+
+
+# Серии видео копим по (чат, автор): первое обычно проблема, дальше — работа.
+# Ответ откладываем, пока летит серия, чтобы не отвечать на каждый ролик.
+SERIES_WINDOW = int(os.environ.get('VIDEO_SERIES_WINDOW', '420'))  # секунд
+SERIES: dict[tuple, dict] = {}
+
+
+async def _flush_series(key: tuple):
+    """Дожидается конца серии и отвечает одним пересказом."""
+    try:
+        while True:
+            await asyncio.sleep(SERIES_WINDOW)
+            series = SERIES.get(key)
+            if not series:
+                return
+            # пришло новое видео, пока ждали — продлеваем ожидание
+            if series['pending']:
+                series['pending'] = False
+                continue
+            break
+        series = SERIES.pop(key, None)
+        if not series or not series['parts'] or not series['is_issue']:
+            return
+        summary = await short_summary(series['parts'], series['address'])
+        link = (NewMessageLink(type=MessageLinkType.REPLY, mid=series['first_mid'])
+                if series['first_mid'] else None)
+        await series['bot'].send_message(chat_id=series['chat_id'], text=summary, link=link)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception('Не удалось отправить пересказ серии')
+        SERIES.pop(key, None)
+
+
+def queue_series(key, text, house, is_issue, bot, chat_id, mid):
+    """Копит расшифровки серии; ответ уйдёт, когда поток видео стихнет."""
+    series = SERIES.get(key)
+    if series is None:
+        series = SERIES[key] = {
+            'parts': [], 'address': None, 'house_id': None, 'is_issue': False,
+            'pending': False, 'bot': bot, 'chat_id': chat_id,
+            'first_mid': mid, 'task': None,
+        }
+        series['task'] = asyncio.create_task(_flush_series(key))
+    else:
+        series['pending'] = True          # продлить ожидание: серия продолжается
+    series['parts'].append(text)
+    series['is_issue'] = series['is_issue'] or is_issue
+    if house and not series['address']:
+        series['address'] = house['address']
+        series['house_id'] = house['id']
 
 
 async def transcribe_later(record_id: int, url: str, bot=None, chat_id=None, mid=None):
     """Расшифровывает голосовое/видео в фоне и дописывает текст к сообщению.
 
-    На аварийное коротко отвечает в чат — чтобы бригада и руководство увидели
-    суть сразу, не открывая видео. На рутинные отчёты не встревает.
+    Ответ в чат — только на аварийное и только один на серию роликов.
     """
     try:
         text = await transcribe.transcribe_url(url)
         if not text:
             return
+        record = db.get_chat_record(record_id)
+        key = (chat_id, record['user_id'] if record else None)
         house = houses.detect_house(text)
+        # Продолжения серии («перекрыли стояк», «всё готово») адреса не содержат —
+        # цепляем их к дому, который назвали в начале отчёта.
+        if not house:
+            series = SERIES.get(key)
+            if series and series.get('house_id') is not None:
+                house = houses.HOUSES_BY_ID.get(series['house_id'])
         is_issue = bool(ISSUE_WORDS.search(text))
         db.set_chat_transcript(record_id, text,
                                house_id=house['id'] if house else None,
                                is_issue=is_issue)
         log.info('Расшифровано сообщение %s: %.80s', record_id, text)
 
-        if is_issue and bot and chat_id:
-            summary = await short_summary(text, house['address'] if house else None)
-            link = NewMessageLink(type=MessageLinkType.REPLY, mid=mid) if mid else None
-            try:
-                await bot.send_message(chat_id=chat_id, text=summary, link=link)
-            except Exception:
-                log.exception('Не удалось отправить пересказ в чат')
+        if bot and chat_id:
+            queue_series(key, text, house, is_issue, bot, chat_id, mid)
     except Exception:
         log.exception('Не удалось расшифровать вложение')
 

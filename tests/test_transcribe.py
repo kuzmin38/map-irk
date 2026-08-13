@@ -123,6 +123,9 @@ class FakeBot:
 
 
 async def test_emergency_gets_short_reply_in_chat(monkeypatch):
+    monkeypatch.setattr(H, 'SERIES_WINDOW', 0.05)
+    H.SERIES.clear()
+
     async def fake_transcribe(url):
         return ('Приехали на Байкальскую 237, в подвале свищ на розливе ХВС, '
                 'перекрыли стояк, поставили хомут, завтра меняем участок трубы')
@@ -135,6 +138,7 @@ async def test_emergency_gets_short_reply_in_chat(monkeypatch):
     bot = FakeBot()
     record_id = db.add_chat_record(7, 'm1', 100, 'К', '', has_files=True)
     await H.transcribe_later(record_id, 'http://x/v.mp4', bot=bot, chat_id=7, mid='m1')
+    await asyncio.sleep(0.3)
 
     assert len(bot.sent) == 1
     assert 'Байкальская 237' in bot.sent[0]['text']
@@ -143,6 +147,9 @@ async def test_emergency_gets_short_reply_in_chat(monkeypatch):
 
 
 async def test_routine_report_stays_silent(monkeypatch):
+    monkeypatch.setattr(H, 'SERIES_WINDOW', 0.05)
+    H.SERIES.clear()
+
     async def fake_transcribe(url):
         return 'Трилиссера 8/4, покрасили трубы в подвале, всё по плану'
     monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
@@ -150,6 +157,7 @@ async def test_routine_report_stays_silent(monkeypatch):
     bot = FakeBot()
     record_id = db.add_chat_record(7, 'm1', 100, 'К', '', has_files=True)
     await H.transcribe_later(record_id, 'http://x/v.mp4', bot=bot, chat_id=7, mid='m1')
+    await asyncio.sleep(0.3)
 
     assert bot.sent == []                           # в чат не встревает
     assert db.house_chat_records(house_id('Трилиссера 8/4'))[0]['transcript']
@@ -163,3 +171,132 @@ async def test_summary_falls_back_when_ai_unavailable(monkeypatch):
     summary = await H.short_summary(text, 'Байкальская 237')
     assert summary.startswith('🎙 Байкальская 237')
     assert len(summary) < 300                       # обрезано, а не простыня
+
+
+async def test_series_of_videos_gets_one_reply(monkeypatch):
+    """Четыре ролика подряд по одной аварии — один ответ, а не четыре."""
+    monkeypatch.setattr(H, 'SERIES_WINDOW', 0.05)
+    H.SERIES.clear()
+
+    texts = [
+        'Байкальская 237, в подвале свищ на розливе ХВС, хлещет',
+        'Перекрыли стояк, воду слили',
+        'Вырезали кусок трубы, ставим новый участок',
+        'Всё готово, запустили воду, течи нет',
+    ]
+    seen = iter(texts)
+
+    async def fake_transcribe(url):
+        return next(seen)
+    monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
+
+    asked = {}
+
+    async def fake_ask(prompt, **kw):
+        asked['prompt'] = prompt
+        return 'Проблема: свищ на розливе ХВС.\nСделано: заменили участок трубы, течи нет.'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+
+    bot = FakeBot()
+    for i in range(4):
+        rid = db.add_chat_record(7, f'm{i}', 100, 'Константин', '', has_files=True)
+        await H.transcribe_later(rid, f'http://x/v{i}.mp4', bot=bot, chat_id=7, mid=f'm{i}')
+        await asyncio.sleep(0.01)          # ролики летят пачкой
+
+    await asyncio.sleep(0.3)               # ждём, пока серия закроется
+
+    assert len(bot.sent) == 1, f'ожидался один ответ, а не {len(bot.sent)}'
+    assert '4 видео' in bot.sent[0]['text']
+    assert 'Байкальская 237' in bot.sent[0]['text']
+    assert 'Сделано' in bot.sent[0]['text']
+    # в модель ушли все четыре расшифровки по порядку
+    assert 'хлещет' in asked['prompt'] and 'течи нет' in asked['prompt']
+
+
+async def test_series_reply_attaches_to_first_video(monkeypatch):
+    monkeypatch.setattr(H, 'SERIES_WINDOW', 0.05)
+    H.SERIES.clear()
+
+    async def fake_transcribe(url):
+        return 'Седова 65а/3 прорвало трубу, устранили'
+    monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
+
+    async def fake_ask(prompt, **kw):
+        return 'Проблема: прорыв трубы.\nСделано: устранили.'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+
+    bot = FakeBot()
+    for i in range(2):
+        rid = db.add_chat_record(7, f'k{i}', 100, 'К', '', has_files=True)
+        await H.transcribe_later(rid, f'http://x/v{i}.mp4', bot=bot, chat_id=7, mid=f'k{i}')
+    await asyncio.sleep(0.3)
+
+    assert len(bot.sent) == 1
+    assert bot.sent[0]['link'].mid == 'k0'      # ответ на первое видео серии
+
+
+async def test_series_of_routine_reports_stays_silent(monkeypatch):
+    monkeypatch.setattr(H, 'SERIES_WINDOW', 0.05)
+    H.SERIES.clear()
+
+    async def fake_transcribe(url):
+        return 'Трилиссера 8/4, покрасили трубы, прибрались'
+    monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
+
+    bot = FakeBot()
+    for i in range(3):
+        rid = db.add_chat_record(7, f'r{i}', 100, 'К', '', has_files=True)
+        await H.transcribe_later(rid, f'http://x/v{i}.mp4', bot=bot, chat_id=7, mid=f'r{i}')
+    await asyncio.sleep(0.3)
+
+    assert bot.sent == []
+
+
+async def test_different_authors_are_separate_series(monkeypatch):
+    monkeypatch.setattr(H, 'SERIES_WINDOW', 0.05)
+    H.SERIES.clear()
+
+    async def fake_transcribe(url):
+        return 'Байкальская 99 засор, прочистили'
+    monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
+
+    async def fake_ask(prompt, **kw):
+        return 'Проблема: засор.\nСделано: прочистили.'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+
+    bot = FakeBot()
+    for uid in (100, 200):
+        rid = db.add_chat_record(7, f'u{uid}', uid, f'Мастер {uid}', '', has_files=True)
+        await H.transcribe_later(rid, 'http://x/v.mp4', bot=bot, chat_id=7, mid=f'u{uid}')
+    await asyncio.sleep(0.3)
+
+    assert len(bot.sent) == 2      # у каждого своя серия
+
+
+async def test_series_continuation_inherits_house(monkeypatch):
+    """«Перекрыли стояк» без адреса всё равно попадает в ленту нужного дома."""
+    monkeypatch.setattr(H, 'SERIES_WINDOW', 0.05)
+    H.SERIES.clear()
+
+    texts = iter([
+        'Байкальская 237, в подвале свищ на розливе, хлещет',
+        'Перекрыли стояк, воду слили',
+        'Заменили участок, течи нет',
+    ])
+
+    async def fake_transcribe(url):
+        return next(texts)
+    monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
+
+    async def fake_ask(prompt, **kw):
+        return 'Проблема: свищ.\nСделано: заменили участок.'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+
+    bot = FakeBot()
+    for i in range(3):
+        rid = db.add_chat_record(7, f's{i}', 100, 'К', '', has_files=True)
+        await H.transcribe_later(rid, f'http://x/{i}.mp4', bot=bot, chat_id=7, mid=f's{i}')
+    await asyncio.sleep(0.3)
+
+    records = db.house_chat_records(house_id('Байкальская 237'))
+    assert len(records) == 3, 'вся серия должна лежать в ленте одного дома'

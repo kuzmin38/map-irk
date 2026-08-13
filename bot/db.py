@@ -598,3 +598,8 @@ def set_chat_transcript(record_id, transcript, house_id=None, is_issue=None):
     with _conn() as c:
         c.execute(f'UPDATE chat_messages SET {cols} WHERE id = ?',
                   (*fields.values(), record_id))
+
+
+def get_chat_record(record_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM chat_messages WHERE id = ?', (record_id,)).fetchone()
