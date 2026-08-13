@@ -112,3 +112,54 @@ def test_ffmpeg_availability_is_reported():
 async def test_extract_audio_without_ffmpeg_returns_none(monkeypatch):
     monkeypatch.setattr(transcribe.shutil, 'which', lambda name: None)
     assert await transcribe.extract_audio('/tmp/nonexistent.mp4') is None
+
+
+class FakeBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id=None, text=None, link=None, **kw):
+        self.sent.append({'chat_id': chat_id, 'text': text, 'link': link})
+
+
+async def test_emergency_gets_short_reply_in_chat(monkeypatch):
+    async def fake_transcribe(url):
+        return ('Приехали на Байкальскую 237, в подвале свищ на розливе ХВС, '
+                'перекрыли стояк, поставили хомут, завтра меняем участок трубы')
+    monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
+
+    async def fake_ask(prompt, **kw):
+        return 'Свищ на розливе ХВС, перекрыли стояк и поставили хомут.'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+
+    bot = FakeBot()
+    record_id = db.add_chat_record(7, 'm1', 100, 'К', '', has_files=True)
+    await H.transcribe_later(record_id, 'http://x/v.mp4', bot=bot, chat_id=7, mid='m1')
+
+    assert len(bot.sent) == 1
+    assert 'Байкальская 237' in bot.sent[0]['text']
+    assert 'хомут' in bot.sent[0]['text']
+    assert bot.sent[0]['link'] is not None          # ответом на само видео
+
+
+async def test_routine_report_stays_silent(monkeypatch):
+    async def fake_transcribe(url):
+        return 'Трилиссера 8/4, покрасили трубы в подвале, всё по плану'
+    monkeypatch.setattr(transcribe, 'transcribe_url', fake_transcribe)
+
+    bot = FakeBot()
+    record_id = db.add_chat_record(7, 'm1', 100, 'К', '', has_files=True)
+    await H.transcribe_later(record_id, 'http://x/v.mp4', bot=bot, chat_id=7, mid='m1')
+
+    assert bot.sent == []                           # в чат не встревает
+    assert db.house_chat_records(house_id('Трилиссера 8/4'))[0]['transcript']
+
+
+async def test_summary_falls_back_when_ai_unavailable(monkeypatch):
+    async def no_ai(prompt, **kw):
+        return None
+    monkeypatch.setattr(H.ai, 'ask', no_ai)
+    text = 'Байкальская 237 ' + 'очень длинный отчёт ' * 30
+    summary = await H.short_summary(text, 'Байкальская 237')
+    assert summary.startswith('🎙 Байкальская 237')
+    assert len(summary) < 300                       # обрезано, а не простыня

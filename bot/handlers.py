@@ -16,8 +16,10 @@ from maxapi.types import (
     LinkButton,
     MessageCallback,
     MessageCreated,
+    NewMessageLink,
     OpenAppButton,
 )
+from maxapi.enums.message_link_type import MessageLinkType
 from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
@@ -728,17 +730,43 @@ def speech_url(body) -> str | None:
     return None
 
 
-async def transcribe_later(record_id: int, url: str):
-    """Расшифровывает голосовое/видео в фоне и дописывает текст к сообщению."""
+async def short_summary(text: str, address: str | None) -> str:
+    """Сжимает расшифровку до одной-двух строк для ответа в чат."""
+    summary = await ai.ask(
+        f'Отчёт сантехника: «{text}»\n\n'
+        'Перескажи сутью в одну-две строки: что случилось и что сделали. '
+        'Без вступлений и без адреса — только суть.',
+        max_tokens=120, temperature=0.2)
+    if not summary:
+        summary = text[:200] + ('…' if len(text) > 200 else '')
+    head = f'🎙 {address}\n' if address else '🎙 Из видеоотчёта\n'
+    return head + summary.strip()
+
+
+async def transcribe_later(record_id: int, url: str, bot=None, chat_id=None, mid=None):
+    """Расшифровывает голосовое/видео в фоне и дописывает текст к сообщению.
+
+    На аварийное коротко отвечает в чат — чтобы бригада и руководство увидели
+    суть сразу, не открывая видео. На рутинные отчёты не встревает.
+    """
     try:
         text = await transcribe.transcribe_url(url)
         if not text:
             return
         house = houses.detect_house(text)
+        is_issue = bool(ISSUE_WORDS.search(text))
         db.set_chat_transcript(record_id, text,
                                house_id=house['id'] if house else None,
-                               is_issue=bool(ISSUE_WORDS.search(text)))
+                               is_issue=is_issue)
         log.info('Расшифровано сообщение %s: %.80s', record_id, text)
+
+        if is_issue and bot and chat_id:
+            summary = await short_summary(text, house['address'] if house else None)
+            link = NewMessageLink(type=MessageLinkType.REPLY, mid=mid) if mid else None
+            try:
+                await bot.send_message(chat_id=chat_id, text=summary, link=link)
+            except Exception:
+                log.exception('Не удалось отправить пересказ в чат')
     except Exception:
         log.exception('Не удалось расшифровать вложение')
 
@@ -764,7 +792,10 @@ def record_chat_message(event, text: str):
         # Голосовые и видеоотчёты расшифровываем фоном, чтобы не тормозить чат
         url = speech_url(body)
         if url:
-            asyncio.create_task(transcribe_later(record_id, url))
+            asyncio.create_task(transcribe_later(
+                record_id, url, bot=getattr(event, 'bot', None),
+                chat_id=getattr(event.message.recipient, 'chat_id', None),
+                mid=getattr(body, 'mid', None)))
     except Exception:
         log.exception('Не удалось записать сообщение чата')
 
