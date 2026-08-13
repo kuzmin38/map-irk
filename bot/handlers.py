@@ -242,8 +242,11 @@ def tech_kb(h) -> InlineKeyboardBuilder:
     kb.row(CallbackButton(text='🧮 Счётчики', payload=f"mt:{h['id']}"),
            CallbackButton(text=f'📁 Документы{f" ({n_docs})" if n_docs else ""}',
                           payload=f"dl:{h['id']}"))
+    n_chat = len(db.house_chat_records(h['id'], limit=99))
     kb.row(CallbackButton(text='📜 История работ', payload=f"hist:{h['id']}"),
-           CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
+           CallbackButton(text=f'💬 Из чата{f" ({n_chat})" if n_chat else ""}',
+                          payload=f"chat:{h['id']}"))
+    kb.row(CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
     kb.row(CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"),
            CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
@@ -619,6 +622,22 @@ def _brief_lines() -> list:
         lines.append('')
         lines.append(f'🧮 Показания за {fmt_period(current_period())}: '
                      f'сдано {len(submitted)} из {len(with_meters)} домов')
+
+    day = today.strftime('%d.%m.%Y')
+    chat_today = db.chat_stats_for_day(day)
+    if chat_today['total']:
+        lines.append('')
+        lines.append(f"💬 Рабочий чат сегодня: {chat_today['total']} сообщений, "
+                     f"по домам — {chat_today['with_house']}, "
+                     f"фото и файлов — {chat_today['with_files']}")
+        issues = [r for r in db.recent_issues(limit=5) if r['created_at'].startswith(day)]
+        if issues:
+            lines.append(f'🔴 Похоже на аварийное — {len(issues)}:')
+            for r in issues:
+                hh = houses.HOUSES_BY_ID.get(r['house_id']) if r['house_id'] else None
+                lines.append(f"   • {hh['address'] + ': ' if hh else ''}"
+                             f"{(r['text'] or '')[:70]} ({r['user_name'] or '—'})")
+
     lines.append('')
     lines.append(f'📋 Открытых заявок: {len(open_reqs)}')
     return lines
@@ -684,6 +703,35 @@ def is_group(event) -> bool:
 # Как к Люсе обращаются в чате: по имени, с @ или без
 ADDRESS_RE = re.compile(
     r'^\s*@?(люс[яеию]|lusya|lyusya)\b[\s,:—-]*', re.IGNORECASE)
+
+
+# Слова, по которым сообщение похоже на заявку/аварию
+ISSUE_WORDS = re.compile(
+    r'\b(теч[её]т|течь|подтека|кап[аи]ет|затопил|топит|залив|прорв|порыв|свищ|'
+    r'засор|забил|не\s+работает|нет\s+воды|нет\s+гвс|нет\s+хвс|нет\s+отоплен|'
+    r'холодн[ыа]я\s+батаре|авари|сорвал|потоп|фонтан|срочно)', re.IGNORECASE)
+
+
+def record_chat_message(event, text: str):
+    """Тихо сохраняет сообщение рабочего чата и цепляет его к дому."""
+    try:
+        body = event.message.body
+        files = bool(getattr(body, 'attachments', None))
+        if not text and not files:
+            return
+        house = houses.detect_house(text) if text else None
+        db.add_chat_record(
+            chat_id=getattr(event.message.recipient, 'chat_id', 0),
+            mid=getattr(body, 'mid', None),
+            user_id=_uid(event),
+            user_name=_uname(event),
+            text=text,
+            house_id=house['id'] if house else None,
+            has_files=files,
+            is_issue=bool(text and ISSUE_WORDS.search(text)),
+        )
+    except Exception:
+        log.exception('Не удалось записать сообщение чата')
 
 
 def mentioned_in_markup(event) -> bool:
@@ -789,6 +837,7 @@ async def on_text(event: MessageCreated):
     if is_group(event):
         log.info('Сообщение из чата %s: %.60s',
                  getattr(event.message.recipient, 'chat_id', '?'), text)
+        record_chat_message(event, text)
         addressed, text = strip_address(text)
         if not addressed and not mentioned_in_markup(event):
             return
@@ -1629,6 +1678,23 @@ async def on_callback(event: MessageCallback):
             kb = InlineKeyboardBuilder()
             kb.row(CallbackButton(text='🚿 Другие дома', payload='rsl'),
                    CallbackButton(text='🏠 Меню', payload='menu'))
+            await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'chat':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            records = db.house_chat_records(h['id'])
+            lines = [f"💬 Из рабочего чата — {h['address']}", '']
+            if not records:
+                lines.append('По этому дому в чате пока ничего не писали.')
+            for r in records:
+                mark = '🔴 ' if r['is_issue'] else ''
+                files = ' 📎' if r['has_files'] else ''
+                text = (r['text'] or '(без текста)')[:160]
+                lines.append(f"{mark}{r['created_at']} · {r['user_name'] or '—'}{files}\n   {text}")
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='🔧 Техника', payload=f"tech:{h['id']}"),
+                   CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
             await send(msg, '\n'.join(lines), kb)
 
     elif action == 'tech':

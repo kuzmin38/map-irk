@@ -63,6 +63,31 @@ def search(query: str, limit: int = 8):
     return [h for _, h in scored[:limit]]
 
 
+def detect_house(text: str):
+    """Ищет упоминание дома в живой речи: «на Байкальской 237 течь в подвале».
+
+    Номер дома должен совпасть точно, название улицы — по корню, чтобы
+    пережить падежи («Байкальская» / «Байкальской»). Возвращает дом или None.
+    """
+    t = _norm(text)
+    if not t:
+        return None
+    best = None
+    for h in HOUSES:
+        street, num = _split_addr(_norm(h['address']))
+        if not num or not street:
+            continue
+        # номер дома — отдельным словом, чтобы «237» не поймалось внутри «1237»
+        if not re.search(rf'(?<![\w/]){re.escape(num)}(?![\w/])', t):
+            continue
+        stem = street[:6] if len(street) > 6 else street
+        if stem and stem in t:
+            # длиннее совпадение улицы — точнее адрес (65а/2 против 65а)
+            if best is None or len(street) > len(best[1]):
+                best = (h, street)
+    return best[0] if best else None
+
+
 def map_links(h) -> str:
     """Ссылки на дом в картах (2ГИС и Яндекс)."""
     lat, lng = h['lat'], h['lng']

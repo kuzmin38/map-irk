@@ -120,6 +120,19 @@ def init():
             note TEXT,
             uploaded_by TEXT,
             uploaded_at TEXT NOT NULL)''')
+        # Лента рабочего чата: что писали, к какому дому относится
+        c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            mid TEXT,
+            user_id INTEGER,
+            user_name TEXT,
+            text TEXT,
+            house_id INTEGER,
+            has_files INTEGER NOT NULL DEFAULT 0,
+            is_issue INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL)''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_chat_house ON chat_messages(house_id)')
         # Память агента: что Люся знает о человеке и о чём с ним говорила
         c.execute('''CREATE TABLE IF NOT EXISTS user_notes (
             user_id INTEGER PRIMARY KEY,
@@ -524,3 +537,50 @@ def recent_chat_history(user_id, limit=6) -> list:
         rows = c.execute('SELECT role, content FROM chat_history WHERE user_id = ? '
                          'ORDER BY id DESC LIMIT ?', (user_id, limit)).fetchall()
     return [{'role': r['role'], 'content': r['content']} for r in reversed(rows)]
+
+
+# --- Лента рабочего чата ---
+
+def add_chat_record(chat_id, mid, user_id, user_name, text,
+                    house_id=None, has_files=False, is_issue=False) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO chat_messages (chat_id, mid, user_id, user_name, text, '
+            'house_id, has_files, is_issue, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (chat_id, mid, user_id, user_name, text, house_id,
+             int(has_files), int(is_issue), now()))
+        return cur.lastrowid
+
+
+def house_chat_records(house_id, limit=20):
+    """Сообщения чата по конкретному дому, свежие первыми."""
+    with _conn() as c:
+        return c.execute('SELECT * FROM chat_messages WHERE house_id = ? '
+                         'ORDER BY id DESC LIMIT ?', (house_id, limit)).fetchall()
+
+
+def chat_records_since(since_iso, limit=200):
+    """Сообщения за период (по дате создания в формате ДД.ММ.ГГГГ)."""
+    with _conn() as c:
+        return c.execute('SELECT * FROM chat_messages WHERE created_at >= ? '
+                         'ORDER BY id DESC LIMIT ?', (since_iso, limit)).fetchall()
+
+
+def chat_stats_for_day(day_str):
+    """Сводка за день: всего сообщений, по домам, аварийных, с файлами."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT COUNT(*) AS total, "
+            'SUM(house_id IS NOT NULL) AS with_house, '
+            'SUM(is_issue) AS issues, '
+            'SUM(has_files) AS with_files '
+            'FROM chat_messages WHERE created_at LIKE ?', (day_str + '%',)).fetchone()
+    return {'total': row['total'] or 0, 'with_house': row['with_house'] or 0,
+            'issues': row['issues'] or 0, 'with_files': row['with_files'] or 0}
+
+
+def recent_issues(limit=10):
+    """Последние сообщения, похожие на заявки."""
+    with _conn() as c:
+        return c.execute("SELECT * FROM chat_messages WHERE is_issue = 1 "
+                         'ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
