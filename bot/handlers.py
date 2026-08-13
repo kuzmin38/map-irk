@@ -1,4 +1,5 @@
 """Обработчики бота «Помощник сантехника» УК Жемчужина (мессенджер MAX)."""
+import asyncio
 import json
 import logging
 import os
@@ -23,6 +24,7 @@ from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 from . import agent, ai, db, houses
 from . import project_docs
 from . import risers as risers_mod
+from . import transcribe
 
 log = logging.getLogger(__name__)
 dp = Dispatcher()
@@ -712,6 +714,35 @@ ISSUE_WORDS = re.compile(
     r'холодн[ыа]я\s+батаре|авари|сорвал|потоп|фонтан|срочно)', re.IGNORECASE)
 
 
+SPEECH_TYPES = ('audio', 'video')
+
+
+def speech_url(body) -> str | None:
+    """Ссылка на голосовое или видео во вложениях — то, что можно расшифровать."""
+    for a in (getattr(body, 'attachments', None) or []):
+        a_type = getattr(getattr(a, 'type', None), 'value', getattr(a, 'type', None))
+        if a_type in SPEECH_TYPES:
+            url = getattr(a.payload, 'url', None) if a.payload else None
+            if url:
+                return url
+    return None
+
+
+async def transcribe_later(record_id: int, url: str):
+    """Расшифровывает голосовое/видео в фоне и дописывает текст к сообщению."""
+    try:
+        text = await transcribe.transcribe_url(url)
+        if not text:
+            return
+        house = houses.detect_house(text)
+        db.set_chat_transcript(record_id, text,
+                               house_id=house['id'] if house else None,
+                               is_issue=bool(ISSUE_WORDS.search(text)))
+        log.info('Расшифровано сообщение %s: %.80s', record_id, text)
+    except Exception:
+        log.exception('Не удалось расшифровать вложение')
+
+
 def record_chat_message(event, text: str):
     """Тихо сохраняет сообщение рабочего чата и цепляет его к дому."""
     try:
@@ -720,7 +751,7 @@ def record_chat_message(event, text: str):
         if not text and not files:
             return
         house = houses.detect_house(text) if text else None
-        db.add_chat_record(
+        record_id = db.add_chat_record(
             chat_id=getattr(event.message.recipient, 'chat_id', 0),
             mid=getattr(body, 'mid', None),
             user_id=_uid(event),
@@ -730,6 +761,10 @@ def record_chat_message(event, text: str):
             has_files=files,
             is_issue=bool(text and ISSUE_WORDS.search(text)),
         )
+        # Голосовые и видеоотчёты расшифровываем фоном, чтобы не тормозить чат
+        url = speech_url(body)
+        if url:
+            asyncio.create_task(transcribe_later(record_id, url))
     except Exception:
         log.exception('Не удалось записать сообщение чата')
 
@@ -1690,8 +1725,13 @@ async def on_callback(event: MessageCallback):
             for r in records:
                 mark = '🔴 ' if r['is_issue'] else ''
                 files = ' 📎' if r['has_files'] else ''
-                text = (r['text'] or '(без текста)')[:160]
-                lines.append(f"{mark}{r['created_at']} · {r['user_name'] or '—'}{files}\n   {text}")
+                lines.append(f"{mark}{r['created_at']} · {r['user_name'] or '—'}{files}")
+                if r['text']:
+                    lines.append(f"   {r['text'][:160]}")
+                if r['transcript']:
+                    lines.append(f"   🎙 {r['transcript'][:300]}")
+                elif not r['text']:
+                    lines.append('   (вложение без текста)')
             kb = InlineKeyboardBuilder()
             kb.row(CallbackButton(text='🔧 Техника', payload=f"tech:{h['id']}"),
                    CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))

@@ -131,6 +131,7 @@ def init():
             house_id INTEGER,
             has_files INTEGER NOT NULL DEFAULT 0,
             is_issue INTEGER NOT NULL DEFAULT 0,
+            transcript TEXT,
             created_at TEXT NOT NULL)''')
         c.execute('CREATE INDEX IF NOT EXISTS idx_chat_house ON chat_messages(house_id)')
         # Память агента: что Люся знает о человеке и о чём с ним говорила
@@ -584,3 +585,16 @@ def recent_issues(limit=10):
     with _conn() as c:
         return c.execute("SELECT * FROM chat_messages WHERE is_issue = 1 "
                          'ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
+
+
+def set_chat_transcript(record_id, transcript, house_id=None, is_issue=None):
+    """Дописывает расшифровку голосового/видео к сообщению чата."""
+    fields = {'transcript': transcript}
+    if house_id is not None:
+        fields['house_id'] = house_id
+    if is_issue is not None:
+        fields['is_issue'] = int(is_issue)
+    cols = ', '.join(f'{k} = ?' for k in fields)
+    with _conn() as c:
+        c.execute(f'UPDATE chat_messages SET {cols} WHERE id = ?',
+                  (*fields.values(), record_id))
