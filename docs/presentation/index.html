@@ -91,7 +91,25 @@ header h1{margin-bottom:18px}
 }
 
 section{padding:48px 0;border-bottom:1px solid var(--line)}
-section:last-of-type{border-bottom:none}
+.page.last section:last-of-type{border-bottom:none}
+.page-foot,.cover-foot,.toc{display:none}
+.toc{
+  list-style:none;margin:0;padding:0;counter-reset:t;
+}
+.toc li{
+  counter-increment:t;display:grid;grid-template-columns:26px 1fr auto;gap:12px;
+  align-items:baseline;padding:11px 0;border-top:1px solid var(--line);
+}
+.toc li:last-child{border-bottom:1px solid var(--line)}
+.toc li::before{
+  content:counter(t);font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11px;color:var(--steel);font-weight:600;
+}
+.toc span{font-family:Georgia,"Times New Roman",serif;font-size:15px;color:var(--ink)}
+.toc b{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;
+  color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums;
+}
 .head{display:flex;flex-direction:column;gap:12px;margin-bottom:28px}
 
 .stack{display:flex;flex-direction:column;gap:16px}
@@ -108,14 +126,14 @@ section:last-of-type{border-bottom:none}
 /* Сценарий: два столбца времени */
 .tl{display:grid;gap:14px}
 @media(min-width:620px){.tl{grid-template-columns:1fr 1fr;gap:18px}}
-.tl-col{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.tl-col header{padding:14px 18px;border-bottom:1px solid var(--line);border-top:3px solid var(--muted);margin:0}
-.tl-col.now header{border-top-color:var(--signal)}
-.tl-col.next header{border-top-color:var(--good)}
-.tl-col header .eyebrow{color:var(--muted);margin:0}
-.tl-col.now header .eyebrow{color:var(--signal)}
-.tl-col.next header .eyebrow{color:var(--good)}
-.tl-col header p{font-size:13px;color:var(--muted);margin-top:4px}
+.tl-col{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.tl-head{padding:14px 18px;border-bottom:1px solid var(--line);border-top:3px solid var(--muted);margin:0}
+.tl-col.now .tl-head{border-top-color:var(--signal)}
+.tl-col.next .tl-head{border-top-color:var(--good)}
+.tl-head .eyebrow{color:var(--muted);margin:0}
+.tl-col.now .tl-head .eyebrow{color:var(--signal)}
+.tl-col.next .tl-head .eyebrow{color:var(--good)}
+.tl-head p{font-size:13px;color:var(--muted);margin-top:4px}
 .tl-list{list-style:none;margin:0;padding:8px 0}
 .tl-list li{
   display:grid;grid-template-columns:64px 1fr;gap:12px;
@@ -127,7 +145,7 @@ section:last-of-type{border-bottom:none}
   font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:2px;
 }
 .tl-foot{
-  padding:14px 18px;border-top:1px solid var(--line);
+  margin-top:auto;padding:14px 18px;border-top:1px solid var(--line);
   font-size:14px;font-weight:600;background:var(--surface-2);
 }
 .tl-col.now .tl-foot{color:var(--signal)}
@@ -238,46 +256,60 @@ section:last-of-type{border-bottom:none}
 
 footer{padding:36px 0 0;color:var(--muted);font-size:14px}
 
-/* ---- Печать и PDF: каждый раздел с новой страницы, ничего не рвём пополам ---- */
+/* ---- Печать и PDF: документ собран постранично ---- */
 @media print{
-  @page{margin:14mm 12mm}
+  @page{size:A4;margin:14mm 13mm}
   html,body{background:#fff;color:#161C24}
-  .wrap{max-width:none;padding:0}
+  .wrap{max-width:none;padding:0;counter-reset:pg}
 
-  header{
-    padding:120px 0 0;break-after:page;border-bottom:none;
+  /* каждая .page — ровно один лист А4 */
+  .page{
+    counter-increment:pg;
+    min-height:260mm;
+    display:flex;flex-direction:column;
+    break-after:page;
   }
-  header h1{font-size:42px;margin-bottom:22px}
-  header .lede{font-size:17px}
+  .page.last{break-after:auto}
 
-  /* каждый раздел с новой страницы; внутри длинного раздела разрыв допустим,
-     но только между блоками — за это отвечают правила ниже */
-  section{break-before:page;padding:0 0 8px;border-bottom:none}
+  .page > section{padding:0 0 26px;border-bottom:none;break-inside:avoid}
+  .page > section:last-of-type{padding-bottom:0}
   .head{margin-bottom:20px}
 
-  /* заголовок не должен оставаться один в низу страницы */
-  h2,h3{break-after:avoid-page}
-  .head{break-after:avoid-page}
-  .lede{orphans:3;widows:3}
-  p{orphans:3;widows:3}
-
-  /* блоки, которые нельзя разрывать */
-  .card,.metric,.tl-col,.vs-side,.chat,.note,.risk,.cmp,.steps li,.feat li,.tl{
-    break-inside:avoid-page;
+  /* колонтитул прижат к низу листа */
+  .page-foot,.cover-foot{
+    display:flex;justify-content:space-between;align-items:baseline;gap:16px;
+    margin-top:auto;padding-top:9px;border-top:1px solid var(--line);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
   }
-  .vs{break-inside:avoid-page;margin-bottom:14px}
-  .grid,.metrics,.stack{break-inside:avoid}
+  .page-foot::after{content:counter(pg);font-variant-numeric:tabular-nums}
 
-  /* таблица сравнения переносится целиком, строки не рвутся */
-  .cmp-row{break-inside:avoid}
-  /* отступы на бумаге плотнее экранных */
-  section .stack{gap:12px}
-  .feat li{padding:12px 0}
-  .steps{gap:12px}
+  /* титул */
+  .page.cover header{padding:34mm 0 0;border-bottom:none}
+  .toc{display:block;margin-top:auto;padding-bottom:18mm}
+  .page.cover h1{font-size:44px;margin-bottom:22px}
+  .page.cover .lede{font-size:17.5px;max-width:52ch}
+  .page.cover .meta{margin-top:30px}
 
-  /* на бумаге тени и лишние заливки только мешают */
-  .card,.metric,.tl-col,.vs-side,.cmp,.risk{box-shadow:none}
-  footer{break-before:avoid-page;padding-top:24px;border-top:1px solid var(--line)}
+  /* типографика: заголовки не отрываются, строки не сиротеют */
+  h2,h3,.head{break-after:avoid-page}
+  p,.lede,.small{orphans:3;widows:3}
+
+  /* блоки не рвём */
+  .card,.metric,.tl,.tl-col,.vs,.vs-side,.chat,.note,.risk,.cmp,.cmp-row,
+  .steps li,.feat li,.grid,.metrics,.stack{break-inside:avoid}
+
+  /* на бумаге плотнее и без теней */
+  section .stack{gap:14px}
+  .feat li{padding:15px 0}
+  .steps{gap:16px}
+  .cmp-row{padding:15px 16px}
+  .risk-row{padding:15px 18px}
+  .tl-list li{padding:8px 16px}
+  .tl-head{padding:12px 16px}
+  .tl-foot{padding:12px 16px}
+  .card{padding:17px 18px}
+  .card,.metric,.tl-col,.vs-side,.cmp,.risk,.chat{box-shadow:none}
 }
 </style>
 </head>
@@ -285,325 +317,387 @@ footer{padding:36px 0 0;color:var(--muted);font-size:14px}
 
 <div class="wrap">
 
-<header>
-  <span class="eyebrow">УК «Жемчужина» · предложение</span>
-  <h1>Диспетчер, который<br>не спит и всё помнит</h1>
-  <p class="lede">Что изменится, если помощница Люся будет в чате каждого дома: обращения жильцов перестанут теряться, а у руководства появятся цифры, которых сейчас просто нет.</p>
-  <div class="meta">
-    <span>86 домов в базе</span>
-    <span>6 ЖК</span>
-    <span>бот уже работает</span>
-  </div>
-</header>
+<!-- ─────────── стр. 1 · титул ─────────── -->
+<div class="page cover">
+  <header>
+    <span class="eyebrow">УК «Жемчужина» · предложение</span>
+    <h1>Диспетчер, который<br>не спит и всё помнит</h1>
+    <p class="lede">Что изменится, если помощница Люся будет в чате каждого дома: обращения жильцов перестанут теряться, а у руководства появятся цифры, которых сейчас просто нет.</p>
+    <div class="meta">
+      <span>86 домов в базе</span>
+      <span>6 ЖК</span>
+      <span>21 адрес со стояками</span>
+      <span>бот уже работает</span>
+    </div>
+  </header>
+  <ol class="toc">
+    <li><span>Домовой чат — чёрная дыра, и как это выглядит до и после</span><b>2</b></li>
+    <li><span>Возражение: «у нас же в чатах уже есть бот»</span><b>3</b></li>
+    <li><span>Построчно: что нужно от бота в чате</span><b>4</b></li>
+    <li><span>Что получают жильцы</span><b>5</b></li>
+    <li><span>Что получает руководство и где риски</span><b>6</b></li>
+    <li><span>План внедрения и что нужно от компании</span><b>7</b></li>
+  </ol>
 
-<section>
-  <div class="head">
-    <span class="eyebrow">Что происходит сейчас</span>
-    <h2>Домовой чат — чёрная дыра</h2>
+  <div class="cover-foot">
+    <span>Помощница Люся · рабочий бот в мессенджере MAX</span>
+    <span>Иркутск, 2026</span>
   </div>
-  <div class="stack">
-    <p class="lede">Жилец пишет «нет горячей воды» в 22:40. Сообщение тонет между обсуждением парковки и поздравлениями с праздником. Утром диспетчер листает полтора десятка чатов: что-то находит, что-то нет.</p>
+</div>
+
+<!-- ─────────── стр. 2 · проблема ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Что происходит сейчас</span>
+      <h2>Домовой чат — чёрная дыра</h2>
+    </div>
+    <div class="stack">
+      <p class="lede">Жилец пишет «нет горячей воды» в 22:40. Сообщение тонет между обсуждением парковки и поздравлениями. Утром диспетчер листает полтора десятка чатов: что-то находит, что-то нет.</p>
+      <div class="grid two">
+        <div class="card">
+          <h3>Ничего не измеряется</h3>
+          <p>Сколько было обращений, за сколько ответили, по каким домам напряжённее — узнать неоткуда. Вопрос «как у нас со сроками реакции» остаётся без ответа.</p>
+        </div>
+        <div class="card">
+          <h3>Нечем подтвердить</h3>
+          <p>При проверке ГЖИ доказать, что обращение приняли и устранили вовремя, нечем: переписка в чате — не реестр.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="eyebrow">Один и тот же вечер</span>
+      <h2>Как это выглядит до и после</h2>
+    </div>
+    <div class="tl">
+      <div class="tl-col now">
+        <div class="tl-head">
+          <span class="eyebrow">Сегодня</span>
+          <p>Заявка живёт в переписке</p>
+        </div>
+        <ul class="tl-list">
+          <li><time>22:40</time><span>Жилец пишет в чат: «В 47-й нет горячей воды»</span></li>
+          <li><time>ночь</time><span>Сообщение уходит вверх за другими</span></li>
+          <li><time>09:20</time><span>Диспетчер листает чаты, находит обращение</span></li>
+          <li><time>09:40</time><span>Звонит мастеру, тот записывает в блокнот</span></li>
+          <li><time>день</time><span>Сделали. Никто не отчитался жильцу</span></li>
+          <li><time>18:10</time><span>Жилец пишет второй раз, уже резче</span></li>
+        </ul>
+        <div class="tl-foot">Реакция: около 11 часов, следов не осталось</div>
+      </div>
+      <div class="tl-col next">
+        <div class="tl-head">
+          <span class="eyebrow">С Люсей</span>
+          <p>Заявка живёт в системе</p>
+        </div>
+        <ul class="tl-list">
+          <li><time>22:40</time><span>То же сообщение в том же чате</span></li>
+          <li><time>22:44</time><span>Люся отвечает: заявка принята, номер выдан</span></li>
+          <li><time>22:44</time><span>В системе: дом, квартира, стояк, соседи по стояку</span></li>
+          <li><time>08:00</time><span>Мастер открывает список — обращение уже там</span></li>
+          <li><time>11:20</time><span>Сделано, видеоотчёт расшифрован и подшит к дому</span></li>
+          <li><time>11:21</time><span>Жильцу автоматически: выполнено</span></li>
+        </ul>
+        <div class="tl-foot">Реакция: 4 минуты, всё зафиксировано</div>
+      </div>
+    </div>
+  </section>
+  <div class="page-foot"><span>Проблема</span></div>
+</div>
+
+<!-- ─────────── стр. 3 · возражение ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Возражение по существу</span>
+      <h2>«У нас же в чатах уже есть бот»</h2>
+    </div>
+    <p class="lede" style="margin-bottom:26px">Есть. Он ловит в тексте слова, похожие на заявку, и предлагает нажать кнопку. Ещё рассылает объявления. На этом всё — поговорить с ним нельзя. Он закрывает первый шаг из десяти, а дальше работа снова уходит в блокноты и телефонные звонки.</p>
+
+    <div class="stack">
+      <div class="vs">
+        <div class="vs-side old">
+          <span class="eyebrow">Бот от CRM-партнёра</span>
+          <div class="dialog">
+            <p class="q">— Почему опять нет горячей воды?</p>
+            <p class="a">— Похоже на заявку. Создать заявку? <em>[Да] [Нет]</em></p>
+          </div>
+        </div>
+        <div class="vs-side new">
+          <span class="eyebrow">Люся</span>
+          <div class="dialog">
+            <p class="q">— Почему опять нет горячей воды?</p>
+            <p class="a">— Сегодня с 9:00 плановое отключение ГВС, меняем участок розлива, до 17:00. Если к вечеру не появится — напишите, оформлю заявку.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="vs">
+        <div class="vs-side old">
+          <span class="eyebrow">Бот от CRM-партнёра</span>
+          <div class="dialog">
+            <p class="q">— В 47-й квартире заливает сверху!</p>
+            <p class="a">— Похоже на заявку. Создать заявку? <em>[Да] [Нет]</em></p>
+          </div>
+        </div>
+        <div class="vs-side new">
+          <span class="eyebrow">Люся</span>
+          <div class="dialog">
+            <p class="q">— В 47-й квартире заливает сверху!</p>
+            <p class="a">— Приняла, заявка №312. Кв. 47 — это 9-й этаж, второй стояк; сверху 54-я квартира. Передала сантехникам, проверят обе.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="small" style="margin:18px 0 24px">Разницу видно сразу: один распознаёт слово «заливает», другая знает дом — этаж, стояк и соседей по нему. Раскладка квартир уже загружена по 21 адресу.</p>
+
     <div class="grid two">
       <div class="card">
-        <h3>Ничего не измеряется</h3>
-        <p>Сколько было обращений, за сколько ответили, по каким домам напряжённее — узнать неоткуда. Вопрос «как у нас со сроками реакции» остаётся без ответа.</p>
+        <h3>Тот бот — про одну кнопку</h3>
+        <p>Он умеет ровно то, что заложил партнёр, и не научится большему: это не искусственный интеллект, а список ключевых слов. Про наши дома, стояки и тепловые пункты он не знает ничего.</p>
       </div>
       <div class="card">
-        <h3>Нечем подтвердить</h3>
-        <p>При проверке ГЖИ доказать, что обращение приняли и устранили вовремя, нечем: переписка в чате — не реестр.</p>
+        <h3>Люся — про всю работу</h3>
+        <p>От обращения жильца до наряда сантехнику, отчёта с видео, записи в паспорт дома и утренней сводки руководителю. Один сквозной путь вместо пяти разрозненных.</p>
       </div>
     </div>
-  </div>
-</section>
+  </section>
+  <div class="page-foot"><span>Возражение</span></div>
+</div>
 
-<section>
-  <div class="head">
-    <span class="eyebrow">Возражение по существу</span>
-    <h2>«У нас же в чатах уже есть бот»</h2>
-  </div>
-  <p class="lede" style="margin-bottom:26px">Есть. Он ловит в тексте слова, похожие на заявку, и предлагает нажать кнопку. Ещё рассылает объявления. На этом всё — поговорить с ним нельзя. Он закрывает первый шаг из десяти, а дальше работа снова уходит в блокноты и телефонные звонки.</p>
+<!-- ─────────── стр. 4 · таблица ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Построчно</span>
+      <h2>Что нужно от бота в чате</h2>
+    </div>
+    <div class="cmp">
+      <div class="cmp-row cmp-head">
+        <span>Возможность</span>
+        <span>Сейчас</span>
+        <span>С Люсей</span>
+      </div>
+      <div class="cmp-row">
+        <span>Заметить заявку в переписке</span>
+        <span class="ok">да</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Рассылать объявления</span>
+        <span class="ok">да</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Ответить на вопрос жильца по существу</span>
+        <span class="no">нет</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Знать дом: стояки, этажи, соседей по стояку</span>
+        <span class="no">нет</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Понимать голосовые и видеоотчёты</span>
+        <span class="no">нет</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Работать с бригадой: наряды, сроки, отчёты</span>
+        <span class="no">нет</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Вести паспорта домов и техдокументацию</span>
+        <span class="no">нет</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Следить за поверками приборов и опрессовкой</span>
+        <span class="no">нет</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Сводка руководству каждое утро</span>
+        <span class="no">нет</span>
+        <span class="ok">да</span>
+      </div>
+      <div class="cmp-row">
+        <span>Данные остаются в компании</span>
+        <span class="no">у партнёра</span>
+        <span class="ok">у нас</span>
+      </div>
+    </div>
 
-  <div class="stack">
-    <div class="vs">
-      <div class="vs-side old">
-        <span class="eyebrow">Бот от CRM-партнёра</span>
-        <div class="dialog">
-          <p class="q">— Почему опять нет горячей воды?</p>
-          <p class="a">— Похоже на заявку. Создать заявку? <em>[Да] [Нет]</em></p>
+    <div class="note" style="margin-top:24px">
+      <b>Ломать ничего не нужно.</b> Люся может работать рядом с существующим ботом: он продолжает заводить заявки в CRM партнёра, она берёт на себя всё остальное. Заменять его или нет — решать по итогам пилота, а не на слово.
+    </div>
+  </section>
+  <div class="page-foot"><span>Возражение</span></div>
+</div>
+
+<!-- ─────────── стр. 5 · жильцам ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Жильцам</span>
+      <h2>Отвечает сразу, а не в понедельник</h2>
+    </div>
+    <ul class="feat">
+      <li>
+        <b>Принимает заявки круглосуточно</b>
+        <span>Ночью, в выходные, в новогодние праздники. Человек получает номер обращения сразу, а не тишину до утра.</span>
+      </li>
+      <li>
+        <b>Отвечает на типовое без диспетчера</b>
+        <span>Почему нет воды, когда включат отопление, какая температура ГВС положена по нормативу, куда звонить в аварийную.</span>
+      </li>
+      <li>
+        <b>Сообщает об отключениях по нужным домам</b>
+        <span>Инженер один раз пишет в рабочем чате — объявление уходит в чаты именно тех домов, которых это касается. Не пятнадцать раз копипастой.</span>
+      </li>
+      <li>
+        <b>Показывает статус заявки</b>
+        <span>«Что там с моей заявкой?» — принята, в работе, выполнена. Без звонков в офис.</span>
+      </li>
+      <li>
+        <b>Принимает показания счётчиков</b>
+        <span>Жилец пишет цифры прямо в чат, Люся проверяет их по прошлому месяцу и складывает в общую ведомость. Не нужно обзванивать всех до 15-го числа.</span>
+      </li>
+    </ul>
+    <div class="chat" style="margin-top:24px">
+      <span class="who">Люся · 22:44</span>
+      Приняла: Байкальская 237, кв. 47, нет горячей воды. Заявка №312, передала сантехникам. Как возьмут в работу — напишу.
+    </div>
+    <p class="small" style="margin-top:18px">Тон и границы ответов заданы заранее: Люся не спорит, не обещает сроков и не рассуждает о начислениях — всё спорное уходит человеку.</p>
+  </section>
+  <div class="page-foot"><span>Что получают жильцы</span></div>
+</div>
+
+<!-- ─────────── стр. 6 · руководству + риски ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Руководству</span>
+      <h2>Цифры, которых сейчас нет</h2>
+    </div>
+    <div class="metrics">
+      <div class="metric">
+        <div class="k">Скорость реакции</div>
+        <div class="v">За сколько ответили на обращение — по каждому дому и в среднем по компании.</div>
+      </div>
+      <div class="metric">
+        <div class="k">Структура обращений</div>
+        <div class="v">Сколько за месяц и о чём: ГВС, канализация, отопление, электрика.</div>
+      </div>
+      <div class="metric">
+        <div class="k">Карта напряжённости</div>
+        <div class="v">Где жалоб втрое больше обычного — там системная проблема, а не невезение.</div>
+      </div>
+      <div class="metric">
+        <div class="k">Ничего не пропущено</div>
+        <div class="v">Обращения без ответа дольше нормы — напоминание лично диспетчеру.</div>
+      </div>
+    </div>
+    <div class="grid two" style="margin-top:20px">
+      <div class="card">
+        <h3>Авария видна на два дня раньше</h3>
+        <p>Семь жалоб на холодные батареи в одном подъезде за два часа — это не семь заявок, а одна проблема на стояке. Люся замечает всплеск и пишет инженеру сразу.</p>
+      </div>
+      <div class="card">
+        <h3>Реестр для проверок</h3>
+        <p>Обращение от 12.08 в 22:40, ответ в 22:44, заявка №312, выполнена 13.08 в 11:20, отчёт с фотографиями. Выгружается за минуту.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="eyebrow">Честно о рисках</span>
+      <h2>Где бот может навредить</h2>
+    </div>
+    <div class="risk">
+      <div class="risk-row">
+        <span class="r">Пообещает срок — не успеем</span>
+        <span class="a">Люся не называет сроков. Только «принято» и «передала». Сроки называет человек.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Ответит на юридический вопрос</span>
+        <span class="a">Перерасчёты, начисления, ответственность — не её тема. Передаёт специалисту.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Ввяжется в конфликт</span>
+        <span class="a">На эмоции и грубость не отвечает. Зовёт человека и молчит.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Персональные данные жильцов</span>
+        <span class="a">Хранятся на сервере компании. Жильцов уведомляем, что в чате работает бот.</span>
+      </div>
+    </div>
+  </section>
+  <div class="page-foot"><span>Что получает руководство</span></div>
+</div>
+
+<!-- ─────────── стр. 7 · план ─────────── -->
+<div class="page last">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Как внедрять</span>
+      <h2>По одному шагу, с проверкой</h2>
+    </div>
+    <ol class="steps">
+      <li>
+        <div>
+          <b>Один дом, режим наблюдения</b>
+          <span>Люся в чате молчит, только считает: сколько обращений, о чём, за сколько отвечаем. Неделя — и на руках своя статистика. Риска нет никакого.</span>
         </div>
-      </div>
-      <div class="vs-side new">
-        <span class="eyebrow">Люся</span>
-        <div class="dialog">
-          <p class="q">— Почему опять нет горячей воды?</p>
-          <p class="a">— Сегодня с 9:00 плановое отключение ГВС, меняем участок розлива, до 17:00. Если к вечеру не появится — напишите, оформлю заявку.</p>
+      </li>
+      <li>
+        <div>
+          <b>Тот же дом, отвечает на вопросы</b>
+          <span>Только когда обратились по имени. Смотрим, как реагируют жильцы.</span>
         </div>
-      </div>
-    </div>
-
-    <div class="vs">
-      <div class="vs-side old">
-        <span class="eyebrow">Бот от CRM-партнёра</span>
-        <div class="dialog">
-          <p class="q">— В 47-й квартире заливает сверху!</p>
-          <p class="a">— Похоже на заявку. Создать заявку? <em>[Да] [Нет]</em></p>
+      </li>
+      <li>
+        <div>
+          <b>Приём заявок автоматически</b>
+          <span>С номером и фиксацией, без обещаний по срокам.</span>
         </div>
-      </div>
-      <div class="vs-side new">
-        <span class="eyebrow">Люся</span>
-        <div class="dialog">
-          <p class="q">— В 47-й квартире заливает сверху!</p>
-          <p class="a">— Приняла, заявка №312. Кв. 47 — это 9-й этаж, второй стояк; сверху 54-я квартира. Передала сантехникам, проверят обе.</p>
+      </li>
+      <li>
+        <div>
+          <b>Все дома и объявления</b>
+          <span>Рассылка об отключениях по нужным домам, сводка руководству каждое утро.</span>
         </div>
+      </li>
+    </ol>
+    <h3 style="margin-top:30px;margin-bottom:14px">Что нужно от компании</h3>
+    <div class="risk">
+      <div class="risk-row">
+        <span class="r">Права администратора в чатах домов</span>
+        <span class="a">Без них мессенджер отдаёт боту только прямые обращения, а не поток чата — считать будет нечего.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Одно объявление жильцам</span>
+        <span class="a">Что в чате работает помощник управляющей компании и переписка хранится у нас.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Дом для пилота</span>
+        <span class="a">Один чат на две недели. Дальше решаем по цифрам, а не по ощущениям.</span>
       </div>
     </div>
-  </div>
 
-  <p class="small" style="margin:18px 0 26px">Разницу видно сразу: один распознаёт слово «заливает», другая знает дом — этаж, стояк и соседей по нему. Раскладка квартир уже загружена по 21 адресу.</p>
-
-  <div class="cmp">
-    <div class="cmp-row cmp-head">
-      <span>Что нужно от бота в чате</span>
-      <span>Сейчас</span>
-      <span>С Люсей</span>
+    <div class="note" style="margin-top:26px">
+      <b>Что уже работает сегодня:</b> поиск дома и стояков по 21 адресу, приём и ведение заявок, электронные паспорта домов, показания счётчиков, учёт манометров со сроками поверки, проектная документация Центрального парка, расшифровка видеоотчётов сантехников. Домовые чаты — следующий шаг, а не начало с нуля.
     </div>
-    <div class="cmp-row">
-      <span>Заметить заявку в переписке</span>
-      <span class="ok">да</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Рассылать объявления</span>
-      <span class="ok">да</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Ответить на вопрос жильца по существу</span>
-      <span class="no">нет</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Знать дом: стояки, этажи, соседей по стояку</span>
-      <span class="no">нет</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Понимать голосовые и видеоотчёты</span>
-      <span class="no">нет</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Работать с бригадой: наряды, сроки, отчёты</span>
-      <span class="no">нет</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Вести паспорта домов и техдокументацию</span>
-      <span class="no">нет</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Следить за поверками приборов и опрессовкой</span>
-      <span class="no">нет</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Сводка руководству каждое утро</span>
-      <span class="no">нет</span>
-      <span class="ok">да</span>
-    </div>
-    <div class="cmp-row">
-      <span>Данные остаются в компании</span>
-      <span class="no">у партнёра</span>
-      <span class="ok">у нас</span>
-    </div>
-  </div>
-
-  <div class="grid two" style="margin-top:22px">
-    <div class="card">
-      <h3>Тот бот — про одну кнопку</h3>
-      <p>Он умеет ровно то, что заложил партнёр, и не научится большему: это не искусственный интеллект, а список ключевых слов. Про наши дома, стояки и тепловые пункты он не знает ничего.</p>
-    </div>
-    <div class="card">
-      <h3>Люся — про всю работу</h3>
-      <p>От обращения жильца до наряда сантехнику, отчёта с видео, записи в паспорт дома и утренней сводки руководителю. Один сквозной путь вместо пяти разрозненных.</p>
-    </div>
-  </div>
-
-  <div class="note" style="margin-top:22px">
-    <b>Ломать ничего не нужно.</b> Люся может работать рядом с существующим ботом: он продолжает заводить заявки в CRM партнёра, она берёт на себя всё остальное. Заменять его или нет — решать по итогам пилота, а не на слово.
-  </div>
-</section>
-
-<section>
-  <div class="head">
-    <span class="eyebrow">Один и тот же вечер</span>
-    <h2>Как это выглядит до и после</h2>
-  </div>
-  <div class="tl">
-    <div class="tl-col now">
-      <header>
-        <span class="eyebrow">Сегодня</span>
-        <p>Заявка живёт в переписке</p>
-      </header>
-      <ul class="tl-list">
-        <li><time>22:40</time><span>Жилец пишет в чат: «В 47-й нет горячей воды»</span></li>
-        <li><time>ночь</time><span>Сообщение уходит вверх за другими</span></li>
-        <li><time>09:20</time><span>Диспетчер листает чаты, находит обращение</span></li>
-        <li><time>09:40</time><span>Звонит мастеру, тот записывает в блокнот</span></li>
-        <li><time>день</time><span>Сделали. Никто не отчитался жильцу</span></li>
-        <li><time>18:10</time><span>Жилец пишет второй раз, уже резче</span></li>
-      </ul>
-      <div class="tl-foot">Реакция: около 11 часов, следов не осталось</div>
-    </div>
-    <div class="tl-col next">
-      <header>
-        <span class="eyebrow">С Люсей</span>
-        <p>Заявка живёт в системе</p>
-      </header>
-      <ul class="tl-list">
-        <li><time>22:40</time><span>То же сообщение в том же чате</span></li>
-        <li><time>22:44</time><span>Люся отвечает: заявка принята, номер выдан</span></li>
-        <li><time>22:44</time><span>В системе: дом, квартира, стояк, соседи по стояку</span></li>
-        <li><time>08:00</time><span>Мастер открывает список — обращение уже там</span></li>
-        <li><time>11:20</time><span>Сделано, видеоотчёт расшифрован и подшит к дому</span></li>
-        <li><time>11:21</time><span>Жильцу автоматически: выполнено</span></li>
-      </ul>
-      <div class="tl-foot">Реакция: 4 минуты, всё зафиксировано</div>
-    </div>
-  </div>
-  <p class="small" style="margin-top:16px">Стояк и соседей по нему Люся знает уже сейчас: раскладка квартир загружена по 21 адресу. Сантехник сразу видит, кого заливает сверху и кого топит снизу.</p>
-</section>
-
-<section>
-  <div class="head">
-    <span class="eyebrow">Жильцам</span>
-    <h2>Отвечает сразу, а не в понедельник</h2>
-  </div>
-  <ul class="feat">
-    <li>
-      <b>Принимает заявки круглосуточно</b>
-      <span>Ночью, в выходные, в новогодние праздники. Человек получает номер обращения сразу, а не тишину до утра.</span>
-    </li>
-    <li>
-      <b>Отвечает на типовое без диспетчера</b>
-      <span>Почему нет воды, когда включат отопление, какая температура ГВС положена по нормативу, куда звонить в аварийную.</span>
-    </li>
-    <li>
-      <b>Сообщает об отключениях по нужным домам</b>
-      <span>Инженер один раз пишет в рабочем чате — объявление уходит в чаты именно тех домов, которых это касается. Не пятнадцать раз копипастой.</span>
-    </li>
-    <li>
-      <b>Показывает статус заявки</b>
-      <span>«Что там с моей заявкой?» — принята, в работе, выполнена. Без звонков в офис.</span>
-    </li>
-  </ul>
-  <div class="chat" style="margin-top:22px">
-    <span class="who">Люся · 22:44</span>
-    Приняла: Байкальская 237, кв. 47, нет горячей воды. Заявка №312, передала сантехникам. Как возьмут в работу — напишу.
-  </div>
-</section>
-
-<section>
-  <div class="head">
-    <span class="eyebrow">Руководству</span>
-    <h2>Цифры, которых сейчас нет</h2>
-  </div>
-  <div class="metrics">
-    <div class="metric">
-      <div class="k">Скорость реакции</div>
-      <div class="v">За сколько ответили на обращение — по каждому дому и в среднем по компании.</div>
-    </div>
-    <div class="metric">
-      <div class="k">Структура обращений</div>
-      <div class="v">Сколько за месяц и о чём: ГВС, канализация, отопление, электрика.</div>
-    </div>
-    <div class="metric">
-      <div class="k">Карта напряжённости</div>
-      <div class="v">Где жалоб втрое больше обычного — там системная проблема, а не невезение.</div>
-    </div>
-    <div class="metric">
-      <div class="k">Ничего не пропущено</div>
-      <div class="v">Обращения без ответа дольше нормы — напоминание лично диспетчеру.</div>
-    </div>
-  </div>
-  <div class="stack" style="margin-top:24px">
-    <div class="card">
-      <h3>Авария видна на два дня раньше</h3>
-      <p>Семь жалоб на холодные батареи в одном подъезде за два часа — это не семь заявок, а одна проблема на стояке. Люся замечает всплеск и пишет инженеру сразу, а не когда дойдут руки перечитать чаты.</p>
-    </div>
-    <div class="card">
-      <h3>Реестр для проверок</h3>
-      <p>Обращение от 12.08 в 22:40, ответ в 22:44, заявка №312, выполнена 13.08 в 11:20, отчёт с фотографиями. Выгружается за минуту — при запросе ГЖИ или прокуратуры.</p>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="head">
-    <span class="eyebrow">Честно о рисках</span>
-    <h2>Где бот может навредить</h2>
-  </div>
-  <p class="lede" style="margin-bottom:22px">Чат с жильцами — лицо компании. Поэтому правила поведения жёсткие и заданы заранее.</p>
-  <div class="risk">
-    <div class="risk-row">
-      <span class="r">Пообещает срок — не успеем</span>
-      <span class="a">Люся не называет сроков. Только «принято» и «передала». Сроки называет человек.</span>
-    </div>
-    <div class="risk-row">
-      <span class="r">Ответит на юридический вопрос</span>
-      <span class="a">Перерасчёты, начисления, ответственность — не её тема. Передаёт специалисту.</span>
-    </div>
-    <div class="risk-row">
-      <span class="r">Ввяжется в конфликт</span>
-      <span class="a">На эмоции и грубость не отвечает. Зовёт человека и молчит.</span>
-    </div>
-    <div class="risk-row">
-      <span class="r">Персональные данные жильцов</span>
-      <span class="a">Хранятся на сервере компании. Жильцов уведомляем, что в чате работает бот.</span>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="head">
-    <span class="eyebrow">Как внедрять</span>
-    <h2>По одному шагу, с проверкой</h2>
-  </div>
-  <ol class="steps">
-    <li>
-      <div>
-        <b>Один дом, режим наблюдения</b>
-        <span>Люся в чате молчит, только считает: сколько обращений, о чём, за сколько отвечаем. Неделя — и на руках своя статистика. Риска нет никакого.</span>
-      </div>
-    </li>
-    <li>
-      <div>
-        <b>Тот же дом, отвечает на вопросы</b>
-        <span>Только когда обратились по имени. Смотрим, как реагируют жильцы.</span>
-      </div>
-    </li>
-    <li>
-      <div>
-        <b>Приём заявок автоматически</b>
-        <span>С номером и фиксацией, без обещаний по срокам.</span>
-      </div>
-    </li>
-    <li>
-      <div>
-        <b>Все дома и объявления</b>
-        <span>Рассылка об отключениях по нужным домам, сводка руководству каждое утро.</span>
-      </div>
-    </li>
-  </ol>
-  <div class="note" style="margin-top:26px">
-    <b>Что уже работает сегодня:</b> поиск дома и стояков по 21 адресу, приём и ведение заявок, электронные паспорта домов, показания счётчиков, учёт манометров со сроками поверки, проектная документация Центрального парка, расшифровка видеоотчётов сантехников. Домовые чаты — следующий шаг, а не начало с нуля.
-  </div>
-</section>
-
-<footer>
-  Помощница Люся · рабочий бот УК «Жемчужина» в мессенджере MAX
-</footer>
+  </section>
+  <div class="page-foot"><span>План внедрения</span></div>
+</div>
 
 </div>
 
