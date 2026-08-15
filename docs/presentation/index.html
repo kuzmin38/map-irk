@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Люся в домовых чатах</title>
+<style>
+:root{
+  --ground:#F6F7F9;
+  --surface:#FFFFFF;
+  --surface-2:#EDF0F4;
+  --ink:#161C24;
+  --ink-soft:#41505F;
+  --muted:#6B7A8A;
+  --line:#DDE3EA;
+  --steel:#2C5F8D;
+  --steel-soft:#E3ECF5;
+  --signal:#B85C18;
+  --signal-soft:#FBEBDF;
+  --good:#2A6F52;
+  --good-soft:#E1F0E8;
+  --shadow:0 1px 2px rgba(22,28,36,.06),0 8px 24px -16px rgba(22,28,36,.25);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1218;
+    --surface:#161C24;
+    --surface-2:#1D242E;
+    --ink:#E8ECF1;
+    --ink-soft:#B6C2CE;
+    --muted:#8494A3;
+    --line:#2A333E;
+    --steel:#77AEDC;
+    --steel-soft:#18293A;
+    --signal:#E8944B;
+    --signal-soft:#33220F;
+    --good:#68C79A;
+    --good-soft:#12271D;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1218;
+  --surface:#161C24;
+  --surface-2:#1D242E;
+  --ink:#E8ECF1;
+  --ink-soft:#B6C2CE;
+  --muted:#8494A3;
+  --line:#2A333E;
+  --steel:#77AEDC;
+  --steel-soft:#18293A;
+  --signal:#E8944B;
+  --signal-soft:#33220F;
+  --good:#68C79A;
+  --good-soft:#12271D;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px 80px}
+
+h1,h2,h3{font-family:Georgia,"Times New Roman",serif;font-weight:600;text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,7vw,46px);line-height:1.12;letter-spacing:-.015em}
+h2{font-size:clamp(22px,4.5vw,29px);line-height:1.2;letter-spacing:-.01em}
+h3{font-size:18px;line-height:1.3}
+p{margin:0}
+.lede{font-size:clamp(17px,2.6vw,19px);line-height:1.55;color:var(--ink-soft);max-width:60ch}
+.small{font-size:14px;color:var(--muted);line-height:1.5}
+
+.eyebrow{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--steel);font-weight:600;
+}
+
+header{padding:56px 0 40px;border-bottom:1px solid var(--line)}
+header .eyebrow{display:block;margin-bottom:16px}
+header h1{margin-bottom:18px}
+.meta{
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:26px;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;
+}
+.meta span{
+  padding:5px 10px;border:1px solid var(--line);border-radius:4px;
+  color:var(--muted);background:var(--surface);
+}
+
+section{padding:48px 0;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:none}
+.head{display:flex;flex-direction:column;gap:12px;margin-bottom:28px}
+
+.stack{display:flex;flex-direction:column;gap:16px}
+.grid{display:grid;gap:14px}
+@media(min-width:620px){.grid.two{grid-template-columns:1fr 1fr}}
+
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:20px;box-shadow:var(--shadow);
+}
+.card h3{margin-bottom:8px}
+.card p{color:var(--ink-soft);font-size:15px}
+
+/* Сценарий: два столбца времени */
+.tl{display:grid;gap:14px}
+@media(min-width:620px){.tl{grid-template-columns:1fr 1fr;gap:18px}}
+.tl-col{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tl-col header{padding:14px 18px;border-bottom:1px solid var(--line);border-top:3px solid var(--muted);margin:0}
+.tl-col.now header{border-top-color:var(--signal)}
+.tl-col.next header{border-top-color:var(--good)}
+.tl-col header .eyebrow{color:var(--muted);margin:0}
+.tl-col.now header .eyebrow{color:var(--signal)}
+.tl-col.next header .eyebrow{color:var(--good)}
+.tl-col header p{font-size:13px;color:var(--muted);margin-top:4px}
+.tl-list{list-style:none;margin:0;padding:8px 0}
+.tl-list li{
+  display:grid;grid-template-columns:64px 1fr;gap:12px;
+  padding:10px 18px;font-size:14.5px;color:var(--ink-soft);line-height:1.45;
+}
+.tl-list li + li{border-top:1px dashed var(--line)}
+.tl-list time{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:2px;
+}
+.tl-foot{
+  padding:14px 18px;border-top:1px solid var(--line);
+  font-size:14px;font-weight:600;background:var(--surface-2);
+}
+.tl-col.now .tl-foot{color:var(--signal)}
+.tl-col.next .tl-foot{color:var(--good)}
+
+/* Метрики */
+.metrics{display:grid;gap:12px}
+@media(min-width:520px){.metrics{grid-template-columns:1fr 1fr}}
+.metric{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--steel);
+  border-radius:6px;padding:16px 18px;
+}
+.metric .k{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12px;color:var(--steel);letter-spacing:.06em;text-transform:uppercase;
+}
+.metric .v{font-size:15px;margin-top:6px;color:var(--ink-soft)}
+
+/* Список возможностей */
+.feat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.feat li{padding:16px 0;border-bottom:1px solid var(--line)}
+.feat li:last-child{border-bottom:none}
+.feat b{display:block;font-size:16px;margin-bottom:5px}
+.feat span{color:var(--ink-soft);font-size:15px}
+
+/* Реплика бота */
+.chat{
+  background:var(--steel-soft);border-radius:10px;padding:16px 18px;
+  font-size:15px;line-height:1.5;color:var(--ink);
+  border:1px solid var(--line);
+}
+.chat .who{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11.5px;color:var(--steel);letter-spacing:.08em;text-transform:uppercase;
+  display:block;margin-bottom:7px;font-weight:600;
+}
+
+/* Риски */
+.risk{display:grid;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.risk-row{display:grid;gap:4px;padding:16px 18px}
+.risk-row + .risk-row{border-top:1px solid var(--line)}
+.risk-row .r{font-weight:600;font-size:15px}
+.risk-row .a{font-size:14.5px;color:var(--ink-soft)}
+.risk-row .a::before{content:"→ ";color:var(--good);font-weight:700}
+
+/* План */
+.steps{list-style:none;margin:0;padding:0;counter-reset:s;display:flex;flex-direction:column;gap:14px}
+.steps li{
+  counter-increment:s;display:grid;grid-template-columns:38px 1fr;gap:14px;align-items:start;
+}
+.steps li::before{
+  content:counter(s);
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;font-weight:600;
+  width:32px;height:32px;display:grid;place-items:center;
+  background:var(--steel-soft);color:var(--steel);border-radius:50%;
+}
+.steps b{display:block;margin-bottom:3px}
+.steps span{color:var(--ink-soft);font-size:15px}
+
+.note{
+  background:var(--signal-soft);border-left:3px solid var(--signal);
+  padding:16px 18px;border-radius:0 6px 6px 0;font-size:15px;color:var(--ink-soft);
+}
+.note b{color:var(--ink)}
+
+footer{padding:36px 0 0;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">УК «Жемчужина» · предложение</span>
+  <h1>Диспетчер, который<br>не спит и всё помнит</h1>
+  <p class="lede">Что изменится, если помощница Люся будет в чате каждого дома: обращения жильцов перестанут теряться, а у руководства появятся цифры, которых сейчас просто нет.</p>
+  <div class="meta">
+    <span>86 домов в базе</span>
+    <span>6 ЖК</span>
+    <span>бот уже работает</span>
+  </div>
+</header>
+
+<section>
+  <div class="head">
+    <span class="eyebrow">Что происходит сейчас</span>
+    <h2>Домовой чат — чёрная дыра</h2>
+  </div>
+  <div class="stack">
+    <p class="lede">Жилец пишет «нет горячей воды» в 22:40. Сообщение тонет между обсуждением парковки и поздравлениями с праздником. Утром диспетчер листает полтора десятка чатов: что-то находит, что-то нет.</p>
+    <div class="grid two">
+      <div class="card">
+        <h3>Ничего не измеряется</h3>
+        <p>Сколько было обращений, за сколько ответили, по каким домам напряжённее — узнать неоткуда. Вопрос «как у нас со сроками реакции» остаётся без ответа.</p>
+      </div>
+      <div class="card">
+        <h3>Нечем подтвердить</h3>
+        <p>При проверке ГЖИ доказать, что обращение приняли и устранили вовремя, нечем: переписка в чате — не реестр.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="head">
+    <span class="eyebrow">Один и тот же вечер</span>
+    <h2>Как это выглядит до и после</h2>
+  </div>
+  <div class="tl">
+    <div class="tl-col now">
+      <header>
+        <span class="eyebrow">Сегодня</span>
+        <p>Заявка живёт в переписке</p>
+      </header>
+      <ul class="tl-list">
+        <li><time>22:40</time><span>Жилец пишет в чат: «В 47-й нет горячей воды»</span></li>
+        <li><time>ночь</time><span>Сообщение уходит вверх за другими</span></li>
+        <li><time>09:20</time><span>Диспетчер листает чаты, находит обращение</span></li>
+        <li><time>09:40</time><span>Звонит мастеру, тот записывает в блокнот</span></li>
+        <li><time>день</time><span>Сделали. Никто не отчитался жильцу</span></li>
+        <li><time>18:10</time><span>Жилец пишет второй раз, уже резче</span></li>
+      </ul>
+      <div class="tl-foot">Реакция: около 11 часов, следов не осталось</div>
+    </div>
+    <div class="tl-col next">
+      <header>
+        <span class="eyebrow">С Люсей</span>
+        <p>Заявка живёт в системе</p>
+      </header>
+      <ul class="tl-list">
+        <li><time>22:40</time><span>То же сообщение в том же чате</span></li>
+        <li><time>22:44</time><span>Люся отвечает: заявка принята, номер выдан</span></li>
+        <li><time>22:44</time><span>В системе: дом, квартира, стояк, соседи по стояку</span></li>
+        <li><time>08:00</time><span>Мастер открывает список — обращение уже там</span></li>
+        <li><time>11:20</time><span>Сделано, видеоотчёт расшифрован и подшит к дому</span></li>
+        <li><time>11:21</time><span>Жильцу автоматически: выполнено</span></li>
+      </ul>
+      <div class="tl-foot">Реакция: 4 минуты, всё зафиксировано</div>
+    </div>
+  </div>
+  <p class="small" style="margin-top:16px">Стояк и соседей по нему Люся знает уже сейчас: раскладка квартир загружена по 21 адресу. Сантехник сразу видит, кого заливает сверху и кого топит снизу.</p>
+</section>
+
+<section>
+  <div class="head">
+    <span class="eyebrow">Жильцам</span>
+    <h2>Отвечает сразу, а не в понедельник</h2>
+  </div>
+  <ul class="feat">
+    <li>
+      <b>Принимает заявки круглосуточно</b>
+      <span>Ночью, в выходные, в новогодние праздники. Человек получает номер обращения сразу, а не тишину до утра.</span>
+    </li>
+    <li>
+      <b>Отвечает на типовое без диспетчера</b>
+      <span>Почему нет воды, когда включат отопление, какая температура ГВС положена по нормативу, куда звонить в аварийную.</span>
+    </li>
+    <li>
+      <b>Сообщает об отключениях по нужным домам</b>
+      <span>Инженер один раз пишет в рабочем чате — объявление уходит в чаты именно тех домов, которых это касается. Не пятнадцать раз копипастой.</span>
+    </li>
+    <li>
+      <b>Показывает статус заявки</b>
+      <span>«Что там с моей заявкой?» — принята, в работе, выполнена. Без звонков в офис.</span>
+    </li>
+  </ul>
+  <div class="chat" style="margin-top:22px">
+    <span class="who">Люся · 22:44</span>
+    Приняла: Байкальская 237, кв. 47, нет горячей воды. Заявка №312, передала сантехникам. Как возьмут в работу — напишу.
+  </div>
+</section>
+
+<section>
+  <div class="head">
+    <span class="eyebrow">Руководству</span>
+    <h2>Цифры, которых сейчас нет</h2>
+  </div>
+  <div class="metrics">
+    <div class="metric">
+      <div class="k">Скорость реакции</div>
+      <div class="v">За сколько ответили на обращение — по каждому дому и в среднем по компании.</div>
+    </div>
+    <div class="metric">
+      <div class="k">Структура обращений</div>
+      <div class="v">Сколько за месяц и о чём: ГВС, канализация, отопление, электрика.</div>
+    </div>
+    <div class="metric">
+      <div class="k">Карта напряжённости</div>
+      <div class="v">Где жалоб втрое больше обычного — там системная проблема, а не невезение.</div>
+    </div>
+    <div class="metric">
+      <div class="k">Ничего не пропущено</div>
+      <div class="v">Обращения без ответа дольше нормы — напоминание лично диспетчеру.</div>
+    </div>
+  </div>
+  <div class="stack" style="margin-top:24px">
+    <div class="card">
+      <h3>Авария видна на два дня раньше</h3>
+      <p>Семь жалоб на холодные батареи в одном подъезде за два часа — это не семь заявок, а одна проблема на стояке. Люся замечает всплеск и пишет инженеру сразу, а не когда дойдут руки перечитать чаты.</p>
+    </div>
+    <div class="card">
+      <h3>Реестр для проверок</h3>
+      <p>Обращение от 12.08 в 22:40, ответ в 22:44, заявка №312, выполнена 13.08 в 11:20, отчёт с фотографиями. Выгружается за минуту — при запросе ГЖИ или прокуратуры.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="head">
+    <span class="eyebrow">Честно о рисках</span>
+    <h2>Где бот может навредить</h2>
+  </div>
+  <p class="lede" style="margin-bottom:22px">Чат с жильцами — лицо компании. Поэтому правила поведения жёсткие и заданы заранее.</p>
+  <div class="risk">
+    <div class="risk-row">
+      <span class="r">Пообещает срок — не успеем</span>
+      <span class="a">Люся не называет сроков. Только «принято» и «передала». Сроки называет человек.</span>
+    </div>
+    <div class="risk-row">
+      <span class="r">Ответит на юридический вопрос</span>
+      <span class="a">Перерасчёты, начисления, ответственность — не её тема. Передаёт специалисту.</span>
+    </div>
+    <div class="risk-row">
+      <span class="r">Ввяжется в конфликт</span>
+      <span class="a">На эмоции и грубость не отвечает. Зовёт человека и молчит.</span>
+    </div>
+    <div class="risk-row">
+      <span class="r">Персональные данные жильцов</span>
+      <span class="a">Хранятся на сервере компании. Жильцов уведомляем, что в чате работает бот.</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="head">
+    <span class="eyebrow">Как внедрять</span>
+    <h2>По одному шагу, с проверкой</h2>
+  </div>
+  <ol class="steps">
+    <li>
+      <div>
+        <b>Один дом, режим наблюдения</b>
+        <span>Люся в чате молчит, только считает: сколько обращений, о чём, за сколько отвечаем. Неделя — и на руках своя статистика. Риска нет никакого.</span>
+      </div>
+    </li>
+    <li>
+      <div>
+        <b>Тот же дом, отвечает на вопросы</b>
+        <span>Только когда обратились по имени. Смотрим, как реагируют жильцы.</span>
+      </div>
+    </li>
+    <li>
+      <div>
+        <b>Приём заявок автоматически</b>
+        <span>С номером и фиксацией, без обещаний по срокам.</span>
+      </div>
+    </li>
+    <li>
+      <div>
+        <b>Все дома и объявления</b>
+        <span>Рассылка об отключениях по нужным домам, сводка руководству каждое утро.</span>
+      </div>
+    </li>
+  </ol>
+  <div class="note" style="margin-top:26px">
+    <b>Что уже работает сегодня:</b> поиск дома и стояков по 21 адресу, приём и ведение заявок, электронные паспорта домов, показания счётчиков, учёт манометров со сроками поверки, проектная документация Центрального парка, расшифровка видеоотчётов сантехников. Домовые чаты — следующий шаг, а не начало с нуля.
+  </div>
+</section>
+
+<footer>
+  Помощница Люся · рабочий бот УК «Жемчужина» в мессенджере MAX
+</footer>
+
+</div>
+
+</body>
+</html>
