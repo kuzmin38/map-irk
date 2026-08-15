@@ -237,6 +237,48 @@ section:last-of-type{border-bottom:none}
 .note b{color:var(--ink)}
 
 footer{padding:36px 0 0;color:var(--muted);font-size:14px}
+
+/* ---- Печать и PDF: каждый раздел с новой страницы, ничего не рвём пополам ---- */
+@media print{
+  @page{margin:14mm 12mm}
+  html,body{background:#fff;color:#161C24}
+  .wrap{max-width:none;padding:0}
+
+  header{
+    padding:120px 0 0;break-after:page;border-bottom:none;
+  }
+  header h1{font-size:42px;margin-bottom:22px}
+  header .lede{font-size:17px}
+
+  /* каждый раздел с новой страницы; внутри длинного раздела разрыв допустим,
+     но только между блоками — за это отвечают правила ниже */
+  section{break-before:page;padding:0 0 8px;border-bottom:none}
+  .head{margin-bottom:20px}
+
+  /* заголовок не должен оставаться один в низу страницы */
+  h2,h3{break-after:avoid-page}
+  .head{break-after:avoid-page}
+  .lede{orphans:3;widows:3}
+  p{orphans:3;widows:3}
+
+  /* блоки, которые нельзя разрывать */
+  .card,.metric,.tl-col,.vs-side,.chat,.note,.risk,.cmp,.steps li,.feat li,.tl{
+    break-inside:avoid-page;
+  }
+  .vs{break-inside:avoid-page;margin-bottom:14px}
+  .grid,.metrics,.stack{break-inside:avoid}
+
+  /* таблица сравнения переносится целиком, строки не рвутся */
+  .cmp-row{break-inside:avoid}
+  /* отступы на бумаге плотнее экранных */
+  section .stack{gap:12px}
+  .feat li{padding:12px 0}
+  .steps{gap:12px}
+
+  /* на бумаге тени и лишние заливки только мешают */
+  .card,.metric,.tl-col,.vs-side,.cmp,.risk{box-shadow:none}
+  footer{break-before:avoid-page;padding-top:24px;border-top:1px solid var(--line)}
+}
 </style>
 </head>
 <body>
