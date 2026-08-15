@@ -133,6 +133,49 @@ section:last-of-type{border-bottom:none}
 .tl-col.now .tl-foot{color:var(--signal)}
 .tl-col.next .tl-foot{color:var(--good)}
 
+/* Сравнение диалогов */
+.vs{display:grid;gap:12px}
+@media(min-width:620px){.vs{grid-template-columns:1fr 1fr;gap:16px}}
+.vs-side{
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;
+}
+.vs-side.old{border-top:3px solid var(--muted)}
+.vs-side.new{border-top:3px solid var(--good)}
+.vs-side.old .eyebrow{color:var(--muted)}
+.vs-side.new .eyebrow{color:var(--good)}
+.dialog{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+.dialog .q{font-size:14.5px;color:var(--ink-soft);font-style:italic}
+.dialog .a{
+  font-size:15px;line-height:1.5;padding:11px 14px;border-radius:8px;
+  background:var(--surface-2);
+}
+.vs-side.new .dialog .a{background:var(--steel-soft)}
+.dialog .a em{
+  font-style:normal;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12.5px;color:var(--muted);display:inline-block;margin-top:4px;
+}
+
+/* Таблица возможностей */
+.cmp{
+  border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface);
+}
+.cmp-row{
+  display:grid;grid-template-columns:1fr 82px 82px;gap:10px;
+  padding:12px 16px;align-items:center;font-size:14.5px;
+}
+.cmp-row + .cmp-row{border-top:1px solid var(--line)}
+.cmp-row span:nth-child(2),.cmp-row span:nth-child(3){
+  text-align:center;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;
+}
+.cmp-head{
+  background:var(--surface-2);font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;
+}
+.cmp-head span{text-align:center}
+.cmp-head span:first-child{text-align:left}
+.cmp-row .ok{color:var(--good);font-weight:600}
+.cmp-row .no{color:var(--muted)}
+
 /* Метрики */
 .metrics{display:grid;gap:12px}
 @media(min-width:520px){.metrics{grid-template-columns:1fr 1fr}}
@@ -228,6 +271,125 @@ footer{padding:36px 0 0;color:var(--muted);font-size:14px}
         <p>При проверке ГЖИ доказать, что обращение приняли и устранили вовремя, нечем: переписка в чате — не реестр.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section>
+  <div class="head">
+    <span class="eyebrow">Возражение по существу</span>
+    <h2>«У нас же в чатах уже есть бот»</h2>
+  </div>
+  <p class="lede" style="margin-bottom:26px">Есть. Он ловит в тексте слова, похожие на заявку, и предлагает нажать кнопку. Ещё рассылает объявления. На этом всё — поговорить с ним нельзя. Он закрывает первый шаг из десяти, а дальше работа снова уходит в блокноты и телефонные звонки.</p>
+
+  <div class="stack">
+    <div class="vs">
+      <div class="vs-side old">
+        <span class="eyebrow">Бот от CRM-партнёра</span>
+        <div class="dialog">
+          <p class="q">— Почему опять нет горячей воды?</p>
+          <p class="a">— Похоже на заявку. Создать заявку? <em>[Да] [Нет]</em></p>
+        </div>
+      </div>
+      <div class="vs-side new">
+        <span class="eyebrow">Люся</span>
+        <div class="dialog">
+          <p class="q">— Почему опять нет горячей воды?</p>
+          <p class="a">— Сегодня с 9:00 плановое отключение ГВС, меняем участок розлива, до 17:00. Если к вечеру не появится — напишите, оформлю заявку.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="vs">
+      <div class="vs-side old">
+        <span class="eyebrow">Бот от CRM-партнёра</span>
+        <div class="dialog">
+          <p class="q">— В 47-й квартире заливает сверху!</p>
+          <p class="a">— Похоже на заявку. Создать заявку? <em>[Да] [Нет]</em></p>
+        </div>
+      </div>
+      <div class="vs-side new">
+        <span class="eyebrow">Люся</span>
+        <div class="dialog">
+          <p class="q">— В 47-й квартире заливает сверху!</p>
+          <p class="a">— Приняла, заявка №312. Кв. 47 — это 9-й этаж, второй стояк; сверху 54-я квартира. Передала сантехникам, проверят обе.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="small" style="margin:18px 0 26px">Разницу видно сразу: один распознаёт слово «заливает», другая знает дом — этаж, стояк и соседей по нему. Раскладка квартир уже загружена по 21 адресу.</p>
+
+  <div class="cmp">
+    <div class="cmp-row cmp-head">
+      <span>Что нужно от бота в чате</span>
+      <span>Сейчас</span>
+      <span>С Люсей</span>
+    </div>
+    <div class="cmp-row">
+      <span>Заметить заявку в переписке</span>
+      <span class="ok">да</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Рассылать объявления</span>
+      <span class="ok">да</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Ответить на вопрос жильца по существу</span>
+      <span class="no">нет</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Знать дом: стояки, этажи, соседей по стояку</span>
+      <span class="no">нет</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Понимать голосовые и видеоотчёты</span>
+      <span class="no">нет</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Работать с бригадой: наряды, сроки, отчёты</span>
+      <span class="no">нет</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Вести паспорта домов и техдокументацию</span>
+      <span class="no">нет</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Следить за поверками приборов и опрессовкой</span>
+      <span class="no">нет</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Сводка руководству каждое утро</span>
+      <span class="no">нет</span>
+      <span class="ok">да</span>
+    </div>
+    <div class="cmp-row">
+      <span>Данные остаются в компании</span>
+      <span class="no">у партнёра</span>
+      <span class="ok">у нас</span>
+    </div>
+  </div>
+
+  <div class="grid two" style="margin-top:22px">
+    <div class="card">
+      <h3>Тот бот — про одну кнопку</h3>
+      <p>Он умеет ровно то, что заложил партнёр, и не научится большему: это не искусственный интеллект, а список ключевых слов. Про наши дома, стояки и тепловые пункты он не знает ничего.</p>
+    </div>
+    <div class="card">
+      <h3>Люся — про всю работу</h3>
+      <p>От обращения жильца до наряда сантехнику, отчёта с видео, записи в паспорт дома и утренней сводки руководителю. Один сквозной путь вместо пяти разрозненных.</p>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:22px">
+    <b>Ломать ничего не нужно.</b> Люся может работать рядом с существующим ботом: он продолжает заводить заявки в CRM партнёра, она берёт на себя всё остальное. Заменять его или нет — решать по итогам пилота, а не на слово.
   </div>
 </section>
 
