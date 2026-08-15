@@ -675,10 +675,13 @@ async def on_menu(event: MessageCreated):
 @dp.message_created(Command('version'))
 async def on_version(event: MessageCreated):
     """Какая сборка сейчас работает — чтобы не гадать, доехало обновление или нет."""
+    from .webapp import public_url
+    app_url = public_url()
     await send(event.message,
                f'🛠 Сборка: {build_version()}\n'
                f"🤖 Бот: {BOT_ME.get('username') or 'username не получен'}\n"
-               f"🧠 ИИ: {'подключён' if ai.enabled() else 'выключен'}")
+               f"🧠 ИИ: {'подключён' if ai.enabled() else 'выключен'}\n"
+               f"🗺 Приложение: {app_url or 'домен не выдан'}")
 
 
 # ---------- Текстовые сообщения (поиск + шаги диалогов) ----------
