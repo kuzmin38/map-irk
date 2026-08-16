@@ -67,6 +67,57 @@ async def test_prilozhenie_otdayotsya_po_sekretnomu_puti(monkeypatch):
         await c.close()
 
 
+async def test_bez_slesha_perekidyvaet_na_slesh(monkeypatch):
+    c = await client(monkeypatch)
+    try:
+        r = await c.get('/tainiy-adres', allow_redirects=False)
+        assert r.status == 302
+        assert r.headers['Location'] == '/tainiy-adres/'
+    finally:
+        await c.close()
+
+
+async def test_zhivye_dannye_doma_otdayutsya(monkeypatch):
+    db.add_request(7, 'Байкальская 237', 'нет ГВС', 100, 'Андрей')
+    db.add_work(7, 'Опрессовка', '2026-09-01', 'Константин')
+    db.set_passport_field(7, 'floors', '9', 'Андрей')
+    db.add_chat_record(1, 'm1', 100, 'Андрей', 'течёт в подвале',
+                       house_id=7, is_issue=True)
+
+    c = await client(monkeypatch)
+    try:
+        r = await c.get('/tainiy-adres/api/house/7')
+        assert r.status == 200
+        d = await r.json()
+        assert [x['description'] for x in d['requests']] == ['нет ГВС']
+        assert d['works'][0]['title'] == 'Опрессовка'
+        assert d['passport'][0]['label'] == 'Этажность'
+        assert d['chat'][0]['is_issue'] is True
+    finally:
+        await c.close()
+
+
+async def test_dannye_chuzhogo_doma_ne_meshayutsya(monkeypatch):
+    db.add_request(7, 'Байкальская 237', 'наша', 100, 'Андрей')
+    db.add_request(8, 'Седова 65а', 'чужая', 100, 'Андрей')
+
+    c = await client(monkeypatch)
+    try:
+        d = await (await c.get('/tainiy-adres/api/house/7')).json()
+        assert [x['description'] for x in d['requests']] == ['наша']
+    finally:
+        await c.close()
+
+
+async def test_api_bez_sekretnogo_puti_zakryt(monkeypatch):
+    c = await client(monkeypatch)
+    try:
+        assert (await c.get('/api/house/7')).status == 404
+        assert (await c.get('/miniapp/api/house/7')).status == 404
+    finally:
+        await c.close()
+
+
 async def test_bez_sekretnogo_puti_nichego_net(monkeypatch):
     c = await client(monkeypatch)
     try:

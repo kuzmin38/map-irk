@@ -50,6 +50,11 @@ input:focus,select:focus{border-color:var(--accent)}
 .item:active{background:var(--accent-soft)}
 .item .t{font-weight:550}
 .item .s{font-size:12px;color:var(--dim);margin-top:2px}
+/* строки живых данных: в ширину карточки, пояснение под заголовком */
+.rec{background:var(--card);padding:12px 14px}
+.rec .t{font-weight:550;line-height:1.35}
+.rec .s{font-size:12.5px;color:var(--dim);margin-top:4px}
+.rec.late .t,.rec.issue .t{color:var(--accent)}
 .chip{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;
   background:var(--accent-soft);color:var(--accent);font-weight:600;white-space:nowrap}
 .chip.gray{background:var(--line);color:var(--dim)}
@@ -235,8 +240,102 @@ function openHouse(id){
     }
     html += '<div class="muted" style="margin-top:10px">Файлы открываются с Google Диска УК.</div></div>';
   }
+  html += '<div id="live"><div class="card muted">Загружаю данные из базы…</div></div>';
   $('#homes-list').innerHTML = html;
   window.scrollTo(0, 0);
+  loadLive(id);
+}
+
+/* ---------- живые данные из базы бота ---------- */
+const RU_DATE = iso => {
+  if(!iso) return '';
+  const d = String(iso).slice(0, 10).split('-');
+  return d.length === 3 ? `${d[2]}.${d[1]}.${d[0]}` : iso;
+};
+const TODAY = new Date().toISOString().slice(0, 10);
+
+const REQ_STATUS = {new: '🆕 новая', work: '🔧 в работе', done: '✅ выполнена'};
+const WORK_STATUS = {plan: '📋 план', work: '🔧 в работе', done: '✅ сдано'};
+
+function block(title, inner){
+  return `<div class="card"><h2>${title}</h2>${inner}</div>`;
+}
+
+function renderLive(d){
+  let html = '';
+
+  const open = d.requests.filter(r => r.status !== 'done');
+  if(open.length){
+    html += block(`📋 Открытые заявки · ${open.length}`, '<div class="list">' +
+      open.map(r => `<div class="rec">
+        <div class="t">${esc(r.description)}</div>
+        <div class="s">${REQ_STATUS[r.status] || esc(r.status)} · №${r.id} · ${RU_DATE(r.created_at)}${r.author ? ' · ' + esc(r.author) : ''}</div>
+      </div>`).join('') + '</div>');
+  }
+
+  const works = d.works.filter(w => w.status !== 'done');
+  if(works.length){
+    html += block(`📅 Работы и сроки · ${works.length}`, '<div class="list">' +
+      works.map(w => {
+        const late = w.deadline && w.deadline < TODAY;
+        return `<div class="rec${late ? ' late' : ''}">
+          <div class="t">${late ? '⚠️ ' : ''}${esc(w.title)}</div>
+          <div class="s">${WORK_STATUS[w.status] || esc(w.status)}${w.deadline ? ' · до ' + RU_DATE(w.deadline) : ' · срок не задан'}${w.assignee ? ' · ' + esc(w.assignee) : ''}</div>
+        </div>`;
+      }).join('') + '</div>');
+  }
+
+  if(d.devices.length){
+    html += block(`🔧 Манометры на ТП · ${d.devices.length}`, '<div class="list">' +
+      d.devices.map(m => {
+        let mark = '—', tail = 'прибор не заведён';
+        if(m.verified_until){
+          const days = Math.round((new Date(m.verified_until) - new Date(TODAY)) / 86400000);
+          mark = days < 0 ? '❌' : days < 30 ? '⚠️' : '✅';
+          tail = `поверка до ${RU_DATE(m.verified_until)}` + (days < 0 ? ' — просрочена' : days < 30 ? ` — осталось ${days} дн.` : '');
+        }
+        return `<div class="rec">
+          <div class="t">${mark} ${esc(m.tp || '')}${m.tp && m.place ? ', ' : ''}${esc(m.place || '')}</div>
+          <div class="s">${m.serial ? '№ ' + esc(m.serial) + ' · ' : ''}${tail}</div>
+        </div>`;
+      }).join('') + '</div>');
+  }
+
+  if(d.passport.length){
+    html += block(`🗂 Паспорт дома · ${d.passport.length} из ${d.passport_total}`,
+      d.passport.map(f => `<div class="kv"><span class="k">${esc(f.label)}</span><span class="v">${esc(f.value)}</span></div>`).join(''));
+  }
+
+  if(d.chat.length){
+    html += block('💬 Из рабочего чата', '<div class="list">' +
+      d.chat.map(m => `<div class="rec${m.is_issue ? ' issue' : ''}">
+        <div class="t">${m.is_issue ? '🚨 ' : ''}${esc(m.text) || '<span class="muted">без текста</span>'}${m.has_files ? ' 📎' : ''}</div>
+        <div class="s">${esc(m.author || 'кто-то')} · ${RU_DATE(m.at)}</div>
+      </div>`).join('') + '</div>');
+  }
+
+  if(d.docs.length){
+    html += block(`📁 Загруженные документы · ${d.docs.length}`, '<div class="list">' +
+      d.docs.map(f => `<div class="rec">
+        <div class="t">${esc(f.filename || 'файл')}</div>
+        ${f.note ? `<div class="s">${esc(f.note)}</div>` : ''}
+      </div>`).join('') + '</div>');
+    html += '<div class="card muted">Сами файлы — в боте: карточка дома → Документы.</div>';
+  }
+
+  return html || '<div class="card muted">По этому дому в базе пока ничего нет: ни заявок, ни работ, ни паспорта.</div>';
+}
+
+async function loadLive(id){
+  const box = $('#live');
+  if(!box) return;
+  try{
+    const r = await fetch(`api/house/${id}`, {cache: 'no-store'});
+    if(!r.ok) throw new Error(r.status);
+    box.innerHTML = renderLive(await r.json());
+  }catch(e){
+    box.innerHTML = '<div class="card muted">Живые данные не загрузились — показываю только справочник. Обновите страницу.</div>';
+  }
 }
 
 function gotoRisers(address){

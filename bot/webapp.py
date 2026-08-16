@@ -116,6 +116,68 @@ async def _page(request):
     )
 
 
+def house_state(house_id: int) -> dict:
+    """Живое состояние дома из базы: паспорт, заявки, работы, приборы, чат.
+
+    Всё, что в боте разложено по кнопкам, здесь собирается в один ответ —
+    приложение показывает это одной карточкой.
+    """
+    from .handlers import PASSPORT_FIELDS
+
+    raw = db.get_passport(house_id)
+    passport = [{'field': k, 'label': label, 'value': raw[k]}
+                for k, label in PASSPORT_FIELDS if raw.get(k)]
+
+    requests = [{'id': r['id'], 'description': r['description'], 'status': r['status'],
+                 'created_at': r['created_at'], 'author': r['created_by_name']}
+                for r in db.list_requests(limit=200) if r['house_id'] == house_id]
+
+    works = [{'id': w['id'], 'title': w['title'], 'deadline': w['deadline'],
+              'assignee': w['assignee'], 'status': w['status'], 'report': w['report']}
+             for w in db.list_works(house_id=house_id, open_only=False, limit=40)]
+
+    devices = []
+    for p in db.list_points(house_id):
+        d = db.active_device(p['id'])
+        devices.append({
+            'place': p['place'], 'tp': p['tp'],
+            'serial': d['serial'] if d else None,
+            'verified_until': d['verified_until'] if d else None,
+            'installed_by': d['installed_by'] if d else None,
+        })
+
+    chat = [{'author': m['user_name'], 'at': m['created_at'],
+             'text': m['text'] or m['transcript'] or '',
+             'is_issue': bool(m['is_issue']), 'has_files': bool(m['has_files'])}
+            for m in db.house_chat_records(house_id, limit=15)]
+
+    return {
+        'passport': passport,
+        'passport_total': len(PASSPORT_FIELDS),
+        'requests': requests,
+        'works': works,
+        'devices': devices,
+        'chat': chat,
+        'docs': [{'filename': d['filename'], 'note': d['note']}
+                 for d in db.list_docs(house_id)],
+    }
+
+
+async def _house_api(request):
+    try:
+        house_id = int(request.match_info['house_id'])
+    except (KeyError, ValueError):
+        raise web.HTTPNotFound(text='404')
+    try:
+        state = house_state(house_id)
+    except Exception:
+        log.exception('Не удалось собрать данные дома %s', house_id)
+        raise web.HTTPInternalServerError(text='Данные временно недоступны')
+    return web.json_response(state, headers={'Cache-Control': 'no-store',
+                                             'X-Robots-Tag': 'noindex, nofollow'},
+                             dumps=lambda o: json.dumps(o, ensure_ascii=False))
+
+
 async def _health(request):
     """Живость сервера и какая сборка приехала — чтобы не гадать после деплоя."""
     try:
@@ -134,8 +196,14 @@ def create_app() -> web.Application:
     path = miniapp_path()
     app = web.Application()
     app.router.add_get('/healthz', _health)
-    app.router.add_get(f'/{path}', _page)
+    # без завершающего слэша — переводим на слэш, иначе относительные запросы
+    # приложения (api/house/...) ушли бы мимо секретного пути
+    async def _to_slash(request):
+        raise web.HTTPFound(f'/{path}/')
+
+    app.router.add_get(f'/{path}', _to_slash)
     app.router.add_get(f'/{path}/', _page)
+    app.router.add_get(f'/{path}/api/house/{{house_id}}', _house_api)
     app.router.add_route('*', '/{tail:.*}', _not_found)
     return app
 
