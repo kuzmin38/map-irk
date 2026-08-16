@@ -112,6 +112,25 @@ def _tool_get_open_requests(house_id: int | None = None) -> str:
     }, ensure_ascii=False)
 
 
+def _tool_get_meetings(limit: int = 3) -> str:
+    """Протоколы последних планёрок: решения и задачи, а не вся расшифровка."""
+    items = db.list_meetings(limit=max(1, min(int(limit or 3), 10)))
+    out = []
+    for m in items:
+        if not m['protocol']:
+            continue
+        try:
+            data = json.loads(m['protocol'])
+        except json.JSONDecodeError:
+            continue
+        out.append({
+            'id': m['id'], 'date': m['created_at'], 'title': m['title'],
+            'summary': data.get('summary'), 'decisions': data.get('decisions'),
+            'tasks': data.get('tasks'), 'questions': data.get('questions'),
+        })
+    return json.dumps({'meetings': out}, ensure_ascii=False)
+
+
 TOOLS = [
     {'type': 'function', 'function': {
         'name': 'find_house', 'description': 'Найти дом по адресу или части адреса.',
@@ -148,6 +167,12 @@ TOOLS = [
                         'тогда по всем домам.',
         'parameters': {'type': 'object', 'properties': {
             'house_id': {'type': 'integer'}}, 'required': []}}},
+    {'type': 'function', 'function': {
+        'name': 'get_meetings',
+        'description': 'Протоколы последних планёрок: о чём говорили, что решили, '
+                        'какие задачи и на ком. limit — сколько последних взять.',
+        'parameters': {'type': 'object', 'properties': {
+            'limit': {'type': 'integer'}}, 'required': []}}},
 ]
 
 TOOL_FUNCS = {
@@ -158,6 +183,7 @@ TOOL_FUNCS = {
     'get_directory': lambda a: _tool_get_directory(a['section']),
     'get_house_works': lambda a: _tool_get_house_works(a['house_id']),
     'get_open_requests': lambda a: _tool_get_open_requests(a.get('house_id')),
+    'get_meetings': lambda a: _tool_get_meetings(a.get('limit', 3)),
 }
 
 
@@ -168,7 +194,7 @@ SYSTEM_PROMPT = (
     'отвечаешь точно и по существу. Обращаешься на «ты», по имени.\n\n'
     'У тебя есть инструменты, чтобы посмотреть реальные данные: дома, '
     'паспорта домов, документы, стояки квартир, справочник и нормативы, '
-    'работы и дедлайны, заявки. Всегда пользуйся инструментами вместо '
+    'работы и дедлайны, заявки, протоколы планёрок. Всегда пользуйся инструментами вместо '
     'того, чтобы гадать — сама ты этих данных не помнишь, только через '
     'инструменты. Если по инструментам ничего не нашлось — так и скажи, '
     'не выдумывай данные.\n\n'

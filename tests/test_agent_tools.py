@@ -100,3 +100,17 @@ def test_get_open_requests_filtered_by_house():
     result = json.loads(agent._tool_get_open_requests(house_id))
     assert len(result['requests']) == 1
     assert result['requests'][0]['description'] == 'Течёт кран'
+
+
+def test_get_meetings_returns_only_ready_protocols():
+    import json as _json
+    db.add_meeting(1, 'Тест')                       # ещё расшифровывается
+    mid = db.add_meeting(1, 'Тест')
+    db.set_meeting_result(mid, title='Планёрка', protocol=_json.dumps(
+        {'summary': 'Обсудили опрессовку', 'decisions': ['Начать с Квадрума'],
+         'tasks': [], 'questions': []}, ensure_ascii=False),
+        status=db.MEETING_READY)
+
+    result = json.loads(agent._tool_get_meetings())
+    assert len(result['meetings']) == 1              # без протокола не отдаём
+    assert result['meetings'][0]['decisions'] == ['Начать с Квадрума']

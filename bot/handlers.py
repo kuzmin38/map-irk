@@ -24,6 +24,7 @@ from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
 from . import agent, ai, db, houses
+from . import meetings
 from . import project_docs
 from . import risers as risers_mod
 from . import transcribe
@@ -178,6 +179,8 @@ def main_menu_kb() -> InlineKeyboardBuilder:
            CallbackButton(text='👥 Люди', payload='ppl'))
     kb.row(CallbackButton(text='📊 Брифинг', payload='brief'),
            CallbackButton(text='🧮 Сводка счётчиков', payload='mtall'))
+    kb.row(CallbackButton(text='🎙 Протокол планёрки', payload='meetn'),
+           CallbackButton(text='🗂 Все планёрки', payload='meet'))
     app = miniapp_button('🗺 Карта и таблицы')
     if app:
         kb.row(app, CallbackButton(text='📖 Справочник', payload='dir'))
@@ -195,6 +198,7 @@ MAIN_TEXT = (
     '• 🚿 Стояки — напишите «Седова 65а/2 кв 47», скажу этаж, стояк и соседей\n'
     '• 🗂 Паспорт дома — розливы, арматура, где перекрывать, доступ\n'
     '• 📋 Заявки — запишу и буду вести: новая → в работе → выполнена\n'
+    '• 🎙 Планёрка — пришлите запись совещания, отвечу протоколом с задачами\n'
     '• 📖 Справочник — телефоны, нормативы, сроки, шпаргалка по трубам\n\n'
     '💡 Просто напишите адрес (например: «Розы Люксембург 118/5») — я всё найду. 😉'
 )
@@ -839,6 +843,169 @@ async def transcribe_later(record_id: int, url: str, bot=None, chat_id=None, mid
         log.exception('Не удалось расшифровать вложение')
 
 
+# ---------- Планёрки ----------
+
+MEETING_HINT = (
+    '🎙 Пришлите запись планёрки одним сообщением — голосовым, аудиофайлом '
+    'или видео.\n\n'
+    'Я расшифрую речь и отвечу протоколом: о чём говорили, что решили, '
+    'какие задачи и на ком. Задачи потом одной кнопкой уйдут в «📅 Все работы».\n\n'
+    f'Запись до {transcribe.MEETING_MAX_SECONDS // 3600} часов и '
+    f'{transcribe.MEETING_MAX_SOURCE_MB} МБ. Час записи разбираю минут пять — '
+    'напишу, как будет готово.')
+
+
+def meeting_line(m) -> str:
+    mark = {db.MEETING_NEW: '⏳', db.MEETING_READY: '🗒', db.MEETING_FAILED: '⚠️'}
+    title = m['title'] or ('расшифровываю…' if m['status'] == db.MEETING_NEW
+                           else 'без протокола')
+    dur = meetings.fmt_duration(m['duration_sec'])
+    tail = f" · {dur}" if dur else ''
+    return f"{mark.get(m['status'], '🗒')} {m['created_at']} — {title}{tail}"
+
+
+def meeting_card_kb(m) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    data = meeting_protocol(m)
+    if data and data.get('tasks') and not m['works_created']:
+        kb.row(CallbackButton(text=f"📅 Завести задачи в работы ({len(data['tasks'])})",
+                              payload=f"meetw:{m['id']}"))
+    if m['transcript']:
+        kb.row(CallbackButton(text='📄 Полная расшифровка', payload=f"meett:{m['id']}"))
+    kb.row(CallbackButton(text='🎙 Ещё планёрка', payload='meetn'),
+           CallbackButton(text='🗂 Все планёрки', payload='meet'))
+    kb.row(CallbackButton(text='🗑 Удалить', payload=f"meetdel:{m['id']}"),
+           CallbackButton(text='🏠 Меню', payload='menu'))
+    return kb
+
+
+def meeting_protocol(m) -> dict | None:
+    """Разобранный протокол планёрки из базы (там он лежит строкой JSON)."""
+    if not m or not m['protocol']:
+        return None
+    try:
+        return json.loads(m['protocol'])
+    except json.JSONDecodeError:
+        log.warning('Битый протокол планёрки %s', m['id'])
+        return None
+
+
+def meeting_card_text(m) -> str:
+    data = meeting_protocol(m)
+    if not data:
+        if m['status'] == db.MEETING_NEW:
+            return f"⏳ Планёрка от {m['created_at']} — ещё расшифровываю."
+        return (f"⚠️ Планёрка от {m['created_at']}: разобрать запись не вышло.\n"
+                'Попробуйте прислать её ещё раз.')
+    text = meetings.format_protocol(data, held_at=m['created_at'],
+                                    duration=m['duration_sec'])
+    if m['works_created']:
+        text += f"\n\n📅 Задачи заведены в работы: {m['works_created']}."
+    return text
+
+
+def match_person(name: str | None):
+    """Ищет по имени с планёрки, кому из зарегистрированных отдать задачу."""
+    if not name:
+        return None
+    first = name.strip().split()[0].lower()
+    if len(first) < 3:
+        return None
+    for u in assignable_users():
+        if any(part.lower().startswith(first[:4]) for part in (u['name'] or '').split()):
+            return u
+    return None
+
+
+async def process_meeting(msg, meeting_id: int, url: str):
+    """Расшифровывает запись планёрки и отвечает готовым протоколом."""
+    told = {'long': False}
+
+    async def progress(done, total):
+        if total > 1 and not told['long']:
+            told['long'] = True
+            await send(msg, f'🎧 Запись длинная — разбираю её {total} частями. '
+                            'Это несколько минут, я напишу, как закончу.')
+
+    try:
+        result = await transcribe.transcribe_meeting(url, progress=progress)
+        if not result:
+            db.set_meeting_result(meeting_id, status=db.MEETING_FAILED)
+            await send(msg, '⚠️ Не получилось разобрать запись: либо в ней нет речи, '
+                            'либо файл слишком большой. Попробуйте прислать ещё раз.',
+                       main_menu_kb())
+            return
+        db.set_meeting_result(meeting_id, transcript=result['text'],
+                              duration_sec=result['duration'] or 0)
+        data = await meetings.build_protocol(result['text'])
+        if not data:
+            db.set_meeting_result(meeting_id, title='Планёрка (только расшифровка)',
+                                  status=db.MEETING_READY)
+            m = db.get_meeting(meeting_id)
+            await send(msg, '🗒 Речь распознала, но составить протокол не вышло '
+                            '(ИИ не ответил). Полная расшифровка сохранена.',
+                       meeting_card_kb(m))
+            return
+        db.set_meeting_result(meeting_id, title=data['title'],
+                              protocol=json.dumps(data, ensure_ascii=False),
+                              status=db.MEETING_READY)
+        m = db.get_meeting(meeting_id)
+        await send(msg, meeting_card_text(m), meeting_card_kb(m))
+    except Exception:
+        log.exception('Не удалось разобрать планёрку %s', meeting_id)
+        db.set_meeting_result(meeting_id, status=db.MEETING_FAILED)
+
+
+async def start_meeting(event, url: str) -> None:
+    """Принимает запись планёрки и запускает разбор в фоне."""
+    uid = _uid(event)
+    STATE.pop(uid, None)
+    meeting_id = db.add_meeting(uid, _uname(event))
+    await send(event.message,
+               '🎙 Приняла запись, расшифровываю. Пришлю протокол, как разберу — '
+               'можно закрыть чат, я напишу сама.')
+    asyncio.create_task(process_meeting(event.message, meeting_id, url))
+
+
+async def works_from_meeting(bot, uid: int, user_name: str, m) -> str:
+    """Заводит задачи планёрки в работы по домам. Возвращает текст ответа."""
+    data = meeting_protocol(m)
+    tasks = (data or {}).get('tasks') or []
+    if not tasks:
+        return '📅 В этой планёрке я не нашла задач с адресами.'
+    created, skipped = [], []
+    for t in tasks:
+        house = houses.detect_house(t.get('address') or '') or houses.detect_house(t['title'])
+        if not house:
+            skipped.append(t['title'])
+            continue
+        try:
+            deadline = parse_deadline(t.get('deadline') or '-')
+        except ValueError:
+            deadline = None
+        work_id = db.add_work(house['id'], t['title'], deadline, user_name, user_id=uid)
+        who = match_person(t.get('assignee'))
+        if who:
+            db.update_work(work_id, assignee=who['name'], assignee_id=who['user_id'])
+            if who['user_id'] != uid:
+                await notify(bot, who['user_id'],
+                             f"📌 С планёрки на вас работа: «{t['title']}» — "
+                             f"{house['address']}, срок: {fmt_deadline(deadline)}.")
+        created.append(f"• {house['address']} — {t['title']}"
+                       + (f" ({who['name']})" if who else ''))
+    db.set_meeting_works(m['id'], len(created))
+    lines = []
+    if created:
+        lines.append(f'✅ Завела работ: {len(created)}')
+        lines += created
+    else:
+        lines.append('🤔 Ни в одной задаче не нашла наш адрес — в работы заводить некуда.')
+    if skipped:
+        lines += ['', 'Без адреса (заведите вручную, если нужно):']
+        lines += [f'• {s}' for s in skipped]
+    return '\n'.join(lines)
+
+
 def record_chat_message(event, text: str):
     """Тихо сохраняет сообщение рабочего чата и цепляет его к дому."""
     try:
@@ -1006,6 +1173,20 @@ async def on_text(event: MessageCreated):
                        '(текст в подписи сохраню как примечание).')
         return
 
+    # Запись планёрки: ждём звук, всё остальное в этом режиме не годится
+    if state and state['mode'] == 'meet_wait':
+        url = speech_url(event.message.body)
+        if url:
+            await start_meeting(event, url)
+            return
+        if text in ('-', '—', 'отмена'):
+            STATE.pop(uid, None)
+            await send(event.message, 'Хорошо, отменила.', main_menu_kb())
+            return
+        await send(event.message, '🎙 Жду запись: голосовое, аудиофайл или видео. '
+                                  '«-» — отменить.')
+        return
+
     # Фото прибора/паспорта: приходит вложением, часто вообще без подписи
     if state and state['mode'] == 'eq_photo':
         dev = db.get_device(state['device_id'])
@@ -1028,6 +1209,14 @@ async def on_text(event: MessageCreated):
         await send(event.message, '✅ Готово, манометр записан.\n\n' + point_card_text(p),
                    point_card_kb(p))
         return
+
+    # Голосовое или видео в личке без всякого режима — это запись планёрки:
+    # прислал совещание, получил протокол.
+    if not state:
+        url = speech_url(event.message.body)
+        if url:
+            await start_meeting(event, url)
+            return
 
     if not text or text.startswith('/'):
         return
@@ -1675,6 +1864,73 @@ async def on_callback(event: MessageCallback):
                CallbackButton(text='📋 Заявки', payload='rl'))
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
+
+    # --- Планёрки ---
+
+    elif action == 'meetn':
+        STATE[uid] = {'mode': 'meet_wait'}
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🗂 Все планёрки', payload='meet'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, MEETING_HINT, kb)
+
+    elif action == 'meet':
+        STATE.pop(uid, None)
+        items = db.list_meetings()
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🎙 Прислать запись', payload='meetn'))
+        for m in items[:10]:
+            title = m['title'] or m['created_at']
+            kb.row(CallbackButton(text=f'🗒 {title[:40]}', payload=f"meetv:{m['id']}"))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        body = ('🗂 Планёрок пока нет.\n\nПришлите запись совещания — я расшифрую '
+                'и сделаю протокол.' if not items
+                else '🗂 Планёрки:\n\n' + '\n'.join(meeting_line(m) for m in items))
+        await send(msg, body, kb)
+
+    elif action == 'meetv':
+        m = db.get_meeting(int(parts[1]))
+        if not m:
+            await send(msg, '🤷‍♀️ Такой планёрки у меня нет.', main_menu_kb())
+            return
+        await send(msg, meeting_card_text(m), meeting_card_kb(m))
+
+    elif action == 'meett':
+        m = db.get_meeting(int(parts[1]))
+        if not m or not m['transcript']:
+            await send(msg, '🤷‍♀️ Расшифровки нет.', main_menu_kb())
+            return
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🗒 К протоколу', payload=f"meetv:{m['id']}"),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, f"📄 Расшифровка планёрки {m['created_at']}:\n\n"
+                        + m['transcript'], kb)
+
+    elif action == 'meetw':
+        m = db.get_meeting(int(parts[1]))
+        if not m:
+            await send(msg, '🤷‍♀️ Такой планёрки у меня нет.', main_menu_kb())
+            return
+        if m['works_created']:
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
+                   CallbackButton(text='🗒 К протоколу', payload=f"meetv:{m['id']}"))
+            await send(msg, f"📅 Задачи этой планёрки уже заведены "
+                            f"({m['works_created']} шт.) — смотрите «Все работы».", kb)
+            return
+        text = await works_from_meeting(event.bot, uid, _uname_cb(event), m)
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📅 Все работы', payload='wl'),
+               CallbackButton(text='🗒 К протоколу', payload=f"meetv:{m['id']}"))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, text, kb)
+
+    elif action == 'meetdel':
+        db.delete_meeting(int(parts[1]))
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🗂 Все планёрки', payload='meet'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '🗑 Удалила планёрку вместе с расшифровкой.', kb)
 
     elif action == 'myw':
         works = db.list_my_works(uid)

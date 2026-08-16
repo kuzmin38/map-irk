@@ -145,6 +145,18 @@ def init():
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             created_at TEXT NOT NULL)''')
+        # Планёрки: расшифровка записи и разобранный из неё протокол (JSON)
+        c.execute('''CREATE TABLE IF NOT EXISTS meetings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            transcript TEXT,
+            protocol TEXT,
+            duration_sec INTEGER,
+            works_created INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'new',
+            created_by INTEGER,
+            created_by_name TEXT,
+            created_at TEXT NOT NULL)''')
 
 
 def now() -> str:
@@ -603,3 +615,62 @@ def set_chat_transcript(record_id, transcript, house_id=None, is_issue=None):
 def get_chat_record(record_id):
     with _conn() as c:
         return c.execute('SELECT * FROM chat_messages WHERE id = ?', (record_id,)).fetchone()
+
+
+# --- Планёрки ---
+
+MEETING_NEW = 'new'          # запись принята, идёт расшифровка
+MEETING_READY = 'ready'      # протокол готов
+MEETING_FAILED = 'failed'    # распознать не вышло
+
+
+def add_meeting(user_id, user_name) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO meetings (status, created_by, created_by_name, created_at) '
+            'VALUES (?, ?, ?, ?)', (MEETING_NEW, user_id, user_name, now()))
+        return cur.lastrowid
+
+
+def set_meeting_result(meeting_id, title=None, transcript=None, protocol=None,
+                       duration_sec=None, status=None):
+    """Дописывает к планёрке расшифровку, протокол (JSON-строкой) и статус."""
+    fields = {}
+    if title is not None:
+        fields['title'] = title
+    if transcript is not None:
+        fields['transcript'] = transcript
+    if protocol is not None:
+        fields['protocol'] = protocol
+    if duration_sec is not None:
+        fields['duration_sec'] = int(duration_sec)
+    if status is not None:
+        fields['status'] = status
+    if not fields:
+        return
+    cols = ', '.join(f'{k} = ?' for k in fields)
+    with _conn() as c:
+        c.execute(f'UPDATE meetings SET {cols} WHERE id = ?',
+                  (*fields.values(), meeting_id))
+
+
+def set_meeting_works(meeting_id, count):
+    with _conn() as c:
+        c.execute('UPDATE meetings SET works_created = ? WHERE id = ?',
+                  (int(count), meeting_id))
+
+
+def get_meeting(meeting_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM meetings WHERE id = ?', (meeting_id,)).fetchone()
+
+
+def list_meetings(limit=15):
+    with _conn() as c:
+        return c.execute('SELECT * FROM meetings ORDER BY id DESC LIMIT ?',
+                         (limit,)).fetchall()
+
+
+def delete_meeting(meeting_id):
+    with _conn() as c:
+        c.execute('DELETE FROM meetings WHERE id = ?', (meeting_id,))
