@@ -80,7 +80,7 @@ async def test_healthz_dlya_proverki_zhiv_li(monkeypatch):
     c = await client(monkeypatch)
     try:
         r = await c.get('/healthz')
-        assert r.status == 200 and await r.text() == 'ok'
+        assert r.status == 200 and (await r.text()).startswith('ok')
     finally:
         await c.close()
 

@@ -117,7 +117,12 @@ async def _page(request):
 
 
 async def _health(request):
-    return web.Response(text='ok')
+    """Живость сервера и какая сборка приехала — чтобы не гадать после деплоя."""
+    try:
+        from .handlers import build_version
+        return web.Response(text=f'ok {build_version()}')
+    except Exception:
+        return web.Response(text='ok')
 
 
 async def _not_found(request):

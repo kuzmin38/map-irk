@@ -48,16 +48,17 @@ async def main():
     mode = os.environ.get('BOT_MODE', 'polling').lower()
     asyncio.create_task(reminder_loop(bot))  # напоминания о сроках
 
-    # Мини-приложение отдаём сами: Railway задаёт PORT, GitHub Pages не нужен.
-    # В режиме webhook порт занят диспетчером, поэтому там не поднимаем.
-    port = os.environ.get('PORT')
-    if port and mode != 'webhook':
+    # Мини-приложение отдаём сами, GitHub Pages не нужен. Railway обычно задаёт
+    # PORT, но не всегда — тогда слушаем 8080: это порт, который Railway
+    # пробует по умолчанию. В режиме webhook порт занят диспетчером.
+    if mode != 'webhook':
         from .webapp import start as start_webapp
+        port = int(os.environ.get('PORT') or 8080)
         try:
-            await start_webapp(int(port))
+            await start_webapp(port)
         except Exception:
             log.exception('Не удалось поднять сервер мини-приложения — бот работает без него')
-    elif port:
+    else:
         log.info('Режим webhook: мини-приложение с этого порта не отдаётся')
 
     if mode == 'webhook':
