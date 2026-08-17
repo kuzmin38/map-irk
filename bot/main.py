@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 
 from maxapi import Bot
 
@@ -23,6 +24,37 @@ from .reminders import reminder_loop
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 log = logging.getLogger('bot')
+
+
+MIN_DELAY = 5      # секунд до первой попытки после обрыва
+MAX_DELAY = 300    # дальше не разгоняемся
+STABLE = 60        # столько проработал — считаем связь восстановленной
+
+
+async def poll_forever(bot):
+    """Long polling, который переживает обрывы связи и ошибки MAX.
+
+    Раньше любая ошибка убивала процесс: Railway перезапускал контейнер, и
+    вместе с ботом уезжало мини-приложение. Теперь падает только цикл опроса,
+    а поднимается сам, с нарастающей паузой.
+    """
+    delay = MIN_DELAY
+    while True:
+        started = time.monotonic()
+        try:
+            await dp.start_polling(bot)
+            log.warning('Опрос MAX завершился сам')
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception('Опрос MAX прервался')
+
+        # проработал достаточно долго — связь была, начинаем отсчёт заново
+        if time.monotonic() - started > STABLE:
+            delay = MIN_DELAY
+        log.info('Продолжу опрос через %s с', delay)
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, MAX_DELAY)
 
 
 async def main():
@@ -74,9 +106,14 @@ async def main():
         log.info('Запуск в режиме webhook на %s:%s', host, port)
         await dp.handle_webhook(bot=bot, host=host, port=port)
     else:
-        await bot.delete_webhook()  # long polling не работает при активной подписке
+        # long polling не работает при активной подписке на вебхук; если снять
+        # её не вышло (MAX недоступен, лимит), это не повод падать целиком
+        try:
+            await bot.delete_webhook()
+        except Exception:
+            log.warning('Не удалось снять подписку на вебхук, продолжаю', exc_info=True)
         log.info('Запуск в режиме long polling')
-        await dp.start_polling(bot)
+        await poll_forever(bot)
 
 
 if __name__ == '__main__':
