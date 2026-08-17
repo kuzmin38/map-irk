@@ -34,6 +34,13 @@ POLL_TIMEOUT = 30  # столько MAX держит запрос, если со
 MIN_INTERVAL = 0.5  # не чаще двух запросов в секунду: у MAX предел пять
 
 
+def _kinds(updates) -> list:
+    """Типы пришедших событий. Ради лога опрос ронять нельзя, поэтому любую
+    неожиданную форму ответа показываем как есть, а не разбираем."""
+    return [str(u.get('update_type', '?')) if isinstance(u, dict) else str(u)[:40]
+            for u in updates]
+
+
 def watch_updates(bot):
     """Делает запросы к MAX видимыми в логах и не даёт им частить.
 
@@ -58,7 +65,16 @@ def watch_updates(bot):
         except Exception as e:
             status.note_fetch_error(e)
             raise
-        if status.note_fetch(len(events.get('updates') or [])):
+        spent = time.monotonic() - last
+        updates = events.get('updates') or []
+        # Что именно прислал MAX — до того, как за это возьмётся библиотека.
+        # Событие неизвестного ей типа она пропускает, и сообщение исчезает
+        # бесследно; здесь оно останется видимым в любом случае.
+        if updates:
+            log.info('MAX прислал событий: %d (%s), маркер %s',
+                     len(updates), ', '.join(_kinds(updates)),
+                     events.get('marker'))
+        if status.note_fetch(len(updates), instant=spent < 1):
             log.info('MAX ответил на запрос обновлений — связь есть')
         return events
 

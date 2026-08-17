@@ -1,4 +1,6 @@
 """Запросы к MAX видны в логах: молчание опроса больше не безымянное."""
+import logging
+
 import pytest
 
 from bot import main as M
@@ -10,7 +12,7 @@ def chisto():
     status.STATE.update(fetches=0, last_fetch_at=None, events=0,
                         fetch_error=None, fetch_error_at=None, updates=0,
                         polls=0, bot_username=None, bot_id=None, me_error=None,
-                        last_error=None, last_error_at=None)
+                        last_error=None, last_error_at=None, instant=0)
 
 
 class FakeBot:
@@ -33,7 +35,9 @@ class FakeBot:
 
 
 async def test_otvety_max_schitayutsya():
-    bot = FakeBot({'updates': [1, 2], 'marker': 7}, {'updates': [], 'marker': 8})
+    bot = FakeBot({'updates': [{'update_type': 'message_created'},
+                               {'update_type': 'message_callback'}], 'marker': 7},
+                  {'updates': [], 'marker': 8})
     M.watch_updates(bot)
 
     await bot.get_updates(marker=None)
@@ -146,6 +150,30 @@ async def test_marker_dohodit_do_biblioteki():
     await bot.get_updates(marker=42)
 
     assert bot.calls == [42]
+
+
+async def test_sobytiya_vidny_v_loge_do_razbora(caplog):
+    """Событие неизвестного типа библиотека пропустит молча — здесь оно видно."""
+    bot = FakeBot({'updates': [{'update_type': 'message_created'}], 'marker': 9})
+    M.watch_updates(bot)
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await bot.get_updates()
+
+    assert 'MAX прислал событий: 1' in caplog.text
+    assert 'message_created' in caplog.text
+    assert 'маркер 9' in caplog.text
+
+
+async def test_strannyy_otvet_ne_ronyaet_opros(caplog):
+    """Ради строчки в логе опрос падать не должен, что бы MAX ни прислал."""
+    bot = FakeBot({'updates': [42, None], 'marker': 1})
+    M.watch_updates(bot)
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        assert await bot.get_updates() == {'updates': [42, None], 'marker': 1}
+
+    assert 'MAX прислал событий: 2' in caplog.text
 
 
 def test_pervyy_otvet_otmechaetsya_odin_raz():

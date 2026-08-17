@@ -24,6 +24,7 @@ STATE = {
     'events': 0,            # сколько событий MAX прислал в этих ответах
     'fetch_error': None,    # последняя ошибка самого запроса обновлений
     'fetch_error_at': None,
+    'instant': 0,           # пустых ответов сразу, без ожидания
 }
 
 
@@ -44,16 +45,21 @@ def note_poll_error(exc):
     STATE.update(last_error=f'{type(exc).__name__}: {exc}'[:300], last_error_at=_stamp())
 
 
-def note_fetch(events: int) -> bool:
+def note_fetch(events: int, instant: bool = False) -> bool:
     """Ответ MAX на запрос обновлений. Возвращает True, если он первый.
 
     Библиотека молча глотает таймауты: «MAX отвечает, но событий нет» и
     «запрос завис навсегда» выглядят одинаково — полной тишиной в логах.
     Считаем ответы, и одно от другого наконец отличается.
+
+    instant — MAX ответил мгновенно вместо того, чтобы держать соединение.
+    Много таких подряд означает, что цикл разгоняется и упрётся в лимит.
     """
     STATE['fetches'] += 1
     STATE['events'] += events
     STATE['last_fetch_at'] = _stamp()
+    if instant and not events:
+        STATE['instant'] += 1
     return STATE['fetches'] == 1
 
 
@@ -68,6 +74,7 @@ def pulse() -> str:
     return (f"работаю {uptime()}, ответов MAX {s['fetches']}"
             + (f" (последний {s['last_fetch_at']})" if s['last_fetch_at'] else '')
             + f", событий {s['events']}, дошло до бота {s['updates']}"
+            + (f", пустых сразу {s['instant']}" if s['instant'] else '')
             + (f", ошибка запроса: {s['fetch_error']}" if s['fetch_error'] else ''))
 
 
