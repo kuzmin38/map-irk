@@ -14,7 +14,7 @@ import tempfile
 
 import aiohttp
 
-from . import ai
+from . import ai, numbers
 
 log = logging.getLogger('transcribe')
 
@@ -26,8 +26,10 @@ MAX_AUDIO_MB = 20        # предел на то, что отправляем �
 MAX_SECONDS = 900        # 15 минут речи с запасом
 
 PROMPT = ('Это рабочий отчёт сантехника управляющей компании. Расшифруй речь '
-          'дословно на русском языке. Пиши только текст сказанного, без '
-          'комментариев и пояснений. Если речи нет — ответь пустой строкой.')
+          'дословно на русском языке. Номера домов, квартир, подъездов и '
+          'этажей записывай цифрами: «квартира 47», «Байкальская 237». '
+          'Пиши только текст сказанного, без комментариев и пояснений. '
+          'Если речи нет — ответь пустой строкой.')
 
 
 def ffmpeg_available() -> bool:
@@ -100,7 +102,9 @@ async def transcribe_file(path: str) -> str | None:
                     log.error('Расшифровка не удалась, OpenRouter %s: %s', resp.status, body)
                     return None
                 text = (body['choices'][0]['message'].get('content') or '').strip()
-                return text or None
+                # Просьбу «пиши цифрами» модель выполняет через раз — она же
+                # получила указание расшифровать дословно. Доводим сами.
+                return numbers.to_digits(text) or None
     except Exception:
         log.exception('Ошибка расшифровки')
         return None
