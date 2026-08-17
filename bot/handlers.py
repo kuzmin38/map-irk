@@ -153,7 +153,12 @@ MAX_LEN = 3800
 
 
 async def send(msg, text, kb: InlineKeyboardBuilder | None = None):
-    """Отправляет текст (при необходимости частями), клавиатуру цепляет к последней части."""
+    """Отправляет текст (при необходимости частями), клавиатуру цепляет к последней части.
+
+    Факт отправки пишем в лог: когда Люся «не отвечает», надо различать
+    «ответ ушёл в MAX» и «до отправки дело не дошло» — снаружи это одно и то же.
+    """
+    size = len(text)
     parts = []
     while len(text) > MAX_LEN:
         cut = text.rfind('\n', 0, MAX_LEN)
@@ -164,6 +169,7 @@ async def send(msg, text, kb: InlineKeyboardBuilder | None = None):
     for i, part in enumerate(parts):
         attachments = [kb.as_markup()] if kb and i == len(parts) - 1 else None
         await msg.answer(text=part, attachments=attachments)
+    log.info('Ответила: %d симв., частей %d', size, len(parts))
 
 
 def main_menu_kb() -> InlineKeyboardBuilder:
@@ -1005,11 +1011,14 @@ async def _save_docs(event, state) -> int:
 async def on_text(event: MessageCreated):
     text = (event.message.body.text or '').strip()
     uid = _uid(event)
-    bot_status.note_update('чат' if is_group(event) else 'личка')
+    group = is_group(event)
+    bot_status.note_update('чат' if group else 'личка')
+    if not group:
+        log.info('Личка от %s: %.60s', uid, text or '<без текста>')
 
     # В группах Люся молчит, пока её не позвали по имени: реагировать на каждое
     # сообщение рабочего чата — верный способ, чтобы бота оттуда выгнали.
-    if is_group(event):
+    if group:
         log.info('Сообщение из чата %s: %.60s',
                  getattr(event.message.recipient, 'chat_id', '?'), text)
         record_chat_message(event, text)
@@ -1070,7 +1079,14 @@ async def on_text(event: MessageCreated):
                    point_card_kb(p))
         return
 
-    if not text or text.startswith('/'):
+    if not text:
+        log.info('Молчу: сообщение без текста (вложение или стикер)')
+        return
+    if text.startswith('/'):
+        # Известные команды разобраны фильтрами выше — сюда падают только чужие.
+        # Молчать на них можно, но в логе это должно быть видно: иначе «бот не
+        # отвечает на /version» неотличимо от «бот вообще не получил сообщение».
+        log.info('Молчу: команда %s не распознана', text.split()[0][:30])
         return
 
     if state and state['mode'] == 'req_addr':
