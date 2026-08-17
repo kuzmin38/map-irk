@@ -5,18 +5,43 @@ import re
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
-with open(os.path.join(DATA_DIR, 'houses.json'), encoding='utf-8') as f:
-    HOUSES = json.load(f)
-HOUSES.sort(key=lambda h: h['address'])
-
-HOUSES_BY_ID = {h['id']: h for h in HOUSES}
+ACTIVE_FILE = os.path.join(DATA_DIR, 'active_houses.txt')
 
 
-def _norm(s: str) -> str:
+def _norm_addr(s: str) -> str:
+    """Адрес в сравнимый вид: без регистра, ё, лишних пробелов и слов «ул.», «дом»."""
     s = s.lower().replace('ё', 'е')
     s = re.sub(r'[.,;]', ' ', s)
     s = re.sub(r'\b(ул|улица|мкр|микрорайон|д|дом|г|иркутск)\b', ' ', s)
     return re.sub(r'\s+', ' ', s).strip()
+
+
+def load_active() -> set:
+    """Адреса домов, которые сейчас в работе (`bot/data/active_houses.txt`).
+
+    Пустой набор означает «ограничения нет» — показываем все дома.
+    Формат файла: по адресу в строке, пустые строки и строки с # пропускаются.
+    """
+    if not os.path.exists(ACTIVE_FILE):
+        return set()
+    with open(ACTIVE_FILE, encoding='utf-8') as f:
+        lines = [ln.split('#')[0].strip() for ln in f]
+    return {_norm_addr(ln) for ln in lines if ln}
+
+
+with open(os.path.join(DATA_DIR, 'houses.json'), encoding='utf-8') as f:
+    ALL_HOUSES = json.load(f)
+ALL_HOUSES.sort(key=lambda h: h['address'])
+
+ACTIVE = load_active()
+# Пока список не задан — работаем со всеми домами, как раньше
+HOUSES = ([h for h in ALL_HOUSES if _norm_addr(h['address']) in ACTIVE]
+          if ACTIVE else list(ALL_HOUSES))
+
+HOUSES_BY_ID = {h['id']: h for h in HOUSES}
+
+
+_norm = _norm_addr
 
 
 def _split_addr(s: str):

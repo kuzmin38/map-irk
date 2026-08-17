@@ -42,8 +42,14 @@ def _load(name, default=None):
 
 
 def build_payload() -> dict:
-    """Данные для приложения: справочники из файлов, привязка к ЖК — из базы."""
-    houses = _load('houses.json', [])
+    """Данные для приложения: справочники из файлов, привязка к ЖК — из базы.
+
+    Список домов берём из `houses`, а не из файла напрямую: там уже применено
+    ограничение из `bot/data/active_houses.txt` — какие дома сейчас в работе.
+    """
+    from . import houses as houses_mod
+
+    houses = [dict(h) for h in houses_mod.HOUSES]
     complexes = {c['id']: c['name'] for c in _load('complexes.json', [])}
 
     try:
