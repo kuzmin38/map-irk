@@ -560,6 +560,13 @@ def house_chat_records(house_id, limit=20):
                          'ORDER BY id DESC LIMIT ?', (house_id, limit)).fetchall()
 
 
+def recent_chat_records(limit=15):
+    """Последние сообщения рабочего чата по всем домам, свежие первыми."""
+    with _conn() as c:
+        return c.execute('SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?',
+                         (limit,)).fetchall()
+
+
 def chat_records_since(since_iso, limit=200):
     """Сообщения за период (по дате создания в формате ДД.ММ.ГГГГ)."""
     with _conn() as c:

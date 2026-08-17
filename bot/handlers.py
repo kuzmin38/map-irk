@@ -677,11 +677,50 @@ async def on_version(event: MessageCreated):
     """Какая сборка сейчас работает — чтобы не гадать, доехало обновление или нет."""
     from .webapp import public_url
     app_url = public_url()
+    ffmpeg_ok = transcribe.ffmpeg_available()
+    rec = 'работает' if (ffmpeg_ok and ai.enabled()) else (
+        'нет ffmpeg' if not ffmpeg_ok else 'нет ключа ИИ')
     await send(event.message,
                f'🛠 Сборка: {build_version()}\n'
                f"🤖 Бот: {BOT_ME.get('username') or 'username не получен'}\n"
                f"🧠 ИИ: {'подключён' if ai.enabled() else 'выключен'}\n"
+               f'🎙 Расшифровка видео: {rec}\n'
+               f'⏱ Ответ на серию роликов: через {SERIES_WINDOW // 60} мин после последнего\n'
                f"🗺 Приложение: {app_url or 'домен не выдан'}")
+
+
+@dp.message_created(Command('chat'))
+async def on_chat_log(event: MessageCreated):
+    """Что Люся услышала в рабочем чате — включая расшифровки без привязки к дому.
+
+    Нужна, чтобы проверить работу молча: в чат она отвечает только на
+    аварийное, а всё остальное складывает в базу без единого слова.
+    """
+    records = db.recent_chat_records(limit=12)
+    if not records:
+        await send(event.message,
+                   '💬 В базе пока пусто.\n\n'
+                   'Люся видит сообщения только тех чатов, куда её добавили '
+                   'администратором. Без прав администратора MAX отдаёт ей '
+                   'лишь сообщения с прямым обращением.')
+        return
+
+    voiced = sum(1 for r in records if r['transcript'])
+    files = sum(1 for r in records if r['has_files'])
+    lines = [f'💬 Последние {len(records)} сообщений рабочего чата',
+             f'📎 с вложениями: {files} · 🎙 расшифровано: {voiced}', '']
+    for r in records:
+        house = houses.HOUSES_BY_ID.get(r['house_id']) if r['house_id'] else None
+        where = house['address'] if house else 'дом не определён'
+        mark = '🚨 ' if r['is_issue'] else ''
+        lines.append(f"{mark}{r['created_at']} · {r['user_name'] or '—'} · {where}")
+        if r['text']:
+            lines.append(f"   {r['text'][:120]}")
+        if r['transcript']:
+            lines.append(f"   🎙 {r['transcript'][:200]}")
+        elif r['has_files']:
+            lines.append('   📎 вложение, расшифровки нет')
+    await send(event.message, '\n'.join(lines))
 
 
 # ---------- Текстовые сообщения (поиск + шаги диалогов) ----------
