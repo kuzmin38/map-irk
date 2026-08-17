@@ -1,4 +1,5 @@
 """SQLite-хранилище: заявки и паспорта домов."""
+import logging
 import os
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -6,6 +7,8 @@ from datetime import datetime, timezone, timedelta
 DB_PATH = os.environ.get('BOT_DB', os.path.join(os.path.dirname(__file__), 'data', 'bot.db'))
 
 IRKUTSK_TZ = timezone(timedelta(hours=8))
+
+log = logging.getLogger('db')
 
 STATUS_NEW = 'new'
 STATUS_WORK = 'work'
@@ -19,133 +22,170 @@ def _conn():
     return conn
 
 
+def _create_all(c):
+    """Создаёт таблицы, которых ещё нет."""
+    c.execute('''CREATE TABLE IF NOT EXISTS requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER,
+        address TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'new',
+        created_by INTEGER,
+        created_by_name TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS passports (
+        house_id INTEGER NOT NULL,
+        field TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_by TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (house_id, field))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS house_complex (
+        house_id INTEGER PRIMARY KEY,
+        complex_id TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS works (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        details TEXT,
+        deadline TEXT,
+        assignee TEXT,
+        assignee_id INTEGER,
+        campaign_id INTEGER,
+        last_reminded TEXT,
+        report TEXT,
+        done_at TEXT,
+        status TEXT NOT NULL DEFAULT 'plan',
+        created_by INTEGER,
+        created_by_name TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        name TEXT,
+        role TEXT NOT NULL DEFAULT 'none',
+        registered_at TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        complex_id TEXT NOT NULL,
+        deadline TEXT,
+        created_by INTEGER,
+        created_by_name TEXT,
+        created_at TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS meters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        label TEXT NOT NULL,
+        created_by_name TEXT,
+        created_at TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS readings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meter_id INTEGER NOT NULL,
+        value REAL NOT NULL,
+        period TEXT NOT NULL,
+        submitted_by INTEGER,
+        submitted_by_name TEXT,
+        submitted_at TEXT NOT NULL)''')
+    # Точки установки приборов на тепловом пункте (место живёт годами)
+    c.execute('''CREATE TABLE IF NOT EXISTS eq_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'manometer',
+        tp TEXT,
+        place TEXT NOT NULL,
+        created_by_name TEXT,
+        created_at TEXT NOT NULL)''')
+    # Приборы в точках (сменяют друг друга)
+    c.execute('''CREATE TABLE IF NOT EXISTS eq_devices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        point_id INTEGER NOT NULL,
+        serial TEXT,
+        verified_until TEXT,
+        installed_at TEXT,
+        installed_by_id INTEGER,
+        installed_by TEXT,
+        photo_device TEXT,
+        photo_passport TEXT,
+        passport_info TEXT,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        removed_at TEXT,
+        last_reminded TEXT,
+        created_at TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS docs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        path TEXT NOT NULL,
+        note TEXT,
+        uploaded_by TEXT,
+        uploaded_at TEXT NOT NULL)''')
+    # Лента рабочего чата: что писали, к какому дому относится
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id INTEGER NOT NULL,
+        mid TEXT,
+        user_id INTEGER,
+        user_name TEXT,
+        text TEXT,
+        house_id INTEGER,
+        has_files INTEGER NOT NULL DEFAULT 0,
+        is_issue INTEGER NOT NULL DEFAULT 0,
+        transcript TEXT,
+        created_at TEXT NOT NULL)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_chat_house ON chat_messages(house_id)')
+    # Память агента: что Люся знает о человеке и о чём с ним говорила
+    c.execute('''CREATE TABLE IF NOT EXISTS user_notes (
+        user_id INTEGER PRIMARY KEY,
+        profile TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL)''')
+
+
+
+def _sync_columns(c):
+    """Досоздаёт колонки, появившиеся в схеме уже после создания базы.
+
+    CREATE TABLE IF NOT EXISTS не трогает таблицу, если она уже есть: колонка,
+    добавленная в код позже, в рабочей базе так и не появляется, и запрос
+    падает на ходу. Так молча отвалилась расшифровка видеоотчётов — колонки
+    transcript в бою просто не было.
+
+    Эталон берём из этого же кода: поднимаем схему в памяти и сверяем состав.
+    """
+    ref = sqlite3.connect(':memory:')
+    try:
+        _create_all(ref)
+        tables = [r[0] for r in ref.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")]
+        for table in tables:
+            want = {r[1]: r for r in ref.execute(f'PRAGMA table_info({table})')}
+            have = {r[1] for r in c.execute(f'PRAGMA table_info({table})')}
+            for name, row in want.items():
+                if name in have:
+                    continue
+                # ALTER TABLE умеет добавлять только необязательные колонки
+                decl = f'{name} {row[2]}'
+                if row[4] is not None:
+                    decl += f' DEFAULT {row[4]}'
+                c.execute(f'ALTER TABLE {table} ADD COLUMN {decl}')
+                log.warning('В таблицу %s добавлена колонка %s', table, name)
+    finally:
+        ref.close()
+
+
 def init():
     with _conn() as c:
-        c.execute('''CREATE TABLE IF NOT EXISTS requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            house_id INTEGER,
-            address TEXT NOT NULL,
-            description TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'new',
-            created_by INTEGER,
-            created_by_name TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS passports (
-            house_id INTEGER NOT NULL,
-            field TEXT NOT NULL,
-            value TEXT NOT NULL,
-            updated_by TEXT,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY (house_id, field))''')
-        c.execute('''CREATE TABLE IF NOT EXISTS house_complex (
-            house_id INTEGER PRIMARY KEY,
-            complex_id TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS works (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            house_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            details TEXT,
-            deadline TEXT,
-            assignee TEXT,
-            assignee_id INTEGER,
-            campaign_id INTEGER,
-            last_reminded TEXT,
-            report TEXT,
-            done_at TEXT,
-            status TEXT NOT NULL DEFAULT 'plan',
-            created_by INTEGER,
-            created_by_name TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            name TEXT,
-            role TEXT NOT NULL DEFAULT 'none',
-            registered_at TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS campaigns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            complex_id TEXT NOT NULL,
-            deadline TEXT,
-            created_by INTEGER,
-            created_by_name TEXT,
-            created_at TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS meters (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            house_id INTEGER NOT NULL,
-            kind TEXT NOT NULL,
-            label TEXT NOT NULL,
-            created_by_name TEXT,
-            created_at TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS readings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            meter_id INTEGER NOT NULL,
-            value REAL NOT NULL,
-            period TEXT NOT NULL,
-            submitted_by INTEGER,
-            submitted_by_name TEXT,
-            submitted_at TEXT NOT NULL)''')
-        # Точки установки приборов на тепловом пункте (место живёт годами)
-        c.execute('''CREATE TABLE IF NOT EXISTS eq_points (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            house_id INTEGER NOT NULL,
-            kind TEXT NOT NULL DEFAULT 'manometer',
-            tp TEXT,
-            place TEXT NOT NULL,
-            created_by_name TEXT,
-            created_at TEXT NOT NULL)''')
-        # Приборы в точках (сменяют друг друга)
-        c.execute('''CREATE TABLE IF NOT EXISTS eq_devices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            point_id INTEGER NOT NULL,
-            serial TEXT,
-            verified_until TEXT,
-            installed_at TEXT,
-            installed_by_id INTEGER,
-            installed_by TEXT,
-            photo_device TEXT,
-            photo_passport TEXT,
-            passport_info TEXT,
-            note TEXT,
-            status TEXT NOT NULL DEFAULT 'active',
-            removed_at TEXT,
-            last_reminded TEXT,
-            created_at TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS docs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            house_id INTEGER NOT NULL,
-            filename TEXT NOT NULL,
-            path TEXT NOT NULL,
-            note TEXT,
-            uploaded_by TEXT,
-            uploaded_at TEXT NOT NULL)''')
-        # Лента рабочего чата: что писали, к какому дому относится
-        c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER NOT NULL,
-            mid TEXT,
-            user_id INTEGER,
-            user_name TEXT,
-            text TEXT,
-            house_id INTEGER,
-            has_files INTEGER NOT NULL DEFAULT 0,
-            is_issue INTEGER NOT NULL DEFAULT 0,
-            transcript TEXT,
-            created_at TEXT NOT NULL)''')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_chat_house ON chat_messages(house_id)')
-        # Память агента: что Люся знает о человеке и о чём с ним говорила
-        c.execute('''CREATE TABLE IF NOT EXISTS user_notes (
-            user_id INTEGER PRIMARY KEY,
-            profile TEXT NOT NULL DEFAULT '',
-            updated_at TEXT NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL)''')
-
+        _create_all(c)
+        _sync_columns(c)
 
 def now() -> str:
     return datetime.now(IRKUTSK_TZ).strftime('%d.%m.%Y %H:%M')

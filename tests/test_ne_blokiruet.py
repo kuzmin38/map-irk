@@ -43,10 +43,9 @@ async def test_zavisshaya_model_ne_derzhit_polzovatelya(monkeypatch):
 
     monkeypatch.setattr(agent.ai, 'chat', zavisla)
 
-    result = await asyncio.wait_for(
-        agent.answer(1, 'Андрей', 'что по нормативам ГВС?'), timeout=2)
-
-    assert result is None, 'None — сигнал ответить заготовкой, а не молчать'
+    with pytest.raises(agent.TooSlow):
+        await asyncio.wait_for(
+            agent.answer(1, 'Андрей', 'что по нормативам ГВС?'), timeout=2)
 
 
 async def test_ischerpannyy_budzhet_ne_nachinaet_novyy_krug(monkeypatch):
@@ -60,5 +59,30 @@ async def test_ischerpannyy_budzhet_ne_nachinaet_novyy_krug(monkeypatch):
 
     monkeypatch.setattr(agent.ai, 'chat', fake_chat)
 
-    assert await agent.answer(1, 'Андрей', 'вопрос') is None
+    with pytest.raises(agent.TooSlow):
+        await agent.answer(1, 'Андрей', 'вопрос')
     assert calls == [], 'к модели вообще не обращались'
+
+
+def test_ne_uspela_i_ne_nashla_raznye_otvety():
+    """«Ничего не нашла» на таймаут — неправда: вопрос понят, ответ не поспел."""
+    from bot.handlers import SLOW_REPLY
+
+    assert 'не успела' in SLOW_REPLY
+    assert 'не нашла' not in SLOW_REPLY
+    assert 'овторите' in SLOW_REPLY, 'человеку сказано, что делать дальше'
+
+
+async def test_bystryy_otvet_prohodit_bez_izmeneniy(monkeypatch):
+    """Уложились в бюджет — обычный ответ, никаких исключений."""
+    async def fake_chat(messages, tools=None, max_tokens=900, temperature=0.4):
+        return {'role': 'assistant', 'content': 'ГВС не ниже 60 °C.'}
+
+    monkeypatch.setattr(agent.ai, 'chat', fake_chat)
+    monkeypatch.setattr(agent, '_update_profile', _noop)
+
+    assert await agent.answer(1, 'Андрей', 'норматив ГВС?') == 'ГВС не ниже 60 °C.'
+
+
+async def _noop(*args, **kwargs):
+    pass

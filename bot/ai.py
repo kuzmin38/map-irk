@@ -7,8 +7,10 @@
   OPENROUTER_MODEL    — идентификатор модели (по умолчанию бесплатная
                         moonshotai/kimi-k2:free).
 """
+import asyncio
 import logging
 import os
+import time
 
 import aiohttp
 
@@ -46,6 +48,10 @@ async def chat(messages: list[dict], tools: list[dict] | None = None,
         'messages': messages,
         'max_tokens': max_tokens,
         'temperature': temperature,
+        # Одну и ту же модель на OpenRouter раздают разные поставщики, и по
+        # скорости они отличаются в разы. Просим самого быстрого: для Люси
+        # это разница между «ответила сразу» и «не дождались».
+        'provider': {'sort': 'throughput'},
     }
     if tools:
         payload['tools'] = tools
@@ -54,6 +60,7 @@ async def chat(messages: list[dict], tools: list[dict] | None = None,
         'HTTP-Referer': 'https://github.com/kuzmin38/map-irk',
         'X-Title': 'Lusya Bot',
     }
+    started = time.monotonic()
     try:
         async with aiohttp.ClientSession() as s:
             async with s.post(f'{OPENROUTER_BASE_URL}/chat/completions',
@@ -63,7 +70,14 @@ async def chat(messages: list[dict], tools: list[dict] | None = None,
                 if resp.status != 200:
                     log.error('OpenRouter API %s: %s', resp.status, data)
                     return None
+                # Без этой строки непонятно, кто тормозит: модель или бот
+                log.info('Модель %s ответила за %.1f с', KIMI_MODEL,
+                         time.monotonic() - started)
                 return data['choices'][0]['message']
+    except asyncio.TimeoutError:
+        # Обычное дело для перегруженной модели — трассировка тут только шумит
+        log.warning('Модель %s не ответила за %s с', KIMI_MODEL, REQUEST_TIMEOUT)
+        return None
     except Exception:
         log.exception('Ошибка запроса к OpenRouter')
         return None

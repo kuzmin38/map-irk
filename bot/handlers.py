@@ -531,6 +531,12 @@ def point_card_kb(p) -> InlineKeyboardBuilder:
 
 # ---------- Счётчики ----------
 
+# Вопрос понят, но модель не поспела. Говорим об этом прямо: «ничего не нашла»
+# в такой ситуации — неправда, и человек зря решает, что спрашивать бесполезно.
+SLOW_REPLY = ('⏳ Задумалась и не успела ответить — модель сегодня отвечает медленно.\n'
+              'Повторите вопрос, пожалуйста: обычно со второго раза получается.')
+
+
 METER_KINDS = {
     'hvs': '💧 ХВС (водомер)',
     'gvs': '🔥 ГВС (водомер)',
@@ -1031,7 +1037,11 @@ async def on_text(event: MessageCreated):
         if not addressed and not mentioned_in_markup(event):
             return
         db.upsert_user(uid, _uname(event))
-        reply = await agent.answer(uid, _uname(event), text) if text else None
+        try:
+            reply = await agent.answer(uid, _uname(event), text) if text else None
+        except agent.TooSlow:
+            await send(event.message, SLOW_REPLY)
+            return
         await send(event.message,
                    reply or f'{BOT_NAME} на связи 🙂 Спроси что-нибудь по домам, '
                             'заявкам или нормативам.')
@@ -1305,7 +1315,11 @@ async def on_text(event: MessageCreated):
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
     if not found:
-        ai_answer = await agent.answer(uid, _uname(event), text)
+        try:
+            ai_answer = await agent.answer(uid, _uname(event), text)
+        except agent.TooSlow:
+            await send(event.message, SLOW_REPLY)
+            return
         if ai_answer:
             await send(event.message, ai_answer)
         else:

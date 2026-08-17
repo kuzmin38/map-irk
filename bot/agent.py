@@ -181,9 +181,16 @@ SYSTEM_PROMPT = (
 MAX_ROUNDS = 4
 
 # Предел на весь разговор с моделью: четыре круга по таймауту запроса — это
-# уже минуты, а человек в мессенджере столько не ждёт. Лучше вернуть None и
-# ответить заготовкой, чем держать собеседника в неведении.
+# уже минуты, а человек в мессенджере столько не ждёт.
 BUDGET = 45
+
+
+class TooSlow(Exception):
+    """Модель не уложилась в отведённое время.
+
+    Отдельно от «не нашла»: человеку важно понимать, что вопрос понят, но
+    ответ не поспел, — тогда он повторит, а не решит, что бот бесполезен.
+    """
 
 
 async def answer(user_id: int, user_name: str, user_text: str) -> str | None:
@@ -206,12 +213,12 @@ async def answer(user_id: int, user_name: str, user_text: str) -> str | None:
         left = BUDGET - (time.monotonic() - started)
         if left <= 0:
             log.warning('Не уложилась в %s с, кругов сделано %s', BUDGET, round_no)
-            return None
+            raise TooSlow
         try:
             message = await asyncio.wait_for(ai.chat(messages, tools=TOOLS), left)
         except asyncio.TimeoutError:
             log.warning('Модель не ответила за отведённое время')
-            return None
+            raise TooSlow from None
         if message is None:
             return None
         tool_calls = message.get('tool_calls')
