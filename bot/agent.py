@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 
 from . import ai, db, houses
 from . import risers as risers_mod
@@ -179,12 +180,18 @@ SYSTEM_PROMPT = (
 
 MAX_ROUNDS = 4
 
+# Предел на весь разговор с моделью: четыре круга по таймауту запроса — это
+# уже минуты, а человек в мессенджере столько не ждёт. Лучше вернуть None и
+# ответить заготовкой, чем держать собеседника в неведении.
+BUDGET = 45
+
 
 async def answer(user_id: int, user_name: str, user_text: str) -> str | None:
     """Отвечает на свободный вопрос через инструменты. None — если ИИ
-    недоступен, произошла ошибка или исчерпан лимит кругов."""
+    недоступен, произошла ошибка, кончилось время или лимит кругов."""
     if not ai.enabled():
         return None
+    started = time.monotonic()
 
     profile = db.get_user_notes(user_id)
     system = SYSTEM_PROMPT
@@ -195,8 +202,16 @@ async def answer(user_id: int, user_name: str, user_text: str) -> str | None:
     messages += db.recent_chat_history(user_id, limit=6)
     messages.append({'role': 'user', 'content': user_text})
 
-    for _ in range(MAX_ROUNDS):
-        message = await ai.chat(messages, tools=TOOLS)
+    for round_no in range(MAX_ROUNDS):
+        left = BUDGET - (time.monotonic() - started)
+        if left <= 0:
+            log.warning('Не уложилась в %s с, кругов сделано %s', BUDGET, round_no)
+            return None
+        try:
+            message = await asyncio.wait_for(ai.chat(messages, tools=TOOLS), left)
+        except asyncio.TimeoutError:
+            log.warning('Модель не ответила за отведённое время')
+            return None
         if message is None:
             return None
         tool_calls = message.get('tool_calls')

@@ -18,6 +18,10 @@ OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 KIMI_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 KIMI_MODEL = os.environ.get('OPENROUTER_MODEL', 'moonshotai/kimi-k2')
 
+# Ждать модель полторы минуты нельзя: человек в мессенджере успевает решить,
+# что бот сломался. Лучше честно не ответить, чем молчать.
+REQUEST_TIMEOUT = 30
+
 SYSTEM_PROMPT = (
     'Ты — Люся, помощница управляющей компании «Жемчужина» (Иркутск). '
     'Ты дружелюбная и деловая, пишешь по-русски, коротко и по существу, '
@@ -54,7 +58,7 @@ async def chat(messages: list[dict], tools: list[dict] | None = None,
         async with aiohttp.ClientSession() as s:
             async with s.post(f'{OPENROUTER_BASE_URL}/chat/completions',
                               json=payload, headers=headers,
-                              timeout=aiohttp.ClientTimeout(total=90)) as resp:
+                              timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)) as resp:
                 data = await resp.json()
                 if resp.status != 200:
                     log.error('OpenRouter API %s: %s', resp.status, data)

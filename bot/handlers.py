@@ -30,7 +30,12 @@ from . import status as bot_status
 from . import transcribe
 
 log = logging.getLogger(__name__)
-dp = Dispatcher()
+
+# use_create_task: каждое событие обрабатывается своей задачей. Без этого
+# диспетчер разбирает события по одному прямо в цикле опроса — пока Люся
+# думает над вопросом к ИИ, она не спрашивает MAX о новых сообщениях, и
+# бот молчит для всех сразу. Один долгий ответ подвешивал весь чат.
+dp = Dispatcher(use_create_task=True)
 
 with open(os.path.join(houses.DATA_DIR, 'directory.json'), encoding='utf-8') as f:
     DIRECTORY = json.load(f)['sections']
