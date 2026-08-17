@@ -11,7 +11,9 @@ def chisto(tmp_path, monkeypatch):
     db.init()
     status.STATE.update(bot_username=None, bot_id=None, me_error=None, polls=0,
                         last_error=None, last_error_at=None, updates=0,
-                        last_update_at=None, last_update_kind=None)
+                        last_update_at=None, last_update_kind=None,
+                        fetches=0, last_fetch_at=None, events=0,
+                        fetch_error=None, fetch_error_at=None)
 
 
 def test_bez_tokena_pryamo_govorit_o_tokene():
@@ -25,6 +27,7 @@ def test_bez_tokena_pryamo_govorit_o_tokene():
 def test_token_prinyat_no_soobscheniy_net_podozrenie_na_dvoynik():
     status.note_me('lusya_bot', 42)
     status.note_poll_start()
+    status.note_fetch(0)  # MAX отвечает, но событий не присылает
     out = status.report('сборка', None, 'работает')
     assert '@lusya_bot' in out
     assert 'НИ ОДНОГО' in out
@@ -34,6 +37,7 @@ def test_token_prinyat_no_soobscheniy_net_podozrenie_na_dvoynik():
 def test_kogda_soobscheniya_idut_preduprezhdeniy_net():
     status.note_me('lusya_bot', 42)
     status.note_poll_start()
+    status.note_fetch(1)
     status.note_update('личка')
     out = status.report('сборка', None, 'работает')
     assert '⚠️' not in out

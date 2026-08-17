@@ -29,6 +29,36 @@ log = logging.getLogger('bot')
 MIN_DELAY = 5      # секунд до первой попытки после обрыва
 MAX_DELAY = 300    # дальше не разгоняемся
 STABLE = 60        # столько проработал — считаем связь восстановленной
+HEARTBEAT = 300    # как часто писать в лог, что опрос жив
+
+
+def watch_updates(bot):
+    """Делает запросы к MAX видимыми в логах и на странице состояния.
+
+    Библиотека молча глотает таймауты запроса обновлений: и «MAX отвечает,
+    но событий нет», и «запрос завис навсегда» выглядят одинаково — полной
+    тишиной. Отличить одно от другого было нечем, а это разные поломки.
+    """
+    fetch = bot.get_updates
+
+    async def counted(*args, **kwargs):
+        try:
+            events = await fetch(*args, **kwargs)
+        except Exception as e:
+            status.note_fetch_error(e)
+            raise
+        if status.note_fetch(len(events.get('updates') or [])):
+            log.info('MAX ответил на запрос обновлений — связь есть')
+        return events
+
+    bot.get_updates = counted
+
+
+async def heartbeat():
+    """Раз в несколько минут отмечается в логе: молчание бота теперь читаемо."""
+    while True:
+        await asyncio.sleep(HEARTBEAT)
+        log.info('Пульс: %s', status.pulse())
 
 
 async def poll_forever(bot):
@@ -82,7 +112,9 @@ async def main():
         log.exception('Не удалось получить данные бота')
 
     mode = os.environ.get('BOT_MODE', 'polling').lower()
+    watch_updates(bot)
     asyncio.create_task(reminder_loop(bot))  # напоминания о сроках
+    asyncio.create_task(heartbeat())         # видно, что опрос жив
 
     # Мини-приложение отдаём сами, GitHub Pages не нужен. Railway обычно задаёт
     # PORT, но не всегда — тогда слушаем 8080: это порт, который Railway

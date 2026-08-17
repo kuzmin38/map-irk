@@ -19,6 +19,11 @@ STATE = {
     'updates': 0,           # сколько сообщений и нажатий дошло до бота
     'last_update_at': None,
     'last_update_kind': None,
+    'fetches': 0,           # сколько раз MAX ответил на запрос обновлений
+    'last_fetch_at': None,
+    'events': 0,            # сколько событий MAX прислал в этих ответах
+    'fetch_error': None,    # последняя ошибка самого запроса обновлений
+    'fetch_error_at': None,
 }
 
 
@@ -37,6 +42,33 @@ def note_poll_start():
 
 def note_poll_error(exc):
     STATE.update(last_error=f'{type(exc).__name__}: {exc}'[:300], last_error_at=_stamp())
+
+
+def note_fetch(events: int) -> bool:
+    """Ответ MAX на запрос обновлений. Возвращает True, если он первый.
+
+    Библиотека молча глотает таймауты: «MAX отвечает, но событий нет» и
+    «запрос завис навсегда» выглядят одинаково — полной тишиной в логах.
+    Считаем ответы, и одно от другого наконец отличается.
+    """
+    STATE['fetches'] += 1
+    STATE['events'] += events
+    STATE['last_fetch_at'] = _stamp()
+    return STATE['fetches'] == 1
+
+
+def note_fetch_error(exc):
+    STATE.update(fetch_error=f'{type(exc).__name__}: {exc}'[:300],
+                 fetch_error_at=_stamp())
+
+
+def pulse() -> str:
+    """Короткая сводка для лога: жив ли опрос и что он приносит."""
+    s = STATE
+    return (f"работаю {uptime()}, ответов MAX {s['fetches']}"
+            + (f" (последний {s['last_fetch_at']})" if s['last_fetch_at'] else '')
+            + f", событий {s['events']}, дошло до бота {s['updates']}"
+            + (f", ошибка запроса: {s['fetch_error']}" if s['fetch_error'] else ''))
 
 
 def note_update(kind: str):
@@ -67,11 +99,20 @@ def report(build: str, app_url: str | None, recognition: str) -> str:
     else:
         updates = 'НИ ОДНОГО с момента запуска'
 
+    if s['fetches']:
+        answers = f"{s['fetches']}, последний {s['last_fetch_at']}"
+    else:
+        answers = 'НИ ОДНОГО — запрос к MAX не возвращается'
+
     lines = [
         f'Сборка:            {build}',
         f'Работает:          {uptime()}',
         f'Токен MAX:         {token}',
         f'Циклов опроса:     {s["polls"]}',
+        f'Ответов MAX:       {answers}',
+        f'Событий от MAX:    {s["events"]}',
+        f'Ошибка запроса:    {s["fetch_error"] or "нет"}'
+        + (f' ({s["fetch_error_at"]})' if s['fetch_error_at'] else ''),
         f'Ошибка опроса:     {s["last_error"] or "нет"}'
         + (f' ({s["last_error_at"]})' if s['last_error_at'] else ''),
         f'Пришло сообщений:  {updates}',
@@ -81,7 +122,14 @@ def report(build: str, app_url: str | None, recognition: str) -> str:
     ]
     if not s['bot_username']:
         lines.append('⚠️ MAX не отдал данные бота — проверьте MAX_BOT_TOKEN.')
+    elif not s['fetches']:
+        lines.append('⚠️ Опрос запущен, но MAX ни разу не ответил на запрос обновлений.')
+        lines.append('   Связь с MAX не установилась — смотрите «Ошибка запроса».')
+    elif not s['events']:
+        lines.append('⚠️ MAX отвечает, но событий не присылает совсем. Обычно это значит,')
+        lines.append('   что тот же токен слушает второй запущенный экземпляр бота,')
+        lines.append('   либо пишут не этому боту — сверьте @username в MAX.')
     elif not s['updates']:
-        lines.append('⚠️ Опрос идёт, но сообщения не приходят. Обычно это значит,')
-        lines.append('   что тот же токен слушает второй запущенный экземпляр бота.')
+        lines.append('⚠️ События от MAX идут, но до обработчиков не доходят —')
+        lines.append('   это уже ошибка в самом боте, смотрите логи.')
     return '\n'.join(lines)
