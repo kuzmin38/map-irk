@@ -17,7 +17,7 @@ import time
 
 from maxapi import Bot
 
-from . import db, handlers
+from . import db, handlers, status
 from .handlers import dp
 from .reminders import reminder_loop
 
@@ -41,12 +41,14 @@ async def poll_forever(bot):
     delay = MIN_DELAY
     while True:
         started = time.monotonic()
+        status.note_poll_start()
         try:
             await dp.start_polling(bot)
             log.warning('Опрос MAX завершился сам')
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as e:
+            status.note_poll_error(e)
             log.exception('Опрос MAX прервался')
 
         # проработал достаточно долго — связь была, начинаем отсчёт заново
@@ -71,10 +73,12 @@ async def main():
     try:
         me = await bot.get_me()
         handlers.BOT_ME.update(username=me.username, user_id=me.user_id)
+        status.note_me(me.username, me.user_id)
         log.info('Бот: %s (id %s)', me.username, me.user_id)
         if not me.username:
             log.warning('У бота нет username — кнопка мини-приложения показана не будет')
-    except Exception:
+    except Exception as e:
+        status.note_me(None, None, error=e)
         log.exception('Не удалось получить данные бота')
 
     mode = os.environ.get('BOT_MODE', 'polling').lower()

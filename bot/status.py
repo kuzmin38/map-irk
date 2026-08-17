@@ -1,0 +1,87 @@
+"""Что происходит с ботом прямо сейчас — для страницы состояния.
+
+Логи Railway с телефона читать неудобно, а понять «жив ли опрос MAX и доходят
+ли до бота сообщения» нужно быстро. Здесь копятся несколько чисел, которые
+`bot/webapp.py` отдаёт по секретному адресу.
+"""
+import time
+from datetime import datetime
+
+STARTED = time.time()
+
+STATE = {
+    'bot_username': None,   # username из get_me — если None, MAX не принял токен
+    'bot_id': None,
+    'me_error': None,       # текст ошибки get_me
+    'polls': 0,             # сколько раз запускался цикл опроса
+    'last_error': None,     # последняя ошибка опроса
+    'last_error_at': None,
+    'updates': 0,           # сколько сообщений и нажатий дошло до бота
+    'last_update_at': None,
+    'last_update_kind': None,
+}
+
+
+def _stamp() -> str:
+    return datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+
+
+def note_me(username, user_id, error=None):
+    STATE.update(bot_username=username, bot_id=user_id,
+                 me_error=str(error) if error else None)
+
+
+def note_poll_start():
+    STATE['polls'] += 1
+
+
+def note_poll_error(exc):
+    STATE.update(last_error=f'{type(exc).__name__}: {exc}'[:300], last_error_at=_stamp())
+
+
+def note_update(kind: str):
+    STATE['updates'] += 1
+    STATE.update(last_update_at=_stamp(), last_update_kind=kind)
+
+
+def uptime() -> str:
+    sec = int(time.time() - STARTED)
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f'{h} ч {m} мин' if h else (f'{m} мин {s} с' if m else f'{s} с')
+
+
+def report(build: str, app_url: str | None, recognition: str) -> str:
+    """Человекочитаемая сводка состояния."""
+    s = STATE
+    if s['bot_username']:
+        token = f"принят, бот @{s['bot_username']} (id {s['bot_id']})"
+    elif s['me_error']:
+        token = f"НЕ ПРИНЯТ — {s['me_error']}"
+    else:
+        token = 'проверка не выполнялась'
+
+    if s['updates']:
+        updates = (f"{s['updates']}, последнее {s['last_update_at']} "
+                   f"({s['last_update_kind']})")
+    else:
+        updates = 'НИ ОДНОГО с момента запуска'
+
+    lines = [
+        f'Сборка:            {build}',
+        f'Работает:          {uptime()}',
+        f'Токен MAX:         {token}',
+        f'Циклов опроса:     {s["polls"]}',
+        f'Ошибка опроса:     {s["last_error"] or "нет"}'
+        + (f' ({s["last_error_at"]})' if s['last_error_at'] else ''),
+        f'Пришло сообщений:  {updates}',
+        f'Расшифровка видео: {recognition}',
+        f'Приложение:        {app_url or "домен не выдан"}',
+        '',
+    ]
+    if not s['bot_username']:
+        lines.append('⚠️ MAX не отдал данные бота — проверьте MAX_BOT_TOKEN.')
+    elif not s['updates']:
+        lines.append('⚠️ Опрос идёт, но сообщения не приходят. Обычно это значит,')
+        lines.append('   что тот же токен слушает второй запущенный экземпляр бота.')
+    return '\n'.join(lines)

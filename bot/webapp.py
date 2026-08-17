@@ -184,6 +184,20 @@ async def _house_api(request):
                              dumps=lambda o: json.dumps(o, ensure_ascii=False))
 
 
+async def _status(request):
+    """Состояние бота простым текстом: открыть с телефона вместо логов Railway."""
+    from . import ai, status, transcribe
+    from .handlers import build_version
+
+    ffmpeg_ok = transcribe.ffmpeg_available()
+    rec = 'работает' if (ffmpeg_ok and ai.enabled()) else (
+        'нет ffmpeg' if not ffmpeg_ok else 'нет ключа ИИ')
+    text = status.report(build_version(), public_url(), rec)
+    return web.Response(text=text, content_type='text/plain', charset='utf-8',
+                        headers={'Cache-Control': 'no-store',
+                                 'X-Robots-Tag': 'noindex, nofollow'})
+
+
 async def _health(request):
     """Живость сервера и какая сборка приехала — чтобы не гадать после деплоя."""
     try:
@@ -210,6 +224,7 @@ def create_app() -> web.Application:
     app.router.add_get(f'/{path}', _to_slash)
     app.router.add_get(f'/{path}/', _page)
     app.router.add_get(f'/{path}/api/house/{{house_id}}', _house_api)
+    app.router.add_get(f'/{path}/status', _status)
     app.router.add_route('*', '/{tail:.*}', _not_found)
     return app
 

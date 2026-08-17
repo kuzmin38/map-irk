@@ -26,6 +26,7 @@ from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 from . import agent, ai, db, houses
 from . import project_docs
 from . import risers as risers_mod
+from . import status as bot_status
 from . import transcribe
 
 log = logging.getLogger(__name__)
@@ -1004,6 +1005,7 @@ async def _save_docs(event, state) -> int:
 async def on_text(event: MessageCreated):
     text = (event.message.body.text or '').strip()
     uid = _uid(event)
+    bot_status.note_update('чат' if is_group(event) else 'личка')
 
     # В группах Люся молчит, пока её не позвали по имени: реагировать на каждое
     # сообщение рабочего чата — верный способ, чтобы бота оттуда выгнали.
@@ -1306,6 +1308,7 @@ async def on_text(event: MessageCreated):
 async def on_callback(event: MessageCallback):
     payload = event.callback.payload or ''
     uid = event.callback.user.user_id
+    bot_status.note_update('кнопка')
     log.info('Нажата кнопка: %s (пользователь %s)', payload, uid)
 
     # Подтверждаем нажатие: без ответа на callback кнопка в MAX «зависает»
