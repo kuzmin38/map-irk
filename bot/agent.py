@@ -91,6 +91,36 @@ def _tool_get_directory(section: str) -> str:
     return json.dumps({'error': f'раздела "{section}" нет, доступные: {ids}'}, ensure_ascii=False)
 
 
+def _tool_get_equipment(house_id: int) -> str:
+    """Приборы дома: что стоит, с каким номером, до какого числа поверка.
+
+    Без этого инструмента Люся про манометры не знала вовсе и на прямой
+    вопрос отвечала общими словами.
+    """
+    h = houses.HOUSES_BY_ID.get(house_id)
+    if not h:
+        return json.dumps({'error': 'дом не найден'}, ensure_ascii=False)
+    points = []
+    for p in db.list_points(h['id']):
+        dev = db.active_device(p['id'])
+        points.append({
+            'место': ', '.join(x for x in (p['tp'], p['place']) if x),
+            'прибор': ({
+                'заводской_номер': dev['serial'],
+                'поверка_до': dev['verified_until'],
+                'установлен': dev['installed_at'],
+                'установил': dev['installed_by'],
+                'фото_прибора': bool(dev['photo_device']),
+                'фото_паспорта': bool(dev['photo_passport']),
+                'примечание': dev['note'],
+            } if dev else None),
+            'замен_за_всё_время': len(db.point_history(p['id'])),
+        })
+    return json.dumps({'address': h['address'], 'манометры': points,
+                       'note': 'манометров не заведено' if not points else None},
+                      ensure_ascii=False)
+
+
 def _tool_get_house_works(house_id: int) -> str:
     h = houses.HOUSES_BY_ID.get(house_id)
     if not h:
@@ -140,6 +170,12 @@ TOOLS = [
         'parameters': {'type': 'object', 'properties': {
             'section': {'type': 'string'}}, 'required': ['section']}}},
     {'type': 'function', 'function': {
+        'name': 'get_equipment',
+        'description': 'Манометры дома: место установки, заводской номер, срок поверки, '
+                        'кто и когда поставил, сколько было замен. По id дома.',
+        'parameters': {'type': 'object', 'properties': {
+            'house_id': {'type': 'integer'}}, 'required': ['house_id']}}},
+    {'type': 'function', 'function': {
         'name': 'get_house_works', 'description': 'Работы и дедлайны по дому (id дома).',
         'parameters': {'type': 'object', 'properties': {
             'house_id': {'type': 'integer'}}, 'required': ['house_id']}}},
@@ -157,6 +193,7 @@ TOOL_FUNCS = {
     'list_docs': lambda a: _tool_list_docs(a['house_id']),
     'get_riser': lambda a: _tool_get_riser(a['address'], a['flat']),
     'get_directory': lambda a: _tool_get_directory(a['section']),
+    'get_equipment': lambda a: _tool_get_equipment(a['house_id']),
     'get_house_works': lambda a: _tool_get_house_works(a['house_id']),
     'get_open_requests': lambda a: _tool_get_open_requests(a.get('house_id')),
 }
@@ -187,8 +224,8 @@ def _build_prompt() -> str:
     'своя, с лёгкой иронией — можешь подтрунить или пошутить, но по делу '
     'отвечаешь точно и по существу. Обращаешься на «ты», по имени.\n\n'
     'У тебя есть инструменты, чтобы посмотреть реальные данные: паспорта '
-    'домов, документы, стояки квартир, справочник и нормативы, работы '
-    'и дедлайны, заявки. Всегда пользуйся инструментами вместо того, чтобы '
+    'домов, документы, манометры со сроками поверки, стояки квартир, '
+    'справочник и нормативы, работы и дедлайны, заявки. Всегда пользуйся инструментами вместо того, чтобы '
     'гадать — этих данных ты не помнишь, только через инструменты. Если по '
     'инструментам ничего не нашлось — так и скажи, не выдумывай данные.\n\n'
     'Про СНиПы, ГОСТы и законы отвечай по своим знаниям. Если нужна '

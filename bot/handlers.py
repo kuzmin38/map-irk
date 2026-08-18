@@ -223,6 +223,13 @@ def house_card_text(h) -> str:
     if h.get('note'):
         lines.append(f"ℹ️ {h['note']}")
     lines += [f"📊 Заявок за год: {h['requests_year']}", f'📁 Документов: {n_docs}']
+    n_points = db.points_count(h['id'])
+    if n_points:
+        prosrocheno = sum(1 for p in db.list_points(h['id']) if _verify_overdue(p))
+        line = f'🔧 Манометров: {n_points}'
+        if prosrocheno:
+            line += f' (поверка просрочена: {prosrocheno})'
+        lines.append(line)
     return '\n'.join(lines)
 
 
@@ -280,9 +287,26 @@ def passport_text(h) -> str:
         else:
             lines.append(f'▫️ {label}: —')
     lines.append('')
+    lines += equipment_lines(h)
     lines.append(f'Заполнено: {filled}/{len(PASSPORT_FIELDS)}. '
                  'Нажмите «Редактировать», чтобы дополнить.')
     return '\n'.join(lines)
+
+
+def equipment_lines(h) -> list:
+    """Приборы дома — в самом паспорте, а не только в разделе «Техника».
+
+    Паспорт для того и нужен, чтобы всё про дом было в одном месте: что
+    стоит, с каким номером и до какого числа поверка.
+    """
+    points = db.list_points(h['id'])
+    if not points:
+        return ['🔧 Манометры: не заведены', '']
+    lines = [f'🔧 Манометры ({len(points)}):']
+    for p in points:
+        lines.append('   ' + point_line(p).replace('\n   ', '\n      '))
+    lines.append('')
+    return lines
 
 
 def request_card_text(r) -> str:
@@ -475,6 +499,17 @@ def fmt_verify(iso: str | None) -> str:
 def datetime_today():
     from datetime import datetime
     return datetime.now(db.IRKUTSK_TZ).date()
+
+
+def _verify_overdue(p) -> bool:
+    """Поверка прибора в этой точке просрочена."""
+    from datetime import date
+
+    dev = db.active_device(p['id'])
+    if not dev or not dev['verified_until']:
+        return False
+    y, m, d = dev['verified_until'].split('-')
+    return date(int(y), int(m), int(d)) < datetime_today()
 
 
 def point_line(p) -> str:
