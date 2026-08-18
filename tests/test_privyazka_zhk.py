@@ -97,3 +97,15 @@ def test_privyazka_tolko_dlya_domov_v_rabote():
     lishnie = sorted(a for a in real.load_complex_map() if a not in v_rabote)
 
     assert not lishnie, f'привязаны дома вне списка активных: {lishnie}'
+
+
+def test_vse_zhk_iz_spravochnika_zadeystvovany():
+    """Комплекс без домов только мозолит глаза в меню «Задание по ЖК»."""
+    import json
+    import bot.houses as real
+
+    with open('bot/data/complexes.json', encoding='utf-8') as f:
+        ids = {c['id'] for c in json.load(f)}
+    ispolzuyutsya = set(real.load_complex_map().values())
+
+    assert ids == ispolzuyutsya, f'без домов остались: {sorted(ids - ispolzuyutsya)}'
