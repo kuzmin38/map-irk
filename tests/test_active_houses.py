@@ -64,3 +64,20 @@ def test_v_zhivoy_rechi_otklyuchennyy_dom_ne_lovitsya(tmp_path, monkeypatch):
 def test_neizvestnyy_adres_v_spiske_prosto_ignoriruetsya(tmp_path, monkeypatch):
     mod = reload_with(tmp_path, monkeypatch, 'Седова 65а/2\nНесуществующая 999\n')
     assert [h['address'] for h in mod.HOUSES] == ['Седова 65а/2']
+
+
+def test_boevoy_spisok_bez_opechatok():
+    """Опечатка в адресе молча выкинула бы дом из работы — проверяем реальный файл."""
+    import bot.houses as real
+
+    known = {real._norm_addr(h['address']) for h in real.ALL_HOUSES}
+    lishnie = sorted(a for a in real.load_active() if a not in known)
+
+    assert not lishnie, f'в active_houses.txt адреса, которых нет в houses.json: {lishnie}'
+
+
+def test_boevoy_spisok_ne_pustoy_i_menshe_polnogo():
+    """Звено 2: дома сузили осознанно, остальные остались в справочнике."""
+    import bot.houses as real
+
+    assert 0 < len(real.load_active()) < len(real.ALL_HOUSES)

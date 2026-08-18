@@ -10,7 +10,7 @@ from bot import agent, houses
 
 
 def test_vse_doma_perechisleny_v_podskazke():
-    assert len(houses.HOUSES) == 86
+    assert houses.HOUSES, 'список домов пуст — подсказке нечего показывать'
     for h in houses.HOUSES:
         assert h['address'] in agent.SYSTEM_PROMPT, f'{h["address"]} нет в подсказке'
 
