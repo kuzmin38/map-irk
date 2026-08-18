@@ -117,7 +117,9 @@ def _street_stems() -> frozenset:
 
     stems = set()
     for house in houses.ALL_HOUSES:
-        street = re.split(r'\s*\d', house['address'])[0]
+        # Отрезаем только номер дома с конца: у «4-я Советская 30» улица
+        # начинается с цифры, и делением по первой цифре её теряли целиком
+        street = houses._split_addr(house['address'])[0]
         for word in street.split():
             word = word.strip('-').lower()
             if len(word) >= 6:
@@ -139,11 +141,15 @@ def _is_street(token: str) -> bool:
     return any(low.startswith(stem) for stem in STREETS)
 
 
-def to_digits(text: str) -> str:
+def to_digits(text: str, anywhere: bool = False) -> str:
     """Переводит номера домов и квартир из слов в цифры.
 
-    Трогает только числа рядом со словами «дом», «квартира», «подъезд»,
-    «этаж», «стояк», «корпус», «номер». Всё остальное остаётся как сказали.
+    По умолчанию трогает только числа рядом со словами «дом», «квартира»,
+    «подъезд», «этаж», «стояк», «корпус», «номер»: в живой речи «один раз»
+    и «в первую очередь» числами не являются.
+
+    anywhere=True — переводить любое число. Так разбираем поисковый запрос
+    по адресу: там счёту взяться неоткуда, всё сказанное относится к дому.
     """
     if not text:
         return text
@@ -176,7 +182,7 @@ def to_digits(text: str) -> str:
         after = tokens[words[i]] if i < len(words) else ''
         # Улица — только перед числом: номер дома идёт после названия, а
         # «три дня на Седова» превращать в «3 дня» не нужно
-        if _is_anchor(before) or _is_anchor(after) or _is_street(before):
+        if anywhere or _is_anchor(before) or _is_anchor(after) or _is_street(before):
             tokens[words[start]] = f'{value}-{suffix}' if suffix else str(value)
             # «двести тридцать семь» становится одним «237»: лишние слова
             # убираем вместе с пробелами перед ними

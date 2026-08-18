@@ -12,7 +12,9 @@ def _norm_addr(s: str) -> str:
     """Адрес в сравнимый вид: без регистра, ё, лишних пробелов и слов «ул.», «дом»."""
     s = s.lower().replace('ё', 'е')
     s = re.sub(r'[.,;]', ' ', s)
-    s = re.sub(r'\b(ул|улица|мкр|микрорайон|д|дом|г|иркутск)\b', ' ', s)
+    # Отдельно стоящие слова, а не буквы внутри номера: «Пограничный 1-Г»
+    # и «1-Д» иначе оба превращались в «1-» и становились неразличимы
+    s = re.sub(r'(?<![\w-])(ул|улица|мкр|микрорайон|д|дом|г|иркутск)(?![\w-])', ' ', s)
     return re.sub(r'\s+', ' ', s).strip()
 
 
@@ -28,6 +30,9 @@ def load_active() -> set:
         lines = [ln.split('#')[0].strip() for ln in f]
     return {_norm_addr(ln) for ln in lines if ln}
 
+
+with open(os.path.join(DATA_DIR, 'complexes.json'), encoding='utf-8') as f:
+    COMPLEXES = json.load(f)
 
 with open(os.path.join(DATA_DIR, 'houses.json'), encoding='utf-8') as f:
     ALL_HOUSES = json.load(f)
@@ -52,19 +57,93 @@ def _split_addr(s: str):
     return s, ''
 
 
+def _complex_aliases() -> list:
+    """Как жилой комплекс называют вслух: «ЖК Четыре солнца», «четыре солнца», «4 солнца»."""
+    from . import numbers
+
+    aliases = set()
+    for c in COMPLEXES:
+        name = _norm(c['name'])                       # «жк четыре солнца»
+        short = re.sub(r'^жк\s+', '', name)            # «четыре солнца»
+        for variant in (name, short):
+            aliases.add(variant)
+            aliases.add(numbers.to_digits(variant, anywhere=True))   # «4 солнца»
+    # длинные вперёд, иначе «жк» съест начало названия
+    return sorted((a for a in aliases if a), key=len, reverse=True)
+
+
+COMPLEX_ALIASES = _complex_aliases()
+
+
+def _strip_complex(text: str) -> str:
+    """Убирает из запроса название ЖК: адрес ищется по улице и номеру.
+
+    Привязки домов к комплексам в базе пока нет, но и без неё «четыре солнца
+    тридцатый дом» должно находиться — по номеру дома.
+    """
+    for alias in COMPLEX_ALIASES:
+        text = text.replace(alias, ' ')
+    return re.sub(r'(?<![\w-])жк(?![\w-])', ' ', text)
+
+
+def _prepare(query: str) -> str:
+    """Разговорный запрос — в вид, сравнимый с адресом из справочника.
+
+    «ЖК четыре солнца, тридцатый дом» → «30-й». Название комплекса убираем
+    до перевода числительных, иначе «четыре солнца» само станет числом.
+    """
+    from . import numbers
+
+    q = _strip_complex(_norm(query))
+    q = numbers.to_digits(q, anywhere=True)
+    return _norm(_strip_complex(q))
+
+
+def _num_key(num: str) -> str:
+    """Номер дома без наращения: «30-й» и «30» — один и тот же дом.
+
+    Буквы корпуса не трогаем: «1-а», «1-е» и «1-ж» — разные дома, поэтому
+    среди окончаний нет «е», которое иначе съело бы корпус Е.
+    """
+    return re.sub(r'^(\d+)-(?:й|я|м|го|му|ю|х)$', r'\1', num)
+
+
+def _street_key(street: str) -> list:
+    """Слова улицы по корням: «4-я Советская» и «четвёртое советское» — одно.
+
+    В названии улицы наращение всегда порядковое, корпусов там не бывает,
+    поэтому окончание отрезаем любое.
+    """
+    keys = []
+    for w in street.split():
+        w = re.sub(r'^(\d+)-[а-я]{1,2}$', r'\1', w)
+        keys.append(w[:6] if len(w) > 6 else w)
+    return keys
+
+
 def search(query: str, limit: int = 8):
     """Ищет дома по свободному тексту. Возвращает список домов, лучшие первыми."""
-    q = _norm(query)
+    q = _prepare(query)
     if not q:
         return []
     q_street, q_num = _split_addr(q)
+    q_num = _num_key(q_num)
+    q_keys = _street_key(q_street)
     scored = []
     for h in HOUSES:
         a = _norm(h['address'])
         street, num = _split_addr(a)
+        num = _num_key(num)
         score = 0
         if a == q:
             score = 100
+        elif not q_street and q_num:
+            # Назвали только номер: «тридцатый дом». Если дом с таким номером
+            # один — этого достаточно; если нет, спросим, какой именно
+            if num == q_num:
+                score = 85
+            elif num.startswith(q_num):
+                score = 55
         elif q_street and q_street in street:
             if q_num:
                 if num == q_num:
@@ -75,6 +154,12 @@ def search(query: str, limit: int = 8):
                     continue
             else:
                 score = 50
+        elif q_keys and all(k in _street_key(street) for k in q_keys):
+            # Улица по корням: «четвёртое советское» — та же «4-я Советская»
+            if not q_num:
+                score = 45
+            elif num == q_num:
+                score = 80
         elif q in a:
             score = 40
         else:
@@ -94,7 +179,12 @@ def detect_house(text: str):
     Номер дома должен совпасть точно, название улицы — по корню, чтобы
     пережить падежи («Байкальская» / «Байкальской»). Возвращает дом или None.
     """
-    t = _norm(text)
+    from . import numbers
+
+    # «на четвёртой советской тридцать» — номер в речи звучит словом.
+    # Здесь переводим только рядом с названием улицы: в чате хватает
+    # обычного счёта, который номером дома не является
+    t = _norm(numbers.to_digits(text, anywhere=True))
     if not t:
         return None
     best = None
@@ -105,8 +195,12 @@ def detect_house(text: str):
         # номер дома — отдельным словом, чтобы «237» не поймалось внутри «1237»
         if not re.search(rf'(?<![\w/]){re.escape(num)}(?![\w/])', t):
             continue
-        stem = street[:6] if len(street) > 6 else street
-        if stem and stem in t:
+        # Улицу сверяем по корням слов: сказать могут «на четвёртой советской»,
+        # а в справочнике записано «4-я Советская». Цифру в названии улицы
+        # в речи обычно опускают («на Советской тридцать») — не требуем её,
+        # различает адрес само название плюс номер дома
+        keys = [k for k in _street_key(street) if not k.isdigit()]
+        if keys and all(k in t for k in keys):
             # длиннее совпадение улицы — точнее адрес (65а/2 против 65а)
             if best is None or len(street) > len(best[1]):
                 best = (h, street)
