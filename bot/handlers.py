@@ -481,6 +481,63 @@ def fmt_date(iso: str | None) -> str:
         return iso
 
 
+# Межповерочный интервал манометров: на приборе стоит клеймо поверки,
+# годен он с этой даты ещё столько лет.
+VERIFY_YEARS = 2
+
+_MONTHS = {'янв': 1, 'фев': 2, 'мар': 3, 'апр': 4, 'май': 5, 'мая': 5, 'июн': 6,
+           'июл': 7, 'авг': 8, 'сен': 9, 'окт': 10, 'ноя': 11, 'дек': 12}
+
+
+def parse_verify(text: str):
+    """Поверка манометра → ('ГГГГ-ММ-ДД', пояснение). '-' → (None, '').
+
+    На приборе стоит клеймо: месяц и год, когда поверяли. Человек так и
+    говорит — «поверка июль двадцать шестого», — а срок годности считается
+    прибавлением межповерочного интервала. Поэтому понимаем оба вида:
+
+      «июль 2026», «07.2026»  — клеймо, прибавляем интервал
+      «до 07.2028», «до 25.09.2028», «25.09.2028» — уже срок годности
+    """
+    from calendar import monthrange
+    from datetime import date
+
+    text = text.strip().lower().replace('ё', 'е')
+    if text in ('-', '—', ''):
+        return None, ''
+
+    srok = text.startswith('до')
+    if srok:
+        text = text[2:].strip()
+
+    # полная дата с днём — это всегда срок годности, как было раньше
+    m = re.match(r'^(\d{1,2})[./](\d{1,2})[./](\d{2,4})$', text)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        y += 2000 if y < 100 else 0
+        return date(y, mo, d).isoformat(), ''
+
+    # месяц и год: «07.2026» или «июль 2026»
+    m = re.match(r'^(\d{1,2})[./\s](\d{2,4})$', text)
+    if m:
+        mo, y = int(m.group(1)), int(m.group(2))
+    else:
+        m = re.match(r'^([а-я]{3,})\s*(\d{2,4})$', text)
+        if not m or m.group(1)[:3] not in _MONTHS:
+            raise ValueError
+        mo, y = _MONTHS[m.group(1)[:3]], int(m.group(2))
+    if not 1 <= mo <= 12:
+        raise ValueError
+    y += 2000 if y < 100 else 0
+
+    if srok:
+        # срок годности до конца названного месяца
+        return date(y, mo, monthrange(y, mo)[1]).isoformat(), ''
+    god = y + VERIFY_YEARS
+    return (date(god, mo, monthrange(god, mo)[1]).isoformat(),
+            f'клеймо {mo:02d}.{y} + {VERIFY_YEARS} года')
+
+
 def fmt_verify(iso: str | None) -> str:
     """Срок поверки с пометкой, если скоро истекает или уже истёк."""
     if not iso:
@@ -1241,22 +1298,28 @@ async def on_text(event: MessageCreated):
         serial = None if text in ('-', '—') else text
         STATE[uid] = {'mode': 'eq_verify', 'point_id': state['point_id'], 'serial': serial}
         await send(event.message,
-                   '📅 До какого числа действует поверка?\n'
-                   'Дата — «25.09.2027», или «-», если неизвестна.')
+                   '📅 Поверка. Напишите клеймо с прибора — «июль 2026» или '
+                   f'«07.2026»: сама прибавлю {VERIFY_YEARS} года.\n'
+                   'Если знаете сразу срок годности — «до 07.2028».\n'
+                   '«-», если неизвестна.')
         return
 
     if state and state['mode'] == 'eq_verify':
         try:
-            verified = parse_deadline(text)
+            verified, kak = parse_verify(text)
         except ValueError:
-            await send(event.message, '🤔 Не поняла дату. Например: «25.09.2027» или «-».')
+            await send(event.message,
+                       '🤔 Не поняла. Клеймо — «июль 2026», срок — «до 07.2028», '
+                       'или «-».')
             return
         dev_id = db.add_device(state['point_id'], state['serial'], verified, uid, _uname(event))
         STATE[uid] = {'mode': 'eq_photo', 'device_id': dev_id, 'slot': 'device'}
         p = db.get_point(state['point_id'])
+        srok = f'поверка до {fmt_date(verified)}' if verified else 'поверка не указана'
         await send(event.message,
                    f"✅ Записала манометр № {state['serial'] or '—'} "
-                   f"({p['place']}), поверка до {fmt_date(verified)}.\n\n"
+                   f"({p['place']}), {srok}"
+                   + (f' ({kak})' if kak else '') + '.\n\n'
                    '📷 Пришлите фото манометра, или «-», чтобы пропустить.')
         return
 
