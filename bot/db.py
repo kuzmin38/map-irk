@@ -182,10 +182,39 @@ def _sync_columns(c):
         ref.close()
 
 
+def seed_house_complexes() -> int:
+    """Проставляет дома по комплексам из `bot/data/house_complex.txt`.
+
+    Заполняем только пустые: привязка, сделанная руками в боте, важнее файла
+    и перезаписывать её нельзя. Возвращает, сколько домов проставлено.
+    """
+    from . import houses
+
+    mapping = houses.load_complex_map()
+    if not mapping:
+        return 0
+    known = {houses._norm_addr(h['address']): h['id'] for h in houses.ALL_HOUSES}
+    assigned = all_house_complexes()
+    added = 0
+    for address, complex_id in mapping.items():
+        house_id = known.get(address)
+        if house_id is None:
+            log.warning('В привязке к ЖК неизвестный адрес: %s', address)
+            continue
+        if house_id in assigned:
+            continue
+        set_house_complex(house_id, complex_id)
+        added += 1
+    if added:
+        log.info('Дома привязаны к комплексам: %s', added)
+    return added
+
+
 def init():
     with _conn() as c:
         _create_all(c)
         _sync_columns(c)
+    seed_house_complexes()
 
 def now() -> str:
     return datetime.now(IRKUTSK_TZ).strftime('%d.%m.%Y %H:%M')

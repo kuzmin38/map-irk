@@ -6,6 +6,7 @@ import re
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
 ACTIVE_FILE = os.path.join(DATA_DIR, 'active_houses.txt')
+COMPLEX_FILE = os.path.join(DATA_DIR, 'house_complex.txt')
 
 
 def _norm_addr(s: str) -> str:
@@ -29,6 +30,28 @@ def load_active() -> set:
     with open(ACTIVE_FILE, encoding='utf-8') as f:
         lines = [ln.split('#')[0].strip() for ln in f]
     return {_norm_addr(ln) for ln in lines if ln}
+
+
+def load_complex_map() -> dict:
+    """Привязка домов к ЖК из `bot/data/house_complex.txt`: адрес → id комплекса.
+
+    Руками через бота её проставляют по одному дому — на десятки домов это
+    мучение, а список нужен целиком: без него не работает группировка по
+    комплексам и задание сразу на весь ЖК.
+    """
+    if not os.path.exists(COMPLEX_FILE):
+        return {}
+    mapping = {}
+    with open(COMPLEX_FILE, encoding='utf-8') as f:
+        for line in f:
+            line = line.split('#')[0].strip()
+            if not line or '=' not in line:
+                continue
+            address, complex_id = line.split('=', 1)
+            address, complex_id = _norm_addr(address), complex_id.strip()
+            if address and complex_id:
+                mapping[address] = complex_id
+    return mapping
 
 
 with open(os.path.join(DATA_DIR, 'complexes.json'), encoding='utf-8') as f:
