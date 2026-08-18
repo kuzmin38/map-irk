@@ -72,3 +72,28 @@ def test_pustoy_fayl_ostavlyaet_vsyo_kak_est(chisto, monkeypatch):
     db.init()
 
     assert db.all_house_complexes() == {}
+
+
+def test_boevoy_fayl_bez_opechatok():
+    """Опечатка в адресе или в id комплекса молча оставила бы дом без ЖК."""
+    import json
+    import bot.houses as real
+
+    with open('bot/data/complexes.json', encoding='utf-8') as f:
+        ids = {c['id'] for c in json.load(f)}
+    known = {real._norm_addr(h['address']) for h in real.ALL_HOUSES}
+
+    mapping = real.load_complex_map()
+    assert mapping, 'привязка пуста — комплексы не заработают'
+    assert not [a for a in mapping if a not in known], 'адреса, которых нет в houses.json'
+    assert not [c for c in mapping.values() if c not in ids], 'неизвестные id комплексов'
+
+
+def test_privyazka_tolko_dlya_domov_v_rabote():
+    """Прописывать ЖК скрытым домам смысла нет — только путаница."""
+    import bot.houses as real
+
+    v_rabote = {real._norm_addr(h['address']) for h in real.HOUSES}
+    lishnie = sorted(a for a in real.load_complex_map() if a not in v_rabote)
+
+    assert not lishnie, f'привязаны дома вне списка активных: {lishnie}'

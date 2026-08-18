@@ -208,7 +208,7 @@ MAIN_TEXT = (
     '• 🗂 Паспорт дома — розливы, арматура, где перекрывать, доступ\n'
     '• 📋 Заявки — запишу и буду вести: новая → в работе → выполнена\n'
     '• 📖 Справочник — телефоны, нормативы, сроки, шпаргалка по трубам\n\n'
-    '💡 Просто напишите адрес (например: «Розы Люксембург 118/5») — я всё найду. 😉'
+    f'💡 Просто напишите адрес (например: «{houses.examples(1)[0]}») — я всё найду. 😉'
 )
 
 
@@ -742,6 +742,13 @@ async def on_chat_log(event: MessageCreated):
 
 
 # ---------- Текстовые сообщения (поиск + шаги диалогов) ----------
+
+def _primer(i: int) -> str:
+    """Адрес-пример для подсказок. Берём из домов в работе, а не из текста:
+    после сужения списка зашитые примеры указывали в пустоту."""
+    got = houses.examples(2)
+    return got[i] if i < len(got) else ''
+
 
 def _uid(event) -> int:
     return event.message.sender.user_id
@@ -1325,7 +1332,7 @@ async def on_text(event: MessageCreated):
         else:
             await send(event.message,
                        f'🤷‍♀️ По запросу «{text}» я ничего не нашла.\n'
-                       'Попробуйте написать иначе, например: «Розы Люксембург 118» или «Байкальская 237».',
+                       f'Попробуйте написать иначе, например: «{_primer(0)}» или «{_primer(1)}».',
                        main_menu_kb())
     elif len(found) == 1:
         h = found[0]
@@ -1363,7 +1370,8 @@ async def on_callback(event: MessageCallback):
 
     elif action == 'srch':
         STATE.pop(uid, None)
-        await send(msg, '🔍 Напишите адрес (улица и номер дома), например:\n«Розы Люксембург 118/5» или «Байкальская 237»')
+        await send(msg, '🔍 Напишите адрес (улица и номер дома), например:\n'
+                        f'«{_primer(0)}» или «{_primer(1)}»')
 
     elif action == 'homes':
         assigned = db.all_house_complexes()

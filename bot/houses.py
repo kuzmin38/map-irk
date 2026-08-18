@@ -80,6 +80,21 @@ def _split_addr(s: str):
     return s, ''
 
 
+def examples(count: int = 2) -> list:
+    """Адреса-примеры для подсказок в интерфейсе — из тех, что сейчас в работе.
+
+    Раньше примеры были вписаны в тексты руками, и после сужения списка бот
+    советовал искать дома, которых сам уже не знает.
+    """
+    addrs = [h['address'] for h in HOUSES]
+    if not addrs:
+        return []
+    # Первым — адрес с корпусом: на нём видно, как писать дробную часть
+    slozhnye = [a for a in addrs if '/' in a]
+    prostye = [a for a in addrs if a not in slozhnye]
+    return (slozhnye[:1] + prostye[:1] + slozhnye[1:] + prostye[1:])[:count]
+
+
 def _complex_aliases() -> list:
     """Как жилой комплекс называют вслух: «ЖК Четыре солнца», «четыре солнца», «4 солнца»."""
     from . import numbers

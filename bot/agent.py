@@ -117,7 +117,7 @@ TOOLS = [
     {'type': 'function', 'function': {
         'name': 'find_house', 'description': 'Найти дом по адресу или части адреса.',
         'parameters': {'type': 'object', 'properties': {
-            'query': {'type': 'string', 'description': 'Адрес или его часть, например "Байкальская 99"'}},
+            'query': {'type': 'string', 'description': f'Адрес или его часть, например "{houses.examples(1)[0] if houses.examples(1) else "Седова 67"}"'}},
             'required': ['query']}}},
     {'type': 'function', 'function': {
         'name': 'get_passport', 'description': 'Технический паспорт дома по его id.',
