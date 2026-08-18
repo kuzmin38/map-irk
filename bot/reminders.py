@@ -30,31 +30,74 @@ def _reminder_text(w) -> str:
             'Как сдадите — отметьте «✅ Сдано» в карточке (меню → 🧰 Мои работы).')
 
 
-VERIFY_WARN_DAYS = 30  # за сколько дней предупреждать об истечении поверки
+# Кому что сообщать про поверку. Руководителя дёргаем только по факту
+# просрочки: заранее это забота инженера и мастеров.
+ITR_ROLES = ('admin', 'engineer', 'master')
+OVERDUE_ROLES = ('admin', 'engineer', 'director')
+
+# Весной, до летней сдачи тепловых узлов, инженер должен знать обо всём,
+# что просрочится в этом году: замену планируют на лето, а не по факту.
+SPRING_MONTHS = (4, 5)
+SPRING_EVERY_DAYS = 30    # в апреле и в мае — по разу
+SOON_DAYS = 30            # подстраховка: прибор мог появиться уже после весны
+OVERDUE_EVERY_DAYS = 7    # просрочка — действующая проблема, напоминаем чаще
 
 
-async def _check_verifications(bot, today: date):
-    """Поверка манометров: предупреждаем инженера, админа и руководителя."""
-    until = (today + timedelta(days=VERIFY_WARN_DAYS)).isoformat()
-    due = db.devices_verification_due(until, today.isoformat())
-    if not due:
-        return
-    lines = []
-    for d in due:
-        h = houses.HOUSES_BY_ID.get(d['house_id'])
-        left = (date.fromisoformat(d['verified_until']) - today).days
-        state = f'просрочена на {-left} дн.' if left < 0 else f'осталось {left} дн.'
-        lines.append(f"• {h['address'] if h else '?'} — {d['tp'] or ''} {d['place']}, "
-                     f"№ {d['serial'] or '—'}: {state}")
-        db.update_device(d['id'], last_reminded=today.isoformat())
-    text = ('🔧 ПОВЕРКА МАНОМЕТРОВ\n\n' + '\n'.join(lines) +
-            '\n\nПора планировать замену или поверку.')
+def _davno_li(dev, today: date, days: int) -> bool:
+    """Прошло ли достаточно времени с прошлого напоминания об этом приборе."""
+    if not dev['last_reminded']:
+        return True
+    return (today - date.fromisoformat(dev['last_reminded'])).days >= days
+
+
+def _device_line(dev, today: date) -> str:
+    h = houses.HOUSES_BY_ID.get(dev['house_id'])
+    mesto = ' '.join(x for x in (dev['tp'], dev['place']) if x)
+    srok = date.fromisoformat(dev['verified_until'])
+    left = (srok - today).days
+    kogda = (f'просрочена на {-left} дн.' if left < 0
+             else f"до {srok.strftime('%d.%m.%Y')} (осталось {left} дн.)")
+    return f"• {h['address'] if h else '?'} — {mesto}, № {dev['serial'] or '—'}: {kogda}"
+
+
+async def _send_to(bot, roles, text):
     for u in db.list_users():
-        if u['role'] in ('admin', 'engineer', 'director', 'master'):
+        if u['role'] in roles:
             try:
                 await bot.send_message(user_id=u['user_id'], text=text)
             except Exception:
-                log.warning('Не доставлено напоминание о поверке пользователю %s', u['user_id'])
+                log.warning('Не доставлено напоминание о поверке пользователю %s',
+                            u['user_id'])
+
+
+async def _check_verifications(bot, today: date):
+    """Поверка манометров: заранее — ИТР, о просрочке — ещё и руководителю."""
+    zaranee, prosrocheno = [], []
+    for dev in db.devices_with_verification():
+        srok = date.fromisoformat(dev['verified_until'])
+        if srok < today:
+            if _davno_li(dev, today, OVERDUE_EVERY_DAYS):
+                prosrocheno.append(dev)
+        elif ((today.month in SPRING_MONTHS and srok.year == today.year
+               and _davno_li(dev, today, SPRING_EVERY_DAYS))
+              or ((srok - today).days <= SOON_DAYS
+                  and _davno_li(dev, today, SOON_DAYS))):
+            zaranee.append(dev)
+
+    if zaranee:
+        await _send_to(bot, ITR_ROLES,
+                       '🔧 ПОВЕРКА МАНОМЕТРОВ В ЭТОМ ГОДУ\n\n'
+                       + '\n'.join(_device_line(d, today) for d in zaranee)
+                       + '\n\nЛетом сдача тепловых узлов — планируйте замену '
+                         'или поверку заранее.')
+    if prosrocheno:
+        await _send_to(bot, OVERDUE_ROLES,
+                       '❌ ПОВЕРКА ПРОСРОЧЕНА\n\n'
+                       + '\n'.join(_device_line(d, today) for d in prosrocheno)
+                       + '\n\nЗамена не отмечена. Прибор считается негодным.')
+
+    for dev in zaranee + prosrocheno:
+        db.update_device(dev['id'], last_reminded=today.isoformat())
 
 
 async def reminder_loop(bot):

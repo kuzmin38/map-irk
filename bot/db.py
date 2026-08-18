@@ -461,6 +461,16 @@ def devices_verification_due(until_iso, today_iso):
             (until_iso, today_iso)).fetchall()
 
 
+def devices_with_verification():
+    """Действующие приборы, у которых указан срок поверки, с адресом и местом."""
+    with _conn() as c:
+        return c.execute(
+            "SELECT d.*, p.house_id, p.place, p.tp FROM eq_devices d "
+            'JOIN eq_points p ON p.id = d.point_id '
+            "WHERE d.status = 'active' AND d.verified_until IS NOT NULL "
+            'ORDER BY d.verified_until').fetchall()
+
+
 def all_active_devices():
     with _conn() as c:
         return c.execute(
