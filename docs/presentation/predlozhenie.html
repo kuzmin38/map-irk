@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Цифровой порядок в УК</title>
+<style>
+:root{
+  --ground:#F6F7F9;
+  --surface:#FFFFFF;
+  --surface-2:#EDF0F4;
+  --ink:#161C24;
+  --ink-soft:#41505F;
+  --muted:#6B7A8A;
+  --line:#DDE3EA;
+  --steel:#2C5F8D;
+  --steel-soft:#E3ECF5;
+  --signal:#B85C18;
+  --signal-soft:#FBEBDF;
+  --good:#2A6F52;
+  --good-soft:#E1F0E8;
+  --shadow:0 1px 2px rgba(22,28,36,.06),0 8px 24px -16px rgba(22,28,36,.25);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1218;
+    --surface:#161C24;
+    --surface-2:#1D242E;
+    --ink:#E8ECF1;
+    --ink-soft:#B6C2CE;
+    --muted:#8494A3;
+    --line:#2A333E;
+    --steel:#77AEDC;
+    --steel-soft:#18293A;
+    --signal:#E8944B;
+    --signal-soft:#33220F;
+    --good:#68C79A;
+    --good-soft:#12271D;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1218;
+  --surface:#161C24;
+  --surface-2:#1D242E;
+  --ink:#E8ECF1;
+  --ink-soft:#B6C2CE;
+  --muted:#8494A3;
+  --line:#2A333E;
+  --steel:#77AEDC;
+  --steel-soft:#18293A;
+  --signal:#E8944B;
+  --signal-soft:#33220F;
+  --good:#68C79A;
+  --good-soft:#12271D;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px 80px}
+
+h1,h2,h3{font-family:Georgia,"Times New Roman",serif;font-weight:600;text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,7vw,46px);line-height:1.12;letter-spacing:-.015em}
+h2{font-size:clamp(22px,4.5vw,29px);line-height:1.2;letter-spacing:-.01em}
+h3{font-size:18px;line-height:1.3}
+p{margin:0}
+.lede{font-size:clamp(17px,2.6vw,19px);line-height:1.55;color:var(--ink-soft);max-width:60ch}
+.small{font-size:14px;color:var(--muted);line-height:1.5}
+
+.eyebrow{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--steel);font-weight:600;
+}
+
+header{padding:56px 0 40px;border-bottom:1px solid var(--line)}
+header .eyebrow{display:block;margin-bottom:16px}
+header h1{margin-bottom:18px}
+.meta{
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:26px;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;
+}
+.meta span{
+  padding:5px 10px;border:1px solid var(--line);border-radius:4px;
+  color:var(--muted);background:var(--surface);
+}
+
+section{padding:48px 0;border-bottom:1px solid var(--line)}
+.page.last section:last-of-type{border-bottom:none}
+.page-foot,.cover-foot,.toc{display:none}
+.toc{
+  list-style:none;margin:0;padding:0;counter-reset:t;
+}
+.toc li{
+  counter-increment:t;display:grid;grid-template-columns:26px 1fr auto;gap:12px;
+  align-items:baseline;padding:11px 0;border-top:1px solid var(--line);
+}
+.toc li:last-child{border-bottom:1px solid var(--line)}
+.toc li::before{
+  content:counter(t);font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11px;color:var(--steel);font-weight:600;
+}
+.toc span{font-family:Georgia,"Times New Roman",serif;font-size:15px;color:var(--ink)}
+.toc b{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;
+  color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums;
+}
+.head{display:flex;flex-direction:column;gap:12px;margin-bottom:28px}
+
+.stack{display:flex;flex-direction:column;gap:16px}
+.grid{display:grid;gap:14px}
+@media(min-width:620px){.grid.two{grid-template-columns:1fr 1fr}}
+
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:20px;box-shadow:var(--shadow);
+}
+.card h3{margin-bottom:8px}
+.card p{color:var(--ink-soft);font-size:15px}
+
+/* Сценарий: два столбца времени */
+.tl{display:grid;gap:14px}
+@media(min-width:620px){.tl{grid-template-columns:1fr 1fr;gap:18px}}
+.tl-col{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.tl-head{padding:14px 18px;border-bottom:1px solid var(--line);border-top:3px solid var(--muted);margin:0}
+.tl-col.now .tl-head{border-top-color:var(--signal)}
+.tl-col.next .tl-head{border-top-color:var(--good)}
+.tl-head .eyebrow{color:var(--muted);margin:0}
+.tl-col.now .tl-head .eyebrow{color:var(--signal)}
+.tl-col.next .tl-head .eyebrow{color:var(--good)}
+.tl-head p{font-size:13px;color:var(--muted);margin-top:4px}
+.tl-list{list-style:none;margin:0;padding:8px 0}
+.tl-list li{
+  display:grid;grid-template-columns:64px 1fr;gap:12px;
+  padding:10px 18px;font-size:14.5px;color:var(--ink-soft);line-height:1.45;
+}
+.tl-list li + li{border-top:1px dashed var(--line)}
+.tl-list time{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:2px;
+}
+.tl-foot{
+  margin-top:auto;padding:14px 18px;border-top:1px solid var(--line);
+  font-size:14px;font-weight:600;background:var(--surface-2);
+}
+.tl-col.now .tl-foot{color:var(--signal)}
+.tl-col.next .tl-foot{color:var(--good)}
+
+/* Сравнение диалогов */
+.vs{display:grid;gap:12px}
+@media(min-width:620px){.vs{grid-template-columns:1fr 1fr;gap:16px}}
+.vs-side{
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;
+}
+.vs-side.old{border-top:3px solid var(--muted)}
+.vs-side.new{border-top:3px solid var(--good)}
+.vs-side.old .eyebrow{color:var(--muted)}
+.vs-side.new .eyebrow{color:var(--good)}
+.dialog{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+.dialog .q{font-size:14.5px;color:var(--ink-soft);font-style:italic}
+.dialog .a{
+  font-size:15px;line-height:1.5;padding:11px 14px;border-radius:8px;
+  background:var(--surface-2);
+}
+.vs-side.new .dialog .a{background:var(--steel-soft)}
+.dialog .a em{
+  font-style:normal;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12.5px;color:var(--muted);display:inline-block;margin-top:4px;
+}
+
+/* Таблица возможностей */
+.cmp{
+  border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface);
+}
+.cmp-row{
+  display:grid;grid-template-columns:1fr 82px 82px;gap:10px;
+  padding:12px 16px;align-items:center;font-size:14.5px;
+}
+.cmp-row + .cmp-row{border-top:1px solid var(--line)}
+.cmp-row span:nth-child(2),.cmp-row span:nth-child(3){
+  text-align:center;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;
+}
+.cmp-head{
+  background:var(--surface-2);font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;
+}
+.cmp-head span{text-align:center}
+.cmp-head span:first-child{text-align:left}
+.cmp-row .ok{color:var(--good);font-weight:600}
+.cmp-row .no{color:var(--muted)}
+
+/* Метрики */
+.metrics{display:grid;gap:12px}
+@media(min-width:520px){.metrics{grid-template-columns:1fr 1fr}}
+.metric{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--steel);
+  border-radius:6px;padding:16px 18px;
+}
+.metric .k{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12px;color:var(--steel);letter-spacing:.06em;text-transform:uppercase;
+}
+.metric .v{font-size:15px;margin-top:6px;color:var(--ink-soft)}
+
+/* Список возможностей */
+.feat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.feat li{padding:16px 0;border-bottom:1px solid var(--line)}
+.feat li:last-child{border-bottom:none}
+.feat b{display:block;font-size:16px;margin-bottom:5px}
+.feat span{color:var(--ink-soft);font-size:15px}
+
+/* Реплика бота */
+.chat{
+  background:var(--steel-soft);border-radius:10px;padding:16px 18px;
+  font-size:15px;line-height:1.5;color:var(--ink);
+  border:1px solid var(--line);
+}
+.chat .who{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11.5px;color:var(--steel);letter-spacing:.08em;text-transform:uppercase;
+  display:block;margin-bottom:7px;font-weight:600;
+}
+
+/* Риски */
+.risk{display:grid;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.risk-row{display:grid;gap:4px;padding:16px 18px}
+.risk-row + .risk-row{border-top:1px solid var(--line)}
+.risk-row .r{font-weight:600;font-size:15px}
+.risk-row .a{font-size:14.5px;color:var(--ink-soft)}
+.risk-row .a::before{content:"→ ";color:var(--good);font-weight:700}
+
+/* План */
+.steps{list-style:none;margin:0;padding:0;counter-reset:s;display:flex;flex-direction:column;gap:14px}
+.steps li{
+  counter-increment:s;display:grid;grid-template-columns:38px 1fr;gap:14px;align-items:start;
+}
+.steps li::before{
+  content:counter(s);
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;font-weight:600;
+  width:32px;height:32px;display:grid;place-items:center;
+  background:var(--steel-soft);color:var(--steel);border-radius:50%;
+}
+.steps b{display:block;margin-bottom:3px}
+.steps span{color:var(--ink-soft);font-size:15px}
+
+.note{
+  background:var(--signal-soft);border-left:3px solid var(--signal);
+  padding:16px 18px;border-radius:0 6px 6px 0;font-size:15px;color:var(--ink-soft);
+}
+.note b{color:var(--ink)}
+
+footer{padding:36px 0 0;color:var(--muted);font-size:14px}
+
+/* ---- Печать и PDF: документ собран постранично ---- */
+@media print{
+  @page{size:A4;margin:14mm 13mm}
+  html,body{background:#fff;color:#161C24}
+  .wrap{max-width:none;padding:0;counter-reset:pg}
+
+  /* каждая .page — ровно один лист А4 */
+  .page{
+    counter-increment:pg;
+    min-height:260mm;
+    display:flex;flex-direction:column;
+    break-after:page;
+  }
+  .page.last{break-after:auto}
+
+  .page > section{padding:0 0 26px;border-bottom:none;break-inside:avoid}
+  .page > section:last-of-type{padding-bottom:0}
+  .head{margin-bottom:20px}
+
+  /* колонтитул прижат к низу листа */
+  .page-foot,.cover-foot{
+    display:flex;justify-content:space-between;align-items:baseline;gap:16px;
+    margin-top:auto;padding-top:9px;border-top:1px solid var(--line);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+  }
+  .page-foot::after{content:counter(pg);font-variant-numeric:tabular-nums}
+
+  /* титул */
+  .page.cover header{padding:34mm 0 0;border-bottom:none}
+  .toc{display:block;margin-top:auto;padding-bottom:18mm}
+  .page.cover h1{font-size:44px;margin-bottom:22px}
+  .page.cover .lede{font-size:17.5px;max-width:52ch}
+  .page.cover .meta{margin-top:30px}
+
+  /* типографика: заголовки не отрываются, строки не сиротеют */
+  h2,h3,.head{break-after:avoid-page}
+  p,.lede,.small{orphans:3;widows:3}
+
+  /* блоки не рвём */
+  .card,.metric,.tl,.tl-col,.vs,.vs-side,.chat,.note,.risk,.cmp,.cmp-row,
+  .steps li,.feat li,.grid,.metrics,.stack{break-inside:avoid}
+
+  /* на бумаге плотнее и без теней */
+  section .stack{gap:14px}
+  .feat li{padding:15px 0}
+  .steps{gap:16px}
+  .cmp-row{padding:15px 16px}
+  .risk-row{padding:15px 18px}
+  .tl-list li{padding:8px 16px}
+  .tl-head{padding:12px 16px}
+  .tl-foot{padding:12px 16px}
+  .card{padding:17px 18px}
+  .card,.metric,.tl-col,.vs-side,.cmp,.risk,.chat{box-shadow:none}
+}
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="page cover">
+  <header>
+    <span class="eyebrow">УК «Жемчужина» · предложение руководителю</span>
+    <h1>Компания, которой<br>управляют по данным</h1>
+    <p class="lede">Сегодня управляющая компания работает по рассказам: кто что сказал, кто что вспомнил. Предложение — перевести работу от руководителя до дворника на цифровой след, который снимается сам, из обычной работы. Тогда её можно проверить, измерить и планировать.</p>
+    <div class="meta">
+      <span>86 домов</span>
+      <span>18 029 обращений в год</span>
+      <span>работающий бот, а не проект</span>
+    </div>
+  </header>
+  <ol class="toc">
+    <li><span>Как устроена работа сегодня и где она рвётся</span><b>2</b></li>
+    <li><span>Что уже работает: помощница Люся</span><b>3</b></li>
+    <li><span>Цифровой паспорт дома</span><b>4</b></li>
+    <li><span>Годовой регламент вместо летнего аврала</span><b>5</b></li>
+    <li><span>Где в этой работе деньги</span><b>6</b></li>
+    <li><span>Почему это не умрёт через месяц</span><b>7</b></li>
+    <li><span>Пилот: что делаем и как считаем результат</span><b>8</b></li>
+    <li><span>Что я предлагаю</span><b>9</b></li>
+    <li><span>Дальше: рынок и что нужно от компании</span><b>10</b></li>
+  </ol>
+  <div class="cover-foot">
+    <span>Андрей Кузьмин · звено сантехников</span>
+    <span>Иркутск, 2026</span>
+  </div>
+</div>
+
+<!-- ─────────── стр. 2 · диагноз ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Диагноз</span>
+      <h2>Где работа рвётся</h2>
+    </div>
+    <p class="lede">Речь не о людях и не о дисциплине. Так устроена работа почти в любой управляющей компании: она держится на памяти конкретных сотрудников, и рвётся там, где память передаётся из рук в руки.</p>
+    <ul class="feat">
+      <li>
+        <b>Знание живёт у людей, а не в компании</b>
+        <span>Что стоит в узле, где перекрывать, что меняли год назад — помнит мастер. Ушёл в отпуск, заболел, уволился — выясняем заново.</span>
+      </li>
+      <li>
+        <b>Между уровнями информация теряется</b>
+        <span>Инженер знает, что нужно заменить. До сантехника это доходит в виде задачи «съезди посмотри». Исполнитель приезжает как руки: не знает ни что менять, ни почему.</span>
+      </li>
+      <li>
+        <b>Работа не оставляет следа</b>
+        <span>Заявку приняли голосом, поручили по телефону, отчитались в разговоре. Проверить, измерить и предъявить нечего.</span>
+      </li>
+      <li>
+        <b>Подготовка начинается тогда, когда сроки уже горят</b>
+        <span>Дефектовку делают перед самой сдачей. Всё, что она выявила, приходится закрывать в срочном режиме и по срочной цене.</span>
+      </li>
+      <li>
+        <b>Управлять нечем</b>
+        <span>Сколько было обращений, за сколько ответили, где напряжённее — узнать неоткуда. Решения принимаются по ощущениям и докладам.</span>
+      </li>
+    </ul>
+    <div class="note" style="margin-top:22px">
+      <b>Следствие одно.</b> Каждый год повторяется один и тот же цикл: сначала тихо, потом внезапно всё срочно. Это не разгильдяйство — это прямое следствие того, что данных нет, и узнавать их приходится в процессе, самым дорогим способом.
+    </div>
+  </section>
+  <div class="page-foot"><span>Диагноз</span></div>
+</div>
+
+<!-- ─────────── стр. 3 · что уже работает ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Не проект, а работающий инструмент</span>
+      <h2>Что уже работает сегодня</h2>
+    </div>
+    <p class="lede">Помощница Люся — бот в мессенджере MAX. Она уже ведёт 26 домов нашего звена. Компании это не стоило ни рубля: сделано вне рабочего времени.</p>
+    <ul class="feat">
+      <li>
+        <b>Знает дома и находит их с полуслова</b>
+        <span>86 адресов, шесть жилых комплексов, раскладка квартир по стоякам. Понимает и «4-я Советская 30», и просто «тридцатый дом».</span>
+      </li>
+      <li>
+        <b>Ведёт заявки от обращения до отчёта</b>
+        <span>Приём, исполнитель, срок, отчёт. Напоминает исполнителю лично, пока работа не закрыта.</span>
+      </li>
+      <li>
+        <b>Хранит паспорта домов и техдокументацию</b>
+        <span>Тепловой узел, розлив, ХВС, ГВС, канализация, запорная арматура, доступ в подвал. Схемы и проекты подшиты к дому.</span>
+      </li>
+      <li>
+        <b>Учитывает приборы и сроки поверки</b>
+        <span>Манометр: где стоит, заводской номер, кто и когда поставил, фото прибора и паспорта, вся история замен по точке.</span>
+      </li>
+      <li>
+        <b>Понимает голос и видео</b>
+        <span>Сантехник рассказывает отчёт голосом прямо в рабочий чат — Люся расшифровывает и подшивает к дому. Заполнять ничего не нужно.</span>
+      </li>
+      <li>
+        <b>Напоминает о сроках сама</b>
+        <span>Весной — инженеру и мастерам обо всём, что просрочится в этом году. Руководителю — только если срок вышел, а замены не было.</span>
+      </li>
+    </ul>
+    <div class="note" style="margin-top:20px">
+      <b>Это главное отличие предложения.</b> Речь не о том, чтобы что-то купить и внедрять полгода. Инструмент работает, его можно открыть и проверить сегодня.
+    </div>
+  </section>
+  <div class="page-foot"><span>Что уже работает</span></div>
+</div>
+
+<!-- ─────────── стр. 4 · паспорт дома ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Основа всего</span>
+      <h2>Цифровой паспорт дома</h2>
+    </div>
+    <p class="lede">Бумажный паспорт устаревает в день, когда его напечатали. Цифровой пополняется сам, из обычной работы бригады: поставили прибор, заменили участок, сдали узел — запись появилась.</p>
+    <div class="grid two">
+      <div class="card">
+        <h3>Что накапливается</h3>
+        <p>Приборы: манометры, термометры — номер, место, дата поверки. Что менялось: участки труб, краны, задвижки — где, когда, кем. Счётчики и показания по месяцам. Работы по дому. Документы и схемы.</p>
+      </div>
+      <div class="card">
+        <h3>Зачем это компании</h3>
+        <p>Знание перестаёт быть личным. Мастер уволился — данные остались. Новый человек входит в работу по дому за час, а не за полгода.</p>
+      </div>
+      <div class="card">
+        <h3>Что уже есть</h3>
+        <p>Паспорта домов, манометры с номерами и сроками поверки, история замен по каждой точке, счётчики и показания, документация. Работает на 26 домах.</p>
+      </div>
+      <div class="card">
+        <h3>Что добавляется</h3>
+        <p>Отдельный учёт заменённых участков труб, кранов и задвижек: где, когда, кем. Сейчас это остаётся текстом в отчёте о работе.</p>
+      </div>
+    </div>
+    <div class="chat" style="margin-top:22px">
+      <span class="who">Вопрос Люсе прямо в чате</span>
+      — Что стоит на узле по 4-й Советской, 30?<br>
+      — Манометр, ТП-1, подача после насоса. № 04517, поверка до 31.07.2028. Поставил Константин Толщин 14.02.2026, фото прибора и паспорта в карточке. До него стоял № 03288.
+    </div>
+    <p class="small" style="margin-top:18px">Такой ответ приходит на телефон за секунды — в подвале, на выезде, в кабинете. Сегодня за этим ехали бы в офис за папкой или звонили тому, кто помнит.</p>
+  </section>
+  <div class="page-foot"><span>Паспорт дома</span></div>
+</div>
+
+<!-- ─────────── стр. 5 · годовой регламент ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Главная перемена</span>
+      <h2>Годовой регламент вместо аврала</h2>
+    </div>
+    <p class="lede">Сдача тепловых узлов повторяется каждый год в одни и те же сроки. Всё, что к ней нужно, известно заранее: поверки приборов, ревизии, состояние теплообменников. Вопрос только в том, когда об этом узнают.</p>
+    <div class="tl">
+      <div class="tl-col now">
+        <div class="tl-head">
+          <span class="eyebrow">Как обычно</span>
+          <p>Узнаём в процессе</p>
+        </div>
+        <ul class="tl-list">
+          <li><time>июнь</time><span>Опрессовка и дефектовка перед самой сдачей</span></li>
+          <li><time>июнь</time><span>Выясняется, что менять. Списки пишутся на ходу</span></li>
+          <li><time>июль</time><span>Закупка в срочном режиме, по любой цене</span></li>
+          <li><time>июль</time><span>Часть недочётов находит инспектор, а не мы</span></li>
+          <li><time>июль</time><span>Повторные попытки сдачи</span></li>
+          <li><time>август</time><span>Часть домов ещё не принята</span></li>
+        </ul>
+        <div class="tl-foot">Работа сделана дважды и дороже</div>
+      </div>
+      <div class="tl-col next">
+        <div class="tl-head">
+          <span class="eyebrow">С регламентом</span>
+          <p>Знаем заранее</p>
+        </div>
+        <ul class="tl-list">
+          <li><time>апрель</time><span>Сезон закончился — опрессовка и дефектовка по каждому узлу</span></li>
+          <li><time>апрель</time><span>Результат сразу в паспорт дома, виден исполнителю</span></li>
+          <li><time>май</time><span>Система собирает список: что менять, где, сколько нужно</span></li>
+          <li><time>лето–зима</time><span>Закупка по плановой цене, замены в обычном режиме</span></li>
+          <li><time>весна</time><span>Контроль: всё ли закрыто до сдачи</span></li>
+          <li><time>лето</time><span>Узлы готовы. Сдача — формальность</span></li>
+        </ul>
+        <div class="tl-foot">Та же работа, но в дешёвом режиме</div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:20px">
+      <b>Суть перемены одна:</b> те же работы переносятся из срочного режима в плановый. Ничего дополнительно делать не нужно — нужно узнавать об этом на три месяца раньше.
+    </div>
+  </section>
+  <div class="page-foot"><span>Годовой регламент</span></div>
+</div>
+
+<!-- ─────────── стр. 6 · деньги ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Язык денег</span>
+      <h2>Где в этой работе деньги</h2>
+    </div>
+    <p class="lede">Сумм здесь намеренно нет: свои цифры компания знает точнее, чем кто-либо со стороны. Ниже — статьи, по которым деньги уходят сегодня, и показатели, которые их измеряют. Сейчас ни один из них не считается.</p>
+    <div class="risk">
+      <div class="risk-row">
+        <span class="r">Закупка по факту обнаружения, а не по плану</span>
+        <span class="a">доля срочных закупок, излишки на складе</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Повторная сдача узлов</span>
+        <span class="a">сколько домов принято с первого раза</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Переработки в сезон сдачи</span>
+        <span class="a">человеко-дней сверх плана</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Повторные выезды по одной проблеме</span>
+        <span class="a">выездов на одну заявку</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Просроченные обращения жильцов</span>
+        <span class="a">срок ответа и доля просрочек</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Ввод нового сотрудника в курс дела</span>
+        <span class="a">недель до самостоятельной работы</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Приборы с истёкшей поверкой</span>
+        <span class="a">штук на сегодня — единственное, что уже считается</span>
+      </div>
+    </div>
+    <div class="note" style="margin-top:22px">
+      <b>Первое, что даёт система, — не экономия, а сами цифры.</b> Потери сегодня невидимы: их никто не измеряет, поэтому их как будто нет. Через месяц работы появятся числа в каждой строке этой таблицы — и станет видно, что окупается, а что нет. Дальше решения принимаются по цифрам, а не по ощущениям.
+    </div>
+  </section>
+  <div class="page-foot"><span>Деньги</span></div>
+</div>
+
+<!-- ─────────── стр. 7 · адопция ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Честно о главном риске</span>
+      <h2>Почему это не умрёт через месяц</h2>
+    </div>
+    <p class="lede">Такие системы умирают по одной причине: людям добавляют писанины поверх основной работы. Здесь принцип обратный.</p>
+    <div class="note" style="margin-bottom:22px">
+      <b>Мы не заставляем людей вести отчётность. Мы снимаем след с работы, которую они и так делают.</b>
+    </div>
+    <div class="grid two">
+      <div class="card">
+        <h3>Один жест вместо отчёта</h3>
+        <p>Поставил счётчик — одна отметка в телефоне, а не акт. Закрыл работу — нажал «сдано».</p>
+      </div>
+      <div class="card">
+        <h3>Голос вместо формы</h3>
+        <p>Сантехник рассказывает, как привык, — прямо в рабочий чат. Расшифровка, привязка к дому и подшивка происходят сами.</p>
+      </div>
+      <div class="card">
+        <h3>Фото вместо описи</h3>
+        <p>Снимок прибора и его паспорта — и номер со сроком поверки остаются в доме навсегда.</p>
+      </div>
+      <div class="card">
+        <h3>Отдача сразу, а не «потом начальству»</h3>
+        <p>Человек получает то, чего у него не было: где стояк, где перекрыть, что тут меняли. Система полезна ему, а не только руководству.</p>
+      </div>
+    </div>
+    <div class="risk" style="margin-top:22px">
+      <div class="risk-row">
+        <span class="r">«Люди не будут этим пользоваться»</span>
+        <span class="a">Звено из трёх человек пользуется уже сейчас, без приказа. Пилот покажет это на цифрах, а не на обещаниях.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">«Всё завязано на одного человека»</span>
+        <span class="a">Данные и переписка хранятся на сервере компании, выгружаются целиком. Справедливое замечание, и его надо закрывать сразу.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">«У нас уже есть система»</span>
+        <span class="a">Она заводит заявки. Всё остальное — наряды, паспорта, приборы, сроки, отчёты — живёт вне её. Работать рядом они могут.</span>
+      </div>
+    </div>
+  </section>
+  <div class="page-foot"><span>Риск внедрения</span></div>
+</div>
+
+<!-- ─────────── стр. 8 · пилот ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Как проверить, а не поверить</span>
+      <h2>Пилот на три месяца</h2>
+    </div>
+    <p class="lede">Предложение не требует доверия на слово. Оно требует одного звена, трёх месяцев и решения по итогам цифр.</p>
+    <ol class="steps">
+      <li>
+        <div>
+          <b>Месяц первый: перепись</b>
+          <span>Все узлы звена заносятся в паспорта: приборы, номера, сроки поверки, состояние. К концу месяца компания впервые видит, что у неё стоит и что просрочено.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <b>Месяц второй: работа по системе</b>
+          <span>Наряды, сроки, отчёты — через бота. Обучаем сантехников и мастеров. Считаем: сколько работ закрыто в срок, сколько отчётов сдано.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <b>Месяц третий: план на следующий сезон</b>
+          <span>Из накопленного собирается список работ к сдаче узлов: что менять, где, сколько нужно. Впервые — в декабре, а не в июне.</span>
+        </div>
+      </li>
+    </ol>
+    <h3 style="margin-top:28px;margin-bottom:14px">Что будет доказательством</h3>
+    <div class="risk">
+      <div class="risk-row">
+        <span class="r">Паспорта заполнены</span>
+        <span class="a">Доля узлов звена с полными данными по приборам и срокам.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">План на сезон существует в декабре</span>
+        <span class="a">Список работ и закупок готов до начала года, а не по факту.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Работы закрываются отчётом</span>
+        <span class="a">Доля работ, сданных в срок и с подтверждением.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Люди пользуются</span>
+        <span class="a">Сколько человек звена работает через систему без напоминаний.</span>
+      </div>
+    </div>
+    <p class="small" style="margin-top:18px">Если по итогам трёх месяцев цифр не будет или люди не примут — проект закрывается. Компания не теряет ничего, кроме времени на пилот.</p>
+  </section>
+  <div class="page-foot"><span>Пилот</span></div>
+</div>
+
+<!-- ─────────── стр. 9 · предложение ─────────── -->
+<div class="page">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Прямой ответ на вопрос</span>
+      <h2>Что я предлагаю</h2>
+    </div>
+    <p class="lede">Перевести меня в штат на должность, отвечающую за цифровизацию эксплуатации, и дать три месяца пилота. Систему я уже построил и продолжу развивать. Но главная работа — не программа, а люди.</p>
+    <div class="grid two">
+      <div class="card">
+        <h3>За что отвечаю</h3>
+        <p>Данные по узлам и домам в актуальном состоянии. Годовой регламент подготовки к сдаче. Наряды, сроки, отчётность. Аналитика для руководства. Развитие системы.</p>
+      </div>
+      <div class="card">
+        <h3>Почему это должен делать я</h3>
+        <p>Систему написал сам, знаю узлы не по описанию, а руками. Звено пользуется ей уже сейчас — без приказа. Программу можно заказать, а человека, который добьётся, чтобы сантехник ставил отметку, — нет.</p>
+      </div>
+    </div>
+    <h3 style="margin-top:28px;margin-bottom:14px">Условия</h3>
+    <div class="risk">
+      <div class="risk-row">
+        <span class="r">Должность</span>
+        <span class="a">Руководитель по цифровизации эксплуатации — название на усмотрение компании.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Оклад</span>
+        <span class="a">⟨вписать сумму⟩ — обсуждается.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Срок проверки</span>
+        <span class="a">Три месяца пилота. Решение по итогам цифр, а не обещаний.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Права на систему</span>
+        <span class="a">Данные принадлежат компании и выгружаются целиком в любой момент.</span>
+      </div>
+    </div>
+    <div class="note" style="margin-top:24px">
+      <b>Как считать окупаемость.</b> На шестом листе перечислены статьи потерь и показатели. Сегодня по ним нет цифр — они появятся за первый месяц пилота. Тогда окупаемость должности станет арифметикой, а не спором.
+    </div>
+  </section>
+  <div class="page-foot"><span>Предложение</span></div>
+</div>
+
+<!-- ─────────── стр. 10 · рынок и запрос ─────────── -->
+<div class="page last">
+  <section>
+    <div class="head">
+      <span class="eyebrow">Горизонт</span>
+      <h2>Дальше — не только мы</h2>
+    </div>
+    <p class="lede">Проблема, описанная на втором листе, есть в любой управляющей компании страны. Знание в головах, аврал перед сдачей, управление по докладам — это отраслевая норма, а не наша особенность.</p>
+    <div class="grid two">
+      <div class="card">
+        <h3>Преимущество на конкурсах</h3>
+        <p>Компания, которая показывает собственникам сроки реакции и историю работ по каждому дому, выигрывает у той, что рассказывает о себе словами. Это аргумент на общем собрании и при получении домов на управление.</p>
+      </div>
+      <div class="card">
+        <h3>Продукт, а не только внутренний порядок</h3>
+        <p>Если система докажет себя здесь, у компании на руках готовое решение и живой опыт внедрения. Как этим распорядиться — отдельный разговор, но начинать его есть с чем.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:30px;margin-bottom:14px">Что нужно от компании</h3>
+    <div class="risk">
+      <div class="risk-row">
+        <span class="r">Решение по должности</span>
+        <span class="a">Без этого пилот останется работой по вечерам и будет двигаться медленно.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Одно звено на пилот</span>
+        <span class="a">Три месяца, свои дома, свои узлы. Остальные направления не трогаем.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Доступ к данным</span>
+        <span class="a">Реестр домов, техдокументация, права администратора в рабочих чатах.</span>
+      </div>
+      <div class="risk-row">
+        <span class="r">Оплата сервера и ИИ</span>
+        <span class="a">Сейчас за мой счёт. Сумма небольшая, назову точно — её стоит перевести на компанию.</span>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:26px">
+      <b>Что уже сделано без единого рубля компании:</b> 86 домов и 21 адрес с раскладкой по стоякам, приём и ведение заявок, паспорта домов, учёт приборов со сроками поверки, показания счётчиков, расшифровка голосовых отчётов, напоминания о сроках. Предложение — не начать, а продолжить и довести до всей компании.
+    </div>
+  </section>
+  <div class="page-foot"><span>Горизонт</span></div>
+</div>
+
+</div>
+
+</body>
+</html>
