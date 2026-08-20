@@ -20,14 +20,15 @@ from maxapi.types import (
     OpenAppButton,
 )
 from maxapi.enums.message_link_type import MessageLinkType
-from maxapi.types import InputMedia
+from maxapi.enums.upload_type import UploadType
+from maxapi.types import InputMedia, InputMediaBuffer
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
 from . import agent, ai, db, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import transcribe
+from . import report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -2504,6 +2505,24 @@ async def on_callback(event: MessageCallback):
             await send(msg, f"✍️ {h['address'] if h else ''} — {m['label']}.{last_line}\n"
                             'Напишите текущее показание числом (например: 1234,56):')
 
+    elif action == 'mtxls':
+        if _role(uid) not in BRIEFING_ROLES:
+            await send(msg, '📊 Выгрузка доступна инженеру и руководству.')
+            return
+        period = parts[1] if len(parts) > 1 else current_period()
+        await send(msg, '📊 Собираю таблицу…')
+        try:
+            data = report.meters_workbook(period, fmt_period(period))
+            name = f'Показания_{period}.xlsx'
+            uploaded = await event.bot.upload_media(
+                InputMediaBuffer(buffer=data, filename=name, type=UploadType.FILE))
+            await msg.answer(text=f'📊 Показания за {fmt_period(period)}. '
+                                  'Жёлтым — счётчики без показаний за этот месяц.',
+                             attachments=[uploaded])
+        except Exception:
+            log.exception('Не удалось выгрузить показания в Excel')
+            await send(msg, '⚠️ Не получилось собрать файл. Уже смотрю, в чём дело.')
+
     elif action == 'mtc':
         m = db.get_meter(int(parts[1]))
         if m:
@@ -2640,6 +2659,7 @@ async def on_callback(event: MessageCallback):
                 continue
             kb.row(CallbackButton(text=f"✍️ {houses.HOUSES_BY_ID[hid]['address'][:32]}",
                                   payload=f"mt:{hid}"))
+        kb.row(CallbackButton(text='📊 Выгрузить в Excel', payload=f'mtxls:{period}'))
         kb.row(CallbackButton(text='🧮 Все дома', payload='mtpick'),
                CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)

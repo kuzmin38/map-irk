@@ -1,4 +1,5 @@
 maxapi[webhook]
 aiohttp
+openpyxl
 pytest
 pytest-asyncio
