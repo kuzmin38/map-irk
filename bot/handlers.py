@@ -643,11 +643,25 @@ SLOW_REPLY = ('⏳ Задумалась и не успела ответить �
               'Повторите вопрос, пожалуйста: обычно со второго раза получается.')
 
 
+# Что реально учитывают: два холодных водомера — на дом и на офисы, —
+# и теплосчётчики в нежилых. ГВС не снимают, тепло в жилых домах тоже:
+# там у жильцов прямые договоры со сбытовой компанией.
 METER_KINDS = {
-    'hvs': '💧 ХВС (водомер)',
-    'gvs': '🔥 ГВС (водомер)',
-    'heat': '♨️ Тепло (теплосчётчик)',
+    'hvs': '💧 ХВС — дом',
+    'hvs_office': '🏢 ХВС — офисы',
+    'heat': '♨️ Теплосчётчик',
     'other': '📟 Другой',
+}
+
+# Для показа старых записей: ГВС когда-то заводили, надписи ему всё ещё нужны
+METER_LABELS = dict(METER_KINDS, gvs='🔥 ГВС')
+
+# Подсказка названия, чтобы не придумывать с нуля
+METER_HINTS = {
+    'hvs': 'Например: «Подвал, ввод ХВС на дом, №123456»',
+    'hvs_office': 'Например: «Подвал, ввод ХВС на офисы, №123456»',
+    'heat': 'Например: «ИТП, теплосчётчик, №123456»',
+    'other': 'Например: «Где стоит и номер»',
 }
 
 MONTHS_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
@@ -669,7 +683,7 @@ def fmt_value(v: float) -> str:
 
 
 def meter_line(m, with_last=True) -> str:
-    line = f"{METER_KINDS.get(m['kind'], '📟')} {m['label']}"
+    line = f"{METER_LABELS.get(m['kind'], '📟')} {m['label']}"
     if with_last:
         rs = db.meter_readings(m['id'], limit=1)
         if rs:
@@ -682,9 +696,12 @@ def meter_line(m, with_last=True) -> str:
 
 # Как вид счётчика называют вслух и в переписке
 METER_WORDS = {
-    'hvs': ('хвс', 'холодная', 'холодную', 'холодной', 'хв', 'хол'),
-    'gvs': ('гвс', 'горячая', 'горячую', 'горячей', 'гв', 'гор'),
+    'hvs': ('хвс', 'холодная', 'холодную', 'холодной', 'хв', 'хол', 'домовой', 'домовый'),
+    'hvs_office': ('офис', 'офисы', 'офисов', 'офисный', 'офисах', 'офисные'),
     'heat': ('тепло', 'теплосчетчик', 'теплосчётчик', 'отопление', 'отоплению', 'гкал'),
+    # ГВС не учитываем, но слово узнаём — чтобы сказать об этом прямо,
+    # а не молчать в ответ на присланное показание
+    'gvs': ('гвс', 'горячая', 'горячую', 'горячей'),
 }
 
 _READING_RE = re.compile(r'(\d+(?:[.,]\d+)?)')
@@ -776,18 +793,24 @@ async def handle_readings(event, text: str, uid: int) -> bool:
                                       payload=f"mtr:{one['id']}"))
             await send(event.message,
                        f"🤔 На {h['address']} несколько счётчиков "
-                       f'«{METER_KINDS[kind]}». Куда записать {fmt_value(value)}?', kb)
+                       f'«{METER_LABELS[kind]}». Куда записать {fmt_value(value)}?', kb)
             return True
         else:
             otvety.append(await record_reading(event, m, value, uid))
 
     if otvety:
         await send(event.message, '\n'.join(otvety))
-    if nekuda:
+    ne_uchityvaem = [k for k, _ in nekuda if k not in METER_KINDS]
+    zavesti = [k for k, _ in nekuda if k in METER_KINDS]
+    if ne_uchityvaem:
+        await send(event.message,
+                   f"ℹ️ {', '.join(METER_LABELS[k] for k in ne_uchityvaem)} мы не учитываем — "
+                   'показание не записала.')
+    if zavesti:
         kb = InlineKeyboardBuilder()
         kb.row(CallbackButton(text='➕ Завести счётчик', payload=f"mta:{h['id']}"))
         kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
-        vidy = ', '.join(METER_KINDS[k] for k, _ in nekuda)
+        vidy = ', '.join(METER_LABELS[k] for k in zavesti)
         await send(event.message,
                    f"🤔 На {h['address']} нет счётчика: {vidy}. Заведите — "
                    'и дальше хватит одного сообщения.', kb)
@@ -1527,7 +1550,7 @@ async def on_text(event: MessageCreated):
                CallbackButton(text='➕ Ещё счётчик', payload=f"mta:{h['id']}"))
         kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
         await send(event.message,
-                   f"✅ Запомнила: {METER_KINDS[state['kind']]} — «{text}» ({h['address']}).", kb)
+                   f"✅ Запомнила: {METER_LABELS[state['kind']]} — «{text}» ({h['address']}).", kb)
         return
 
     if state and state['mode'] == 'meter_value':
@@ -2379,16 +2402,19 @@ async def on_callback(event: MessageCallback):
             for kind, label in METER_KINDS.items():
                 kb.row(CallbackButton(text=label, payload=f"mtak:{h['id']}:{kind}"))
             kb.row(CallbackButton(text='◀️ Назад', payload=f"mt:{h['id']}"))
-            await send(msg, f"➕ {h['address']}: какой счётчик добавляем?", kb)
+            hint = ('' if h.get('kind') == 'nonres' else
+                    '\n\nℹ️ В жилых домах тепло обычно не снимаем: у жильцов '
+                    'прямые договоры со сбытовой компанией.')
+            await send(msg, f"➕ {h['address']}: какой счётчик добавляем?{hint}", kb)
 
     elif action == 'mtak':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
         kind = parts[2]
         if h and kind in METER_KINDS:
             STATE[uid] = {'mode': 'meter_label', 'house_id': h['id'], 'kind': kind}
-            await send(msg, f'📟 Опишите счётчик одной строкой: где стоит и его номер.\n'
-                            'Например: «Подвал, 2-й подъезд, ввод ХВС, №123456».\n'
-                            'Люся запомнит — в следующие месяцы просто выберете его из списка.')
+            await send(msg, f'📟 {METER_LABELS[kind]}. Опишите одной строкой: '
+                            f'где стоит и номер.\n{METER_HINTS.get(kind, "")}\n'
+                            'Люся запомнит — дальше показание можно слать одним сообщением.')
 
     elif action == 'mtr':
         m = db.get_meter(int(parts[1]))
@@ -2453,7 +2479,7 @@ async def on_callback(event: MessageCallback):
                     cur_house = r['house_id']
                     h = houses.HOUSES_BY_ID.get(cur_house)
                     lines.append(f"🏠 {h['address'] if h else '?'}:")
-                lines.append(f"   {METER_KINDS.get(r['kind'], '📟').split()[0]} {r['label']}: "
+                lines.append(f"   {METER_LABELS.get(r['kind'], '📟').split()[0]} {r['label']}: "
                              f"{fmt_value(r['value'])} ({r['submitted_by_name'] or '—'})")
             missing = [houses.HOUSES_BY_ID[hid]['address'] for hid in with_meters
                        if hid not in submitted_houses and hid in houses.HOUSES_BY_ID]
