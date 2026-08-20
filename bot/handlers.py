@@ -1576,6 +1576,32 @@ def mentioned_in_markup(event) -> bool:
     return False
 
 
+def replied_to_me(event) -> bool:
+    """Ответили ли на сообщение самой Люси.
+
+    Ответ на её же сообщение — обращение без вариантов: человек нажал
+    «Ответить» именно на неё. Молчать в таком случае неприлично.
+    """
+    link = getattr(event.message, 'link', None)
+    if not link:
+        return False
+    link_type = getattr(getattr(link, 'type', None), 'value', getattr(link, 'type', None))
+    if link_type != 'reply':
+        return False
+    me = BOT_ME.get('user_id')
+    sender_id = getattr(getattr(link, 'sender', None), 'user_id', None)
+    # Отправителя MAX иногда не присылает: тогда судим по тому, что ответили
+    # на сообщение с нашей разметкой — но лучше ответить лишний раз, чем молча
+    return me is None or sender_id is None or sender_id == me
+
+
+def quoted_text(event) -> str:
+    """Текст сообщения, на которое ответили — контекст для ответа."""
+    link = getattr(event.message, 'link', None)
+    body = getattr(link, 'message', None) if link else None
+    return (getattr(body, 'text', None) or '').strip()
+
+
 def strip_address(text: str) -> tuple[bool, str]:
     """Позвали ли Люсю и что осталось от вопроса без обращения."""
     if not text:
@@ -1684,23 +1710,36 @@ async def on_text(event: MessageCreated):
         if await handle_readings(event, text, uid):
             return
         addressed, text = strip_address(text)
-        if not addressed and not mentioned_in_markup(event):
+        otvet_ey = replied_to_me(event)
+        if not addressed and not otvet_ey and not mentioned_in_markup(event):
             # Не позвали — но иногда можно и просто по-человечески отозваться
             await maybe_banter(event, text)
             return
         db.upsert_user(uid, _uname(event))
+        # Отвечают на её сообщение — она должна понимать, на какое именно
+        vopros = text
+        if otvet_ey:
+            bylo = quoted_text(event)
+            if bylo:
+                vopros = (f'Ты писала в чат: «{bylo[:400]}»\n\n'
+                          f'{_uname(event)} отвечает на это: {text or "(без текста)"}')
         try:
             # chat_id — чтобы Люся отвечала по этому чату, а не по личной
             # переписке: они у неё были общей памятью
-            reply = (await agent.answer(uid, _uname(event), text,
+            reply = (await agent.answer(uid, _uname(event), vopros,
                                         chat_id=_chat_id(event))
-                     if text else None)
+                     if vopros else None)
         except agent.TooSlow:
             await send(event.message, SLOW_REPLY)
             return
-        await send(event.message,
-                   reply or f'{BOT_NAME} на связи 🙂 Спроси что-нибудь по домам, '
-                            'заявкам или нормативам.')
+        if not reply:
+            # ИИ мог не ответить, но промолчать нельзя: к ней обратились.
+            # Если повод понятный — отзовёмся по-человечески, а не отпиской
+            povod = banter.pick(text)
+            reply = povod[1] if povod else (
+                f'{BOT_NAME} на связи 🙂 Спроси что-нибудь по домам, '
+                'заявкам или нормативам.')
+        await send(event.message, reply)
         return
 
     if db.upsert_user(uid, _uname(event)):

@@ -108,3 +108,75 @@ async def test_rabochiy_razgovor_bez_imeni_ne_trogaem(monkeypatch):
     await H.on_text(e)
 
     assert e.message.sent == []
+
+
+# ---------- Ответ на её сообщение ----------
+
+def reply_event(text, na_chto='🎙 Трилиссера 8/5 · подтапливает по стояку',
+                ot_kogo=555):
+    """Сообщение, отправленное кнопкой «Ответить» на сообщение Люси."""
+    e = event(text)
+    e.message.link = types.SimpleNamespace(
+        type='reply',
+        sender=types.SimpleNamespace(user_id=ot_kogo),
+        message=types.SimpleNamespace(text=na_chto))
+    return e
+
+
+@pytest.fixture
+def lusya_id(monkeypatch):
+    monkeypatch.setitem(H.BOT_ME, 'user_id', 555)
+    return 555
+
+
+def test_otvet_na_soobschenie_lusi_eto_obraschenie(lusya_id):
+    assert H.replied_to_me(reply_event('а адрес какой?')) is True
+
+
+def test_otvet_na_chuzhoe_soobschenie_ne_k_ney(lusya_id):
+    assert H.replied_to_me(reply_event('ага', ot_kogo=999)) is False
+
+
+def test_obychnoe_soobschenie_ne_otvet(lusya_id):
+    assert H.replied_to_me(event('просто текст')) is False
+
+
+async def test_na_otvet_bez_imeni_ona_vsyo_ravno_otvechaet(lusya_id, monkeypatch):
+    """Нажали «Ответить» на её сообщение — значит, обращаются к ней."""
+    async def fake_answer(uid, name, text, chat_id=None):
+        return 'Трилиссера 8/5.'
+
+    monkeypatch.setattr(H.agent, 'answer', fake_answer)
+    e = reply_event('а адрес какой?')
+
+    await H.on_text(e)
+
+    assert e.message.sent == ['Трилиссера 8/5.']
+
+
+async def test_v_otvete_ona_vidit_svoyo_soobschenie(lusya_id, monkeypatch):
+    """Иначе «а адрес какой?» — вопрос ни о чём."""
+    sprosili = {}
+
+    async def fake_answer(uid, name, text, chat_id=None):
+        sprosili['text'] = text
+        return 'ответ'
+
+    monkeypatch.setattr(H.agent, 'answer', fake_answer)
+
+    await H.on_text(reply_event('а адрес какой?'))
+
+    assert 'подтапливает по стояку' in sprosili['text']
+    assert 'а адрес какой?' in sprosili['text']
+
+
+async def test_bez_ii_obraschenie_vsyo_ravno_ne_ostayotsya_bez_otveta(lusya_id, monkeypatch):
+    async def no_ai(*a, **kw):
+        return None
+
+    monkeypatch.setattr(H.agent, 'answer', no_ai)
+    e = event('Мне очень нравится Люся')
+
+    await H.on_text(e)
+
+    assert e.message.sent, 'молчать в ответ на обращение нельзя'
