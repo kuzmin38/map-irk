@@ -155,6 +155,10 @@ def _create_all(c):
         transcript TEXT,
         created_at TEXT NOT NULL)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_chat_house ON chat_messages(house_id)')
+    # Настройки конкретного чата: пока одна — болтает Люся там или молчит
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_settings (
+        chat_id INTEGER PRIMARY KEY,
+        banter INTEGER NOT NULL DEFAULT 1)''')
     # Память агента: что Люся знает о человеке и о чём с ним говорила
     c.execute('''CREATE TABLE IF NOT EXISTS user_notes (
         user_id INTEGER PRIMARY KEY,
@@ -285,18 +289,23 @@ def set_request_status(req_id, status):
 
 # --- Пользователи и роли ---
 
-def upsert_user(user_id, name):
-    """Регистрирует пользователя при первом обращении. Первый зарегистрированный — админ."""
+def upsert_user(user_id, name) -> bool:
+    """Регистрирует пользователя при первом обращении. Первый зарегистрированный — админ.
+
+    Возвращает True, если человек пришёл впервые: тогда руководству стоит
+    показать новичка и назначить ему роль, иначе он так и останется «без роли».
+    """
     with _conn() as c:
         row = c.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,)).fetchone()
         if row:
             if name:
                 c.execute('UPDATE users SET name = ? WHERE user_id = ?', (name, user_id))
-            return
+            return False
         n_users = c.execute('SELECT COUNT(*) AS n FROM users').fetchone()['n']
         role = 'admin' if n_users == 0 else 'none'
         c.execute('INSERT INTO users (user_id, name, role, registered_at) VALUES (?, ?, ?, ?)',
                   (user_id, name or '', role, now()))
+    return True
 
 
 def get_user(user_id):
@@ -783,6 +792,22 @@ def recent_chat_records(limit=15):
     with _conn() as c:
         return c.execute('SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?',
                          (limit,)).fetchall()
+
+
+def set_banter(chat_id, on: bool):
+    """Разрешить или запретить Люсе живые реплики в этом чате."""
+    with _conn() as c:
+        c.execute('INSERT INTO chat_settings (chat_id, banter) VALUES (?, ?) '
+                  'ON CONFLICT(chat_id) DO UPDATE SET banter = excluded.banter',
+                  (chat_id, 1 if on else 0))
+
+
+def banter_on(chat_id) -> bool:
+    """По умолчанию — да: заказчик просил, чтобы она разряжала обстановку."""
+    with _conn() as c:
+        row = c.execute('SELECT banter FROM chat_settings WHERE chat_id = ?',
+                        (chat_id,)).fetchone()
+    return True if row is None else bool(row['banter'])
 
 
 def chat_reports(chat_id, limit=8):

@@ -24,11 +24,11 @@ from maxapi.enums.upload_type import UploadType
 from maxapi.types import InputMedia, InputMediaBuffer
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
-from . import agent, ai, db, houses
+from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import checks, report, transcribe
+from . import banter, checks, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -132,6 +132,32 @@ async def notify(bot, user_id, text):
         await bot.send_message(user_id=user_id, text=text)
     except Exception:
         log.warning('Не удалось отправить уведомление пользователю %s', user_id)
+
+async def welcome_newcomer(event, uid: int):
+    """Показывает новичка тем, кто раздаёт роли.
+
+    Написать Люсе может любой, кому дали её @имя, — это и хорошо, ради того
+    и заводили. Но пришедший остаётся «без роли», и поручить ему работу
+    нельзя, пока роль не назначат. Раньше об этом никто не узнавал.
+    """
+    bot = getattr(event, 'bot', None)
+    if not bot:
+        return
+    imya = _uname(event) or 'Без имени'
+    for u in db.list_users():
+        if u['role'] not in MANAGER_ROLES or u['user_id'] == uid:
+            continue
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='👤 Назначить роль', payload=f'pplu:{uid}'))
+        try:
+            await bot.send_message(
+                user_id=u['user_id'],
+                text=f'👋 В боте новый человек: {imya}.\n'
+                     'Пока он «без роли» — работы поручать нельзя.',
+                attachments=[kb.as_markup()])
+        except Exception:
+            log.warning('Не удалось показать новичка пользователю %s', u['user_id'])
+
 
 # На хостинге с томом (Railway и т.п.) задайте BOT_DOCS_DIR на смонтированный диск
 DOCS_DIR = os.environ.get('BOT_DOCS_DIR', os.path.join(houses.DATA_DIR, 'docs'))
@@ -1107,9 +1133,11 @@ async def on_bot_started(event: BotStarted):
 
 @dp.message_created(CommandStart())
 async def on_start(event: MessageCreated):
-    db.upsert_user(_uid(event), _uname(event))
+    novyy = db.upsert_user(_uid(event), _uname(event))
     STATE.pop(_uid(event), None)
     await send(event.message, MAIN_TEXT, main_menu_kb())
+    if novyy:
+        await welcome_newcomer(event, _uid(event))
 
 
 @dp.message_created(Command('menu'))
@@ -1187,6 +1215,32 @@ def register_quick_commands():
 
 
 register_quick_commands()
+
+
+@dp.message_created(Command(['тихо', 'tiho']))
+async def on_quiet(event: MessageCreated):
+    """Выключить живые реплики в этом чате."""
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if not is_group(event) or chat_id is None:
+        await send(event.message, '🤫 Это для рабочего чата: там я иногда '
+                                  'отзываюсь не по делу. В личке отвечаю только вам.')
+        return
+    db.set_banter(chat_id, False)
+    await send(event.message, '🤐 Поняла, молчу. По делу отвечать буду, '
+                              'если позовут по имени. Вернуть — /болтай.')
+
+
+@dp.message_created(Command(['болтай', 'boltay']))
+async def on_banter_on(event: MessageCreated):
+    """Вернуть живые реплики в этом чате."""
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if not is_group(event) or chat_id is None:
+        await send(event.message, '🙂 Это для рабочего чата.')
+        return
+    db.set_banter(chat_id, True)
+    banter.forget(chat_id)
+    await send(event.message, '🙂 Хорошо, буду иногда вставлять слово — '
+                              'по-доброму и нечасто. Надоем — /тихо.')
 
 
 @dp.message_created(Command('reset'))
@@ -1430,6 +1484,21 @@ def record_chat_message(event, text: str):
         log.exception('Не удалось записать сообщение чата')
 
 
+async def maybe_banter(event, text: str):
+    """Живая реплика в чат — если есть повод и давно не было.
+
+    Всё, что решает «когда», лежит в banter: здесь только проверка, что
+    в этом чате Люсе вообще разрешили открывать рот не по делу.
+    """
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if chat_id is None or not db.banter_on(chat_id):
+        return
+    line = banter.reply(chat_id, text)
+    if line:
+        log.info('Реплика в чат %s: %s', chat_id, line)
+        await send(event.message, line)
+
+
 def mentioned_in_markup(event) -> bool:
     """Упомянули ли бота через @ — MAX передаёт это разметкой, а не текстом."""
     me = BOT_ME.get('user_id')
@@ -1544,6 +1613,8 @@ async def on_text(event: MessageCreated):
             return
         addressed, text = strip_address(text)
         if not addressed and not mentioned_in_markup(event):
+            # Не позвали — но иногда можно и просто по-человечески отозваться
+            await maybe_banter(event, text)
             return
         db.upsert_user(uid, _uname(event))
         try:
@@ -1560,7 +1631,8 @@ async def on_text(event: MessageCreated):
                             'заявкам или нормативам.')
         return
 
-    db.upsert_user(uid, _uname(event))
+    if db.upsert_user(uid, _uname(event)):
+        await welcome_newcomer(event, uid)
 
     # Голосом проще сказать «забудь», чем набрать команду
     if re.fullmatch(r'забудь(\s+(вс[её]|наш\w*|переписку))?[.!]?', text.lower().strip()):
@@ -2333,8 +2405,9 @@ async def run_action(payload: str, msg, uid: int, event):
         kb = InlineKeyboardBuilder()
         kb.row(CallbackButton(text='📊 Полный брифинг', payload='brief'),
                CallbackButton(text='🏠 Меню', payload='menu'))
-        await send(msg, answer or '⚠️ Не получилось связаться с ИИ, попробуйте позже '
-                                  'или откройте обычный брифинг.', kb)
+        await send(msg, feminine.fix(answer) if answer else
+                   '⚠️ Не получилось связаться с ИИ, попробуйте позже '
+                   'или откройте обычный брифинг.', kb)
 
     elif action == 'brief':
         if _role(uid) not in BRIEFING_ROLES:
@@ -2370,6 +2443,11 @@ async def run_action(payload: str, msg, uid: int, event):
             lines.append('Нажмите на человека, чтобы назначить роль.')
         else:
             lines.append('Роли назначают админ, инженер и мастера.')
+        # Чтобы позвать человека, нужно чем-то поделиться: имя бота под рукой
+        if BOT_ME.get('username'):
+            lines += ['', f"➕ Позвать нового: дайте ему @{BOT_ME['username']} — "
+                          'пусть напишет боту сам. Как напишет, я покажу его здесь '
+                          'и попрошу назначить роль.']
         kb = InlineKeyboardBuilder()
         if _role(uid) in MANAGER_ROLES:
             for u in users[:15]:

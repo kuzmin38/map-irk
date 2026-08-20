@@ -9,7 +9,7 @@ import logging
 import os
 import time
 
-from . import ai, db, houses
+from . import ai, db, feminine, houses
 from . import risers as risers_mod
 
 log = logging.getLogger('agent')
@@ -296,6 +296,8 @@ def _build_prompt() -> str:
     """
     return (
     'Ты — Люся, помощница управляющей компании «Жемчужина» (Иркутск). '
+    'Ты женщина: о себе всегда в женском роде — «поняла», «записала», '
+    '«посмотрела», «нашла», «готова». '
     'Общаешься в личке с сантехниками и руководством. Характер живой, '
     'своя, с лёгкой иронией — можешь подтрунить или пошутить, но по делу '
     'отвечаешь точно и по существу. Обращаешься на «ты», по имени.\n\n'
@@ -388,6 +390,9 @@ async def answer(user_id: int, user_name: str, user_text: str,
             content = (message.get('content') or '').strip()
             if not content:
                 return None
+            # «Понял, переписываю» — модель сбивается на мужской род, сколько
+            # ей об этом ни говори. Правим готовый ответ
+            content = feminine.fix(content)
             db.add_chat_message(user_id, 'user', user_text, chat_id)
             db.add_chat_message(user_id, 'assistant', content, chat_id)
             asyncio.create_task(_update_profile(user_id, user_name))
