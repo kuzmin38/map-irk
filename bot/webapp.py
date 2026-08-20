@@ -21,7 +21,7 @@ import time
 
 from aiohttp import web
 
-from . import db
+from . import checks, db
 
 log = logging.getLogger('bot.webapp')
 
@@ -73,6 +73,12 @@ def house_stats() -> dict:
             out.setdefault(house_id, {})['requests_open'] = n
         for house_id, n in prosrocheno.items():
             out.setdefault(house_id, {})['verify_overdue'] = n
+        # Значок в списке: красный — критичное, жёлтый — недозаполненное
+        from . import houses as houses_mod
+        for h in houses_mod.HOUSES:
+            level = checks.house_level(checks.house_findings(h['id'], period))
+            if level:
+                out.setdefault(h['id'], {})['level'] = level
     except Exception:
         log.exception('Не удалось собрать числа по домам — отдаю список без них')
     return out
@@ -224,6 +230,7 @@ def house_state(house_id: int) -> dict:
         'meters': meters,
         'chat': chat,
         'docs': docs,
+        'findings': checks.house_findings(house_id, period),
         # Сводка показывается всегда, даже из нулей: пустая карточка
         # выглядела так, будто приложение ничего не умеет
         'summary': {

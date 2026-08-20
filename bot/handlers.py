@@ -28,7 +28,7 @@ from . import agent, ai, db, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import report, transcribe
+from . import checks, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -231,7 +231,30 @@ def house_card_text(h) -> str:
         if prosrocheno:
             line += f' (поверка просрочена: {prosrocheno})'
         lines.append(line)
+    n_meters = len(db.list_meters(h['id']))
+    if n_meters:
+        sdano = {r['meter_id'] for r in db.readings_for_period(current_period())}
+        gotovo = sum(1 for m in db.list_meters(h['id']) if m['id'] in sdano)
+        lines.append(f'🧮 Счётчиков: {gotovo} из {n_meters} сдано')
+    lines += findings_lines(h)
     return '\n'.join(lines)
+
+
+def findings_lines(h, limit: int = 6) -> list:
+    """Замечания по дому: критичное красным значком, мелочи жёлтым.
+
+    Та же логика, что в приложении (bot/checks.py) — иначе бот и приложение
+    начнут показывать разное.
+    """
+    found = checks.house_findings(h['id'], current_period())
+    if not found:
+        return []
+    lines = ['']
+    for f in found[:limit]:
+        lines.append(('❗ ' if f['level'] == checks.RED else '⚠️ ') + f['text'])
+    if len(found) > limit:
+        lines.append(f'… и ещё {len(found) - limit}')
+    return lines
 
 
 def house_card_kb(h) -> InlineKeyboardBuilder:

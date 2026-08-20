@@ -91,6 +91,11 @@ a.doc:last-child{border-bottom:none}
   letter-spacing:.4px;margin:14px 0 6px;padding-left:2px}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.warn{border-left:3px solid #E8A33D;background:#FFF8EC;padding:8px 12px;border-radius:6px;margin-top:6px}
+.crit{border-left:3px solid #C7472F;background:#FDF0ED;padding:8px 12px;border-radius:6px;margin-top:6px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.dot.red{background:#C7472F}
+.dot.yellow{background:#E8A33D}
 @media(max-width:420px){.grid2{grid-template-columns:1fr}}
 .kv:last-child{border-bottom:none}
 .kv .k{color:var(--dim);font-size:13px}
@@ -203,8 +208,9 @@ function renderHomes(filter){
     if(h.verify_overdue) marks.push('❌ поверка ' + h.verify_overdue);
     const second = marks.length ? marks.join(' · ')
                                 : 'заявок за год: ' + h.requests_year;
+    const dot = h.level ? `<span class="dot ${h.level}"></span>` : '';
     return `<div class="item" onclick="openHouse(${h.id})">
-      <div><div class="t">${esc(h.address)}</div>
+      <div><div class="t">${dot}${esc(h.address)}</div>
       <div class="s">${second}</div></div>
       <div>${tags.join(' ')}</div></div>`;
   }).join('') + '</div>';
@@ -290,6 +296,19 @@ function renderLive(d){
     ).join('') + '</div>' +
     (s.meters && s.meters_done < s.meters
       ? `<div class="muted">Показания за месяц сняты не со всех счётчиков.</div>` : ''));
+
+  // Красное — то, что стоит денег или ломает сроки. Жёлтое — недозаполненное
+  const f = d.findings || [];
+  if(f.length){
+    const red = f.filter(x => x.level === 'red');
+    const yellow = f.filter(x => x.level === 'yellow');
+    let inner = '';
+    if(red.length) inner += red.map(x =>
+      `<div class="crit">❗ ${esc(x.text)}</div>`).join('');
+    if(yellow.length) inner += yellow.map(x =>
+      `<div class="warn">⚠️ ${esc(x.text)}</div>`).join('');
+    html += block(`${red.length ? '❗' : '⚠️'} Требует внимания · ${f.length}`, inner);
+  }
 
   const open = d.requests.filter(r => r.status !== 'done');
   if(open.length){
