@@ -1327,6 +1327,11 @@ def is_group(event) -> bool:
 ADDRESS_RE = re.compile(
     r'^\s*@?(люс[яеию]|lusya|lyusya)\b[\s,:—-]*', re.IGNORECASE)
 
+# Имя где угодно во фразе. Падежи перечислены целиком, чтобы не ловить
+# «люстру» и «Люсьен»: обращение — это именно имя, а не начало слова
+NAME_ANYWHERE = re.compile(
+    r'(?<![\w-])(люся|люсе|люсю|люси|люсей|lusya|lyusya)(?![\w-])', re.IGNORECASE)
+
 
 # Слова, по которым сообщение похоже на заявку/аварию
 ISSUE_WORDS = re.compile(
@@ -1578,12 +1583,19 @@ def strip_address(text: str) -> tuple[bool, str]:
     m = ADDRESS_RE.match(text)
     if m:
         return True, text[m.end():].strip()
-    # обращение в конце: «что по нормативам ГВС, Люся?»
-    m = re.search(r'[\s,]@?(люс[яеию]|lusya|lyusya)\s*[?!.]*\s*$', text, re.IGNORECASE)
+    # обращение в конце: «что по нормативам ГВС, Люся?». Запятая обязательна:
+    # в «Мне очень нравится Люся» имя — часть фразы, и вопрос без него теряет смысл
+    m = re.search(r'[,—-]\s*@?(люс[яеию]|lusya|lyusya)\s*[?!.]*\s*$', text, re.IGNORECASE)
     if m:
         return True, text[:m.start()].strip(' ,')
     if BOT_ME.get('username') and f"@{BOT_ME['username']}".lower() in text.lower():
         return True, re.sub(f"@{BOT_ME['username']}", '', text, flags=re.IGNORECASE).strip()
+    # Имя в любом месте фразы — тоже к ней: «Мне очень нравится Люся»,
+    # «надо у Люси спросить». Такое сообщение она молча пропускала, и со
+    # стороны это выглядело как невоспитанность. Текст оставляем целиком:
+    # своё имя в вопросе ей не мешает
+    if NAME_ANYWHERE.search(text):
+        return True, text.strip()
     return False, text
 
 
