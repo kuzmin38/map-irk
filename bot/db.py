@@ -79,6 +79,8 @@ def _create_all(c):
         house_id INTEGER NOT NULL,
         kind TEXT NOT NULL,
         label TEXT NOT NULL,
+        serial TEXT,
+        photo TEXT,
         created_by_name TEXT,
         created_at TEXT NOT NULL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS readings (
@@ -510,6 +512,13 @@ def get_meter(meter_id):
 def list_meters(house_id):
     with _conn() as c:
         return c.execute('SELECT * FROM meters WHERE house_id = ? ORDER BY id', (house_id,)).fetchall()
+
+
+def update_meter(meter_id, **fields):
+    """Правка счётчика: название, заводской номер, фото."""
+    cols = ', '.join(f'{k} = ?' for k in fields)
+    with _conn() as c:
+        c.execute(f'UPDATE meters SET {cols} WHERE id = ?', (*fields.values(), meter_id))
 
 
 def houses_with_meters() -> dict:

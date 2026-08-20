@@ -1,4 +1,4 @@
-"""Расшифровка голосовых и видеоотчётов.
+"""Расшифровка голосовых и видеоотчётов, чтение таблички счётчика.
 
 Из видео вытаскиваем звуковую дорожку (ffmpeg), сжимаем в компактный mp3
 и отдаём распознавание модели OpenRouter — тем же ключом, что и остальной ИИ.
@@ -138,3 +138,84 @@ async def transcribe_url(url: str) -> str | None:
         return None
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+METER_PROMPT = (
+    'На фото счётчик воды или тепла. Найди на нём два числа и верни строго JSON '
+    'без пояснений: {"serial": "заводской номер или null", '
+    '"value": показание числом или null}. Заводской номер — это номер прибора '
+    '(часто с надписью № или Nr, выбит на корпусе или напечатан на шильдике). '
+    'Показание — цифры на счётном табло; ведущие нули не пиши, дробную часть '
+    'после запятой (красные цифры) включи. Если чего-то не видно — поставь null, '
+    'не угадывай.')
+
+
+async def read_meter_photo(url: str) -> dict | None:
+    """Заводской номер и показание с фотографии счётчика.
+
+    Цифры распознаются с ошибками, поэтому результат обязательно
+    подтверждает человек: неверный номер в паспорте хуже пустого поля.
+    Возвращает {'serial': str|None, 'value': float|None} или None.
+    """
+    if not ai.enabled():
+        return None
+    payload = {
+        'model': AUDIO_MODEL,
+        'messages': [{
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': METER_PROMPT},
+                {'type': 'image_url', 'image_url': {'url': url}},
+            ],
+        }],
+        'max_tokens': 200,
+        'temperature': 0,
+    }
+    headers = {
+        'Authorization': f'Bearer {ai.KIMI_API_KEY}',
+        'HTTP-Referer': 'https://github.com/kuzmin38/map-irk',
+        'X-Title': 'Lusya Bot',
+    }
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.post(f'{ai.OPENROUTER_BASE_URL}/chat/completions',
+                              json=payload, headers=headers,
+                              timeout=aiohttp.ClientTimeout(total=90)) as resp:
+                body = await resp.json()
+                if resp.status != 200:
+                    log.error('Чтение счётчика не удалось, OpenRouter %s: %s',
+                              resp.status, body)
+                    return None
+                text = (body['choices'][0]['message'].get('content') or '').strip()
+    except Exception:
+        log.exception('Ошибка чтения фото счётчика')
+        return None
+    return parse_meter_answer(text)
+
+
+def parse_meter_answer(text: str) -> dict | None:
+    """Разбирает ответ модели. Модель любит обернуть JSON в ```-блок."""
+    import json
+    import re
+
+    if not text:
+        return None
+    m = re.search(r'\{.*\}', text, re.S)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+    except ValueError:
+        return None
+    serial = data.get('serial')
+    serial = str(serial).strip() if serial not in (None, '', 'null') else None
+    value = data.get('value')
+    if isinstance(value, str):
+        value = value.replace(',', '.').strip()
+    try:
+        value = float(value) if value not in (None, '', 'null') else None
+    except ValueError:
+        value = None
+    if serial is None and value is None:
+        return None
+    return {'serial': serial, 'value': value}

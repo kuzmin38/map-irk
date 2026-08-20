@@ -840,6 +840,22 @@ async def record_reading(event, m, value: float, uid: int) -> str:
     return line
 
 
+async def _save_meter_photo(url: str, meter_id: int) -> bool:
+    """Фото самого прибора: по нему потом сверяют номер, если возник спор."""
+    folder = os.path.join(DOCS_DIR, 'meters')
+    os.makedirs(folder, exist_ok=True)
+    try:
+        data = await _download(url)
+    except Exception:
+        log.exception('Не удалось скачать фото счётчика')
+        return False
+    path = os.path.join(folder, f'{meter_id}.jpg')
+    with open(path, 'wb') as f:
+        f.write(data)
+    db.update_meter(meter_id, photo=path)
+    return True
+
+
 async def _save_reading_photo(event, reading_id: int) -> bool:
     """Фото счётчика к показанию: снимок с табло — лучшее подтверждение цифры."""
     for a in (event.message.body.attachments or []):
@@ -1551,6 +1567,65 @@ async def on_text(event: MessageCreated):
         kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
         await send(event.message,
                    f"✅ Запомнила: {METER_LABELS[state['kind']]} — «{text}» ({h['address']}).", kb)
+        return
+
+    if state and state['mode'] == 'meter_rename':
+        db.update_meter(state['meter_id'], label=text)
+        STATE.pop(uid, None)
+        m = db.get_meter(state['meter_id'])
+        await send(event.message, f'✅ Переименовала: «{text}».',
+                   InlineKeyboardBuilder().row(
+                       CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}")))
+        return
+
+    if state and state['mode'] == 'meter_serial':
+        serial = None if text in ('-', '—') else text.strip()
+        db.update_meter(state['meter_id'], serial=serial)
+        STATE.pop(uid, None)
+        m = db.get_meter(state['meter_id'])
+        await send(event.message,
+                   f'✅ Заводской номер: {serial or "очищен"}.',
+                   InlineKeyboardBuilder().row(
+                       CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}")))
+        return
+
+    if state and state['mode'] == 'meter_photo':
+        url = next((getattr(a.payload, 'url', None)
+                    for a in (event.message.body.attachments or [])
+                    if getattr(a.payload, 'url', None)), None)
+        if not url:
+            await send(event.message, '📷 Нужно именно фото. Пришлите снимок счётчика.')
+            return
+        m = db.get_meter(state['meter_id'])
+        await send(event.message, '👀 Смотрю фото…')
+        prochitano = await transcribe.read_meter_photo(url)
+        await _save_meter_photo(url, m['id'])
+        STATE.pop(uid, None)
+        if not prochitano:
+            await send(event.message,
+                       '🤔 С фото ничего не разобрала — бывает, если блики или '
+                       'снято под углом. Фото сохранила, номер и показание '
+                       'можно вписать кнопками.',
+                       InlineKeyboardBuilder().row(
+                           CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}")))
+            return
+        # Цифры распознаются с ошибками — записываем только после подтверждения
+        STATE[uid] = {'mode': 'meter_confirm', 'meter_id': m['id'],
+                      'serial': prochitano['serial'], 'value': prochitano['value']}
+        lines = ['👀 Вот что разобрала на фото:']
+        if prochitano['serial']:
+            lines.append(f"🔢 Заводской номер: {prochitano['serial']}")
+        if prochitano['value'] is not None:
+            lines.append(f"📈 Показание: {fmt_value(prochitano['value'])}")
+        lines.append('')
+        lines.append('Проверьте по фото: цифры распознаются с ошибками.')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='✅ Всё верно, записать',
+                              payload=f"mtok:{m['id']}"))
+        kb.row(CallbackButton(text='✏️ Название', payload=f"mtren:{m['id']}"),
+               CallbackButton(text='🔢 Номер', payload=f"mtsn:{m['id']}"))
+        kb.row(CallbackButton(text='✍️ Показание вручную', payload=f"mtr:{m['id']}"))
+        await send(event.message, '\n'.join(lines), kb)
         return
 
     if state and state['mode'] == 'meter_value':
@@ -2390,7 +2465,9 @@ async def on_callback(event: MessageCallback):
                 lines += [meter_line(m) for m in meters]
             kb = InlineKeyboardBuilder()
             for m in meters:
-                kb.row(CallbackButton(text=f"✍️ {m['label'][:35]}", payload=f"mtr:{m['id']}"))
+                nomer = '' if m['serial'] else ' · без номера'
+                kb.row(CallbackButton(text=f"🧮 {m['label'][:30]}{nomer}",
+                                      payload=f"mtc:{m['id']}"))
             kb.row(CallbackButton(text='➕ Добавить счётчик', payload=f"mta:{h['id']}"),
                    CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
             await send(msg, '\n'.join(lines), kb)
@@ -2426,6 +2503,76 @@ async def on_callback(event: MessageCallback):
                          if last else '')
             await send(msg, f"✍️ {h['address'] if h else ''} — {m['label']}.{last_line}\n"
                             'Напишите текущее показание числом (например: 1234,56):')
+
+    elif action == 'mtc':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            h = houses.HOUSES_BY_ID.get(m['house_id'])
+            rs = db.meter_readings(m['id'], limit=1)
+            lines = [f"🧮 {METER_LABELS.get(m['kind'], '📟')} — {m['label']}",
+                     f"🏠 {h['address'] if h else '?'}",
+                     f"🔢 Заводской номер: {m['serial'] or '— не указан'}"]
+            if rs:
+                lines.append(f"📈 Последнее: {fmt_value(rs[0]['value'])} "
+                             f"({fmt_period(rs[0]['period'])}, {rs[0]['submitted_by_name'] or '—'})")
+            else:
+                lines.append('📈 Показаний ещё нет')
+            if m['photo']:
+                lines.append('📷 Фото есть')
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='✍️ Показание', payload=f"mtr:{m['id']}"),
+                   CallbackButton(text='📈 История', payload=f"mth:{m['id']}"))
+            kb.row(CallbackButton(text='✏️ Название', payload=f"mtren:{m['id']}"),
+                   CallbackButton(text='🔢 Номер', payload=f"mtsn:{m['id']}"))
+            kb.row(CallbackButton(text='📷 Прислать фото — прочту сама',
+                                  payload=f"mtph:{m['id']}"))
+            kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
+            await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'mtren':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            STATE[uid] = {'mode': 'meter_rename', 'meter_id': m['id']}
+            await send(msg, f'✏️ Название сейчас: «{m["label"]}».\n'
+                            'Напишите новое — где стоит и номер:')
+
+    elif action == 'mtsn':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            STATE[uid] = {'mode': 'meter_serial', 'meter_id': m['id']}
+            await send(msg, f'🔢 Заводской номер сейчас: {m["serial"] or "не указан"}.\n'
+                            'Напишите номер с корпуса прибора (или «-», чтобы очистить):')
+
+    elif action == 'mtph':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            STATE[uid] = {'mode': 'meter_photo', 'meter_id': m['id']}
+            await send(msg, '📷 Пришлите фото счётчика — так, чтобы читались '
+                            'заводской номер и табло.\n'
+                            'Я прочту и покажу, что разобрала: подтвердите или поправьте.')
+
+    elif action == 'mtok':
+        m = db.get_meter(int(parts[1]))
+        state = STATE.get(uid) or {}
+        if m and state.get('mode') == 'meter_confirm' and state.get('meter_id') == m['id']:
+            STATE.pop(uid, None)
+            itog = []
+            if state.get('serial'):
+                db.update_meter(m['id'], serial=state['serial'])
+                itog.append(f"номер {state['serial']}")
+            if state.get('value') is not None:
+                delta, warning = check_anomaly(m['id'], state['value'])
+                db.add_reading(m['id'], state['value'], current_period(),
+                               uid, _uname_cb(event) or 'ИИ по фото')
+                itog.append(f"показание {fmt_value(state['value'])}")
+                if warning:
+                    itog.append(f'⚠️ {warning}')
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}"))
+            await send(msg, '✅ Записала: ' + ', '.join(itog) + '.' if itog
+                       else 'Нечего записывать.', kb)
+        else:
+            await send(msg, '🤔 Это подтверждение уже неактуально — пришлите фото заново.')
 
     elif action == 'mth':
         m = db.get_meter(int(parts[1]))

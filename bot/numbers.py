@@ -129,7 +129,16 @@ def _street_stems() -> frozenset:
     return frozenset(stems)
 
 
-STREETS = _street_stems()
+# Считаем при первом обращении, а не при импорте: houses тоже обращается
+# сюда на уровне модуля, и при импорте numbers первым получался замкнутый круг
+_STREETS = None
+
+
+def streets() -> frozenset:
+    global _STREETS
+    if _STREETS is None:
+        _STREETS = _street_stems()
+    return _STREETS
 
 
 def _is_anchor(token: str) -> bool:
@@ -138,7 +147,7 @@ def _is_anchor(token: str) -> bool:
 
 def _is_street(token: str) -> bool:
     low = token.lower()
-    return any(low.startswith(stem) for stem in STREETS)
+    return any(low.startswith(stem) for stem in streets())
 
 
 def to_digits(text: str, anywhere: bool = False) -> str:
