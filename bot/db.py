@@ -617,6 +617,21 @@ def add_chat_message(user_id, role, content):
                   'VALUES (?, ?, ?, ?)', (user_id, role, content, now()))
 
 
+def forget_user(user_id) -> int:
+    """Стирает память разговора: историю и профиль. Возвращает, сколько сообщений забыто.
+
+    Люся подмешивает в запрос свои прошлые ответы. Если один из них был
+    ошибочным, она читает его как факт и повторяет ошибку снова и снова —
+    даже после того, как причину в коде уже устранили.
+    """
+    with _conn() as c:
+        n = c.execute('SELECT COUNT(*) AS n FROM chat_history WHERE user_id = ?',
+                      (user_id,)).fetchone()['n']
+        c.execute('DELETE FROM chat_history WHERE user_id = ?', (user_id,))
+        c.execute('DELETE FROM user_notes WHERE user_id = ?', (user_id,))
+    return n
+
+
 def recent_chat_history(user_id, limit=6) -> list:
     """Последние сообщения пользователя, от старых к новым."""
     with _conn() as c:

@@ -4,6 +4,8 @@
 к одному инструменту: рассуждала о наличии дома по памяти. Список домов
 теперь стоит прямо в подсказке, выдумывать больше нечего.
 """
+import re
+
 import pytest
 
 from bot import agent, houses
@@ -19,10 +21,18 @@ def test_spornyy_dom_na_meste():
     assert '4-я Советская 30' in agent.SYSTEM_PROMPT
 
 
-def test_id_domov_ryadom_s_adresami():
-    """id нужен остальным инструментам — иначе будет лишний круг к модели."""
-    h = houses.HOUSES[0]
-    assert f"{h['address']} (id {h['id']})" in agent.SYSTEM_PROMPT
+def test_sluzhebnyh_nomerov_ryadom_s_adresom_net():
+    """Любой номер рядом с адресом Люся принимает за номер дома.
+
+    Сначала список был «28 — 4-я Советская 30», потом «4-я Советская 30
+    (id 28)» — оба раза она отвечала «дом 28 — это Советская, 30».
+    Теперь в списке только адреса, id берётся через find_house.
+    """
+    block = agent._houses_block()
+    assert '(id' not in block
+    for line in block.split('\n'):
+        assert line == line.strip(), f'лишние пробелы: {line!r}'
+        assert not re.search(r'\bid\b', line), f'служебный номер в строке: {line!r}'
 
 
 def test_podskazka_zapreschaet_otricat_nalichie_doma():
@@ -74,19 +84,17 @@ async def test_vyzovy_instrumentov_popadayut_v_log(monkeypatch, caplog):
     assert '4-я Советская 30' in caplog.text
 
 
-def test_adres_v_spiske_idyot_pervym():
-    """Строка вида «28 — 4-я Советская 30» читалась как «дом 28»: Люся
-    принимала служебный id за номер дома и путала адреса между собой."""
-    for line in agent._houses_block().split('\n'):
-        assert not line[0].isdigit() or line.startswith('4-я'), (
-            f'строка начинается со служебного номера: {line!r}')
-        assert line.endswith(')'), f'id не помечен как служебный: {line!r}'
+def test_v_spiske_rovno_adresa():
+    """Строка списка совпадает с адресом дома буква в букву."""
+    adresa = {h['address'] for h in houses.HOUSES}
+    assert set(agent._houses_block().split('\n')) == adresa
 
 
-def test_pro_id_skazano_pryamo():
+def test_pro_nomer_doma_skazano_pryamo():
     p = agent.SYSTEM_PROMPT
-    assert 'НЕ номер дома' in p
-    assert 'вслух его не называй' in p
+    assert 'Номер дома — часть адреса' in p
+    assert 'find_house' in p, 'сказано, откуда брать house_id'
+    assert 'сам его не придумывай' in p
 
 
 def test_kazhdyy_dom_uznayotsya_po_svoemu_adresu():
@@ -95,3 +103,14 @@ def test_kazhdyy_dom_uznayotsya_po_svoemu_adresu():
         found = houses.search(h['address'])
         assert found and found[0]['address'] == h['address'], (
             f"{h['address']} нашёлся как {found[0]['address'] if found else '—'}")
+
+
+async def test_find_house_otdayot_house_id_a_ne_id():
+    """Короткое «id» рядом с адресом модель принимала за номер дома."""
+    import json
+
+    data = json.loads(agent._tool_find_house('4-я Советская 30'))
+
+    nayden = data['found'][0]
+    assert nayden['address'] == '4-я Советская 30'
+    assert 'house_id' in nayden and 'id' not in nayden

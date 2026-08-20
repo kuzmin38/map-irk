@@ -895,6 +895,16 @@ async def on_version(event: MessageCreated):
                f"🗺 Приложение: {app_url or 'домен не выдан'}")
 
 
+@dp.message_created(Command('reset'))
+async def on_reset(event: MessageCreated):
+    """Стереть память разговора: Люся перестаёт опираться на прошлые ответы."""
+    n = db.forget_user(_uid(event))
+    await send(event.message,
+               f'🧹 Забыла нашу переписку ({n} сообщ.) и всё, что о вас запомнила.\n'
+               'Данные по домам, приборам и заявкам не тронуты — это только память разговора.',
+               main_menu_kb())
+
+
 @dp.message_created(Command('chat'))
 async def on_chat_log(event: MessageCreated):
     """Что Люся услышала в рабочем чате — включая расшифровки без привязки к дому.
@@ -1243,6 +1253,15 @@ async def on_text(event: MessageCreated):
         return
 
     db.upsert_user(uid, _uname(event))
+
+    # Голосом проще сказать «забудь», чем набрать команду
+    if re.fullmatch(r'забудь(\s+(вс[её]|наш\w*|переписку))?[.!]?', text.lower().strip()):
+        n = db.forget_user(uid)
+        await send(event.message,
+                   f'🧹 Забыла нашу переписку ({n} сообщ.). '
+                   'Данные по домам и приборам не тронуты.', main_menu_kb())
+        return
+
     state = STATE.get(uid)
 
     if state and state['mode'] == 'doc_wait':
