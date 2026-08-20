@@ -163,6 +163,7 @@ def _create_all(c):
     c.execute('''CREATE TABLE IF NOT EXISTS chat_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
+        chat_id INTEGER,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL)''')
@@ -706,10 +707,10 @@ def set_user_notes(user_id, profile):
                   (user_id, profile, now()))
 
 
-def add_chat_message(user_id, role, content):
+def add_chat_message(user_id, role, content, chat_id=None):
     with _conn() as c:
-        c.execute('INSERT INTO chat_history (user_id, role, content, created_at) '
-                  'VALUES (?, ?, ?, ?)', (user_id, role, content, now()))
+        c.execute('INSERT INTO chat_history (user_id, chat_id, role, content, created_at) '
+                  'VALUES (?, ?, ?, ?, ?)', (user_id, chat_id, role, content, now()))
 
 
 def forget_user(user_id) -> int:
@@ -727,11 +728,18 @@ def forget_user(user_id) -> int:
     return n
 
 
-def recent_chat_history(user_id, limit=6) -> list:
-    """Последние сообщения пользователя, от старых к новым."""
+def recent_chat_history(user_id, limit=6, chat_id=None) -> list:
+    """Последние сообщения пользователя в этом же месте, от старых к новым.
+
+    Память разделена по чатам не для порядка, а по делу: в личке человек
+    заводил счётчик, а в рабочем чате спросил про адрес из видеоотчёта — и
+    Люся выдала ему счётчик, потому что видела его в своей истории. Личный
+    разговор в общий чат попадать не должен, и наоборот.
+    """
     with _conn() as c:
         rows = c.execute('SELECT role, content FROM chat_history WHERE user_id = ? '
-                         'ORDER BY id DESC LIMIT ?', (user_id, limit)).fetchall()
+                         'AND chat_id IS ? ORDER BY id DESC LIMIT ?',
+                         (user_id, chat_id, limit)).fetchall()
     return [{'role': r['role'], 'content': r['content']} for r in reversed(rows)]
 
 
@@ -775,6 +783,17 @@ def recent_chat_records(limit=15):
     with _conn() as c:
         return c.execute('SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?',
                          (limit,)).fetchall()
+
+
+def chat_reports(chat_id, limit=8):
+    """Последние сообщения этого чата — свежие первыми.
+
+    Нужно, чтобы Люся отвечала на вопрос «какой адрес?» по самой ленте:
+    видеоотчёт лежит в ней вместе с расшифровкой и распознанным домом.
+    """
+    with _conn() as c:
+        return c.execute('SELECT * FROM chat_messages WHERE chat_id = ? '
+                         'ORDER BY id DESC LIMIT ?', (chat_id, limit)).fetchall()
 
 
 def chat_records_since(since_iso, limit=200):

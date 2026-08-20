@@ -75,7 +75,7 @@ async def test_vyzovy_instrumentov_popadayut_v_log(monkeypatch, caplog):
     monkeypatch.setattr(agent, '_update_profile', noop)
     monkeypatch.setattr(agent.db, 'add_chat_message', lambda *a, **k: None)
     monkeypatch.setattr(agent.db, 'get_user_notes', lambda uid: '')
-    monkeypatch.setattr(agent.db, 'recent_chat_history', lambda uid, limit=6: [])
+    monkeypatch.setattr(agent.db, 'recent_chat_history', lambda uid, limit=6, chat_id=None: [])
 
     with caplog.at_level(logging.INFO, logger='agent'):
         await agent.answer(1, 'Андрей', 'где 4-я Советская 30')

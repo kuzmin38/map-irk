@@ -68,7 +68,7 @@ async def test_group_message_without_call_is_ignored():
 
 
 async def test_group_message_with_call_gets_answer(monkeypatch):
-    async def fake_answer(uid, name, text):
+    async def fake_answer(uid, name, text, chat_id=None):
         return f'Ответ на: {text}'
     monkeypatch.setattr(H.agent, 'answer', fake_answer)
     e = event('Люся, что по нормативам ГВС?')
@@ -77,7 +77,7 @@ async def test_group_message_with_call_gets_answer(monkeypatch):
 
 
 async def test_group_call_without_ai_gets_polite_reply(monkeypatch):
-    async def no_ai(uid, name, text):
+    async def no_ai(uid, name, text, chat_id=None):
         return None
     monkeypatch.setattr(H.agent, 'answer', no_ai)
     e = event('Люся, что по нормативам ГВС?')
@@ -103,7 +103,7 @@ def event_with_mention(text, bot_user_id=555):
 async def test_group_mention_via_markup_wakes_bot(monkeypatch):
     monkeypatch.setitem(H.BOT_ME, 'user_id', 555)
 
-    async def fake_answer(uid, name, text):
+    async def fake_answer(uid, name, text, chat_id=None):
         return 'Ответ по упоминанию'
     monkeypatch.setattr(H.agent, 'answer', fake_answer)
     e = event_with_mention('@Люся что по нормативам ГВС?')

@@ -3,6 +3,7 @@
 работы, заявки). Только чтение — ничего не создаёт и не изменяет.
 """
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -171,6 +172,33 @@ def _tool_get_open_requests(house_id: int | None = None) -> str:
     }, ensure_ascii=False)
 
 
+def _tool_chat_reports(chat_id) -> str:
+    """Последние сообщения того же чата — с расшифровками голоса и видео.
+
+    Без этого на вопрос «какой адрес?» модели неоткуда взять отчёт, о котором
+    спрашивают, и она отвечает тем, что попалось в памяти.
+    """
+    if not chat_id:
+        return json.dumps({'error': 'это личка, рабочего чата тут нет'},
+                          ensure_ascii=False)
+    records = db.chat_reports(chat_id, limit=8)
+    lenta = []
+    for r in records:
+        h = houses.HOUSES_BY_ID.get(r['house_id']) if r['house_id'] else None
+        lenta.append({
+            'когда': r['created_at'],
+            'кто': r['user_name'],
+            'текст': r['text'] or '',
+            'расшифровка': r['transcript'] or '',
+            'вложение': bool(r['has_files']),
+            'дом': h['address'] if h else None,
+        })
+    return json.dumps({'сообщения': lenta,
+                       'подсказка': 'дом=null означает, что адрес в сообщении '
+                                    'не назван — так и скажи, не подставляй свой'},
+                      ensure_ascii=False)
+
+
 TOOLS = [
     {'type': 'function', 'function': {
         'name': 'find_house', 'description': 'Найти дом по адресу или части адреса.',
@@ -214,6 +242,13 @@ TOOLS = [
         'parameters': {'type': 'object', 'properties': {
             'house_id': {'type': 'integer'}}, 'required': ['house_id']}}},
     {'type': 'function', 'function': {
+        'name': 'get_chat_reports',
+        'description': 'Последние сообщения рабочего чата, где идёт разговор: тексты, '
+                        'расшифровки голосовых и видеоотчётов, распознанный адрес. '
+                        'Обращайся сюда, когда спрашивают про отчёт, видео, «какой адрес» '
+                        'или «что там было» — речь про ленту этого чата.',
+        'parameters': {'type': 'object', 'properties': {}, 'required': []}}},
+    {'type': 'function', 'function': {
         'name': 'get_open_requests',
         'description': 'Заявки (открытые и недавно выполненные). house_id можно не указывать — '
                         'тогда по всем домам.',
@@ -231,7 +266,12 @@ TOOL_FUNCS = {
     'get_meters': lambda a: _tool_get_meters(a['house_id']),
     'get_house_works': lambda a: _tool_get_house_works(a['house_id']),
     'get_open_requests': lambda a: _tool_get_open_requests(a.get('house_id')),
+    'get_chat_reports': lambda a: _tool_chat_reports(CHAT.get()),
 }
+
+# Чат, в котором идёт разговор. Модель его не знает и знать не должна —
+# инструмент берёт его отсюда, а не из аргументов
+CHAT = contextvars.ContextVar('chat_id', default=None)
 
 
 def _houses_block() -> str:
@@ -277,7 +317,14 @@ def _build_prompt() -> str:
     'адресом не является: «Четыре солнца тридцатый дом» — это дом 30.\n'
     'Номер дома — часть адреса, он стоит в строке последним. Никаких других '
     'номеров у дома нет. Чтобы получить house_id для остальных инструментов, '
-    'вызови find_house — сам его не придумывай и вслух не называй.'
+    'вызови find_house — сам его не придумывай и вслух не называй.\n\n'
+    'Отвечай ровно на заданный вопрос. Никогда не пересказывай то, о чём '
+    'говорили раньше, если об этом не спросили: однажды на вопрос про адрес '
+    'из видеоотчёта Люся выдала счётчик, который человек заводил накануне '
+    'совсем в другом доме. Спрашивают про отчёт, видео, голосовое, «какой '
+    'адрес» или «что там было» — смотри get_chat_reports, это лента того же '
+    'чата. Если адреса в сообщении нет, так и скажи и попроси назвать: '
+    'подставлять дом из прошлых разговоров нельзя.'
     )
 
 
@@ -298,12 +345,18 @@ class TooSlow(Exception):
     """
 
 
-async def answer(user_id: int, user_name: str, user_text: str) -> str | None:
+async def answer(user_id: int, user_name: str, user_text: str,
+                 chat_id: int | None = None) -> str | None:
     """Отвечает на свободный вопрос через инструменты. None — если ИИ
-    недоступен, произошла ошибка, кончилось время или лимит кругов."""
+    недоступен, произошла ошибка, кончилось время или лимит кругов.
+
+    chat_id — общий чат, если разговор идёт там: и память, и лента берутся
+    по месту разговора, чтобы личное не всплывало в рабочем чате.
+    """
     if not ai.enabled():
         return None
     started = time.monotonic()
+    CHAT.set(chat_id)
 
     profile = db.get_user_notes(user_id)
     system = SYSTEM_PROMPT
@@ -311,7 +364,7 @@ async def answer(user_id: int, user_name: str, user_text: str) -> str | None:
         system += f'\n\nЧто ты знаешь про этого пользователя ({user_name}): {profile}'
 
     messages = [{'role': 'system', 'content': system}]
-    messages += db.recent_chat_history(user_id, limit=6)
+    messages += db.recent_chat_history(user_id, limit=6, chat_id=chat_id)
     messages.append({'role': 'user', 'content': user_text})
 
     for round_no in range(MAX_ROUNDS):
@@ -335,8 +388,8 @@ async def answer(user_id: int, user_name: str, user_text: str) -> str | None:
             content = (message.get('content') or '').strip()
             if not content:
                 return None
-            db.add_chat_message(user_id, 'user', user_text)
-            db.add_chat_message(user_id, 'assistant', content)
+            db.add_chat_message(user_id, 'user', user_text, chat_id)
+            db.add_chat_message(user_id, 'assistant', content, chat_id)
             asyncio.create_task(_update_profile(user_id, user_name))
             return content
         messages.append(message)
@@ -361,7 +414,7 @@ async def _update_profile(user_id: int, user_name: str):
     """Обновляет долгосрочную заметку о пользователе отдельным вызовом ИИ.
     Запускается в фоне (asyncio.create_task) — не блокирует ответ."""
     try:
-        history = db.recent_chat_history(user_id, limit=12)
+        history = db.recent_chat_history(user_id, limit=12, chat_id=None)
         if not history:
             return
         transcript = '\n'.join(

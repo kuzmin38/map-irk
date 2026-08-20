@@ -1255,6 +1255,12 @@ def _uname_cb(event) -> str:
     return getattr(event.callback.user, 'full_name', None) or ''
 
 
+def _chat_id(event):
+    """Где идёт разговор. В личке — None: своей памятью личка и чат не делятся."""
+    return getattr(getattr(event.message, 'recipient', None), 'chat_id', None) \
+        if is_group(event) else None
+
+
 def is_group(event) -> bool:
     """Групповой чат или канал (в отличие от лички)."""
     recipient = getattr(event.message, 'recipient', None)
@@ -1541,7 +1547,11 @@ async def on_text(event: MessageCreated):
             return
         db.upsert_user(uid, _uname(event))
         try:
-            reply = await agent.answer(uid, _uname(event), text) if text else None
+            # chat_id — чтобы Люся отвечала по этому чату, а не по личной
+            # переписке: они у неё были общей памятью
+            reply = (await agent.answer(uid, _uname(event), text,
+                                        chat_id=_chat_id(event))
+                     if text else None)
         except agent.TooSlow:
             await send(event.message, SLOW_REPLY)
             return
