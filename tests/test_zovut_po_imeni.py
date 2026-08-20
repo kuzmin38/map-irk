@@ -180,3 +180,23 @@ async def test_bez_ii_obraschenie_vsyo_ravno_ne_ostayotsya_bez_otveta(lusya_id, 
     await H.on_text(e)
 
     assert e.message.sent, 'молчать в ответ на обращение нельзя'
+
+
+# ---------- Люся знает, как она устроена ----------
+
+def test_v_podskazke_skazano_kogda_ona_otvechaet():
+    """Спросят «почему не отвечаешь» — пусть отвечает правдой, а не догадкой."""
+    from bot import agent
+
+    p = agent._build_prompt()
+
+    assert 'зовут по имени' in p
+    assert 'отвечают на твоё сообщение' in p
+    assert 'задним числом не читаешь' in p
+    assert '/тихо' in p and '/болтай' in p
+
+
+def test_v_podskazke_skazano_k_komu_idti_s_dorabotkoy():
+    from bot import agent
+
+    assert 'Андрею Кузьмину' in agent._build_prompt()
