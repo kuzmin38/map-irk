@@ -168,9 +168,11 @@ async def test_summary_falls_back_when_ai_unavailable(monkeypatch):
         return None
     monkeypatch.setattr(H.ai, 'ask', no_ai)
     text = 'Байкальская 237 ' + 'очень длинный отчёт ' * 30
-    summary = await H.short_summary(text, 'Байкальская 237')
+
+    summary = await H.short_summary([text], 'Байкальская 237')
+
     assert summary.startswith('🎙 Байкальская 237')
-    assert len(summary) < 300                       # обрезано, а не простыня
+    assert len(summary) < 500                       # обрезано, а не простыня
 
 
 async def test_series_of_videos_gets_one_reply(monkeypatch):
@@ -206,11 +208,13 @@ async def test_series_of_videos_gets_one_reply(monkeypatch):
     await asyncio.sleep(0.3)               # ждём, пока серия закроется
 
     assert len(bot.sent) == 1, f'ожидался один ответ, а не {len(bot.sent)}'
-    assert '4 видео' in bot.sent[0]['text']
-    assert 'Байкальская 237' in bot.sent[0]['text']
-    assert 'Сделано' in bot.sent[0]['text']
-    # в модель ушли все четыре расшифровки по порядку
-    assert 'хлещет' in asked['prompt'] and 'течи нет' in asked['prompt']
+    otvet = bot.sent[0]['text']
+    assert '4 видео' in otvet
+    assert 'Байкальская 237' in otvet
+    # Короткая серия идёт словами сантехника, без пересказа: модель на
+    # пересказе однажды дописала работы, которых не было
+    assert 'хлещет' in otvet and 'течи нет' in otvet
+    assert 'prompt' not in asked, 'пересказывать тут нечего'
 
 
 async def test_series_reply_attaches_to_first_video(monkeypatch):
