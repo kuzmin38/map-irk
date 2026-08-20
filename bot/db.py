@@ -653,6 +653,21 @@ def add_chat_record(chat_id, mid, user_id, user_name, text,
         return cur.lastrowid
 
 
+def last_chat_house(chat_id, look_back=10):
+    """Дом, о котором в этом чате говорили последним.
+
+    В чате адрес называют один раз, а дальше пишут показания подряд. Чтобы
+    «гвс 567» следом за «Седова 71 хвс 1234» не потерялось, берём дом из
+    недавних сообщений этого же чата.
+    """
+    with _conn() as c:
+        row = c.execute(
+            'SELECT house_id FROM (SELECT house_id FROM chat_messages '
+            'WHERE chat_id = ? ORDER BY id DESC LIMIT ?) WHERE house_id IS NOT NULL '
+            'LIMIT 1', (chat_id, look_back)).fetchone()
+    return row['house_id'] if row else None
+
+
 def house_chat_records(house_id, limit=20):
     """Сообщения чата по конкретному дому, свежие первыми."""
     with _conn() as c:

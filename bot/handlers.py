@@ -718,6 +718,68 @@ def pick_meter(house_id: int, kind: str):
     return same[0] if len(same) == 1 else same
 
 
+# Вопрос, а не сдача показаний: «сколько было хвс 1234?» записывать нельзя
+_VOPROS = re.compile(r'\?|^\s*(сколько|какой|какие|какое|когда|где|что|почему)\b',
+                     re.IGNORECASE)
+
+
+async def handle_readings(event, text: str, uid: int) -> bool:
+    """Показания из свободного текста → в учёт. True, если сообщение разобрано.
+
+    Работает и в личке, и в рабочем чате: сантехник пишет туда, где ему
+    удобно, а данные должны попадать в одно место.
+    """
+    if _VOPROS.search(text or ''):
+        return False
+    adres_text, readings = parse_readings(text)
+    if not readings:
+        return False
+
+    h = houses.detect_house(adres_text) or houses.detect_house(text)
+    if not h and adres_text:
+        found = houses.search(adres_text)
+        h = found[0] if len(found) == 1 else None
+    if not h and is_group(event):
+        # В чате адрес называют один раз, дальше пишут показания подряд
+        chat_id = getattr(event.message.recipient, 'chat_id', None)
+        house_id = db.last_chat_house(chat_id) if chat_id else None
+        h = houses.HOUSES_BY_ID.get(house_id) if house_id else None
+    if not h:
+        await send(event.message,
+                   '🏠 Не поняла, по какому дому показания. Напишите с адресом, '
+                   f'например: «{_primer(0)} хвс 1234».')
+        return True
+
+    otvety, nekuda = [], []
+    for kind, value in readings:
+        m = pick_meter(h['id'], kind)
+        if m is None:
+            nekuda.append((kind, value))
+        elif isinstance(m, list):
+            kb = InlineKeyboardBuilder()
+            for one in m:
+                kb.row(CallbackButton(text=f"✍️ {one['label'][:35]}",
+                                      payload=f"mtr:{one['id']}"))
+            await send(event.message,
+                       f"🤔 На {h['address']} несколько счётчиков "
+                       f'«{METER_KINDS[kind]}». Куда записать {fmt_value(value)}?', kb)
+            return True
+        else:
+            otvety.append(await record_reading(event, m, value, uid))
+
+    if otvety:
+        await send(event.message, '\n'.join(otvety))
+    if nekuda:
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='➕ Завести счётчик', payload=f"mta:{h['id']}"))
+        kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
+        vidy = ', '.join(METER_KINDS[k] for k, _ in nekuda)
+        await send(event.message,
+                   f"🤔 На {h['address']} нет счётчика: {vidy}. Заведите — "
+                   'и дальше хватит одного сообщения.', kb)
+    return True
+
+
 async def record_reading(event, m, value: float, uid: int) -> str:
     """Записывает показание и возвращает строку ответа. Аномалию рассылает сама."""
     h = houses.HOUSES_BY_ID.get(m['house_id'])
@@ -1238,6 +1300,10 @@ async def on_text(event: MessageCreated):
         log.info('Сообщение из чата %s: %.60s',
                  getattr(event.message.recipient, 'chat_id', '?'), text)
         record_chat_message(event, text)
+        # Показания, присланные в чат, попадают в учёт наравне с личкой:
+        # сантехник пишет туда, где удобно
+        if await handle_readings(event, text, uid):
+            return
         addressed, text = strip_address(text)
         if not addressed and not mentioned_in_markup(event):
             return
@@ -1514,47 +1580,7 @@ async def on_text(event: MessageCreated):
                    'Я оповестила команду и буду следить за прогрессом.', kb)
         return
 
-    # Показания одним сообщением: «Седова 71 хвс 1234, гвс 567» (+ фото)
-    adres_text, readings = parse_readings(text)
-    if readings:
-        h = houses.detect_house(adres_text) or houses.detect_house(text)
-        if not h:
-            found = houses.search(adres_text) if adres_text else []
-            h = found[0] if len(found) == 1 else None
-        if not h:
-            await send(event.message,
-                       '🏠 Не поняла, по какому дому показания. Напишите с адресом, '
-                       f'например: «{_primer(0)} хвс 1234».')
-            return
-        otvety, nekuda = [], []
-        for kind, value in readings:
-            m = pick_meter(h['id'], kind)
-            if m is None:
-                nekuda.append((kind, value))
-            elif isinstance(m, list):
-                # несколько счётчиков одного вида — пусть выберет человек
-                kb = InlineKeyboardBuilder()
-                for one in m:
-                    kb.row(CallbackButton(text=f"✍️ {one['label'][:35]}",
-                                          payload=f"mtr:{one['id']}"))
-                await send(event.message,
-                           f"🤔 На {h['address']} несколько счётчиков "
-                           f'«{METER_KINDS[kind]}». Выберите, в какой записать {fmt_value(value)}:',
-                           kb)
-                return
-            else:
-                otvety.append(await record_reading(event, m, value, uid))
-        if otvety:
-            await send(event.message, '\n'.join(otvety))
-        if nekuda:
-            kb = InlineKeyboardBuilder()
-            kb.row(CallbackButton(text='➕ Завести счётчик', payload=f"mta:{h['id']}"))
-            kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
-            vidy = ', '.join(METER_KINDS[k] for k, _ in nekuda)
-            await send(event.message,
-                       f"🤔 На {h['address']} нет счётчика: {vidy}. "
-                       'Заведите его — и показание сразу можно будет записывать одним сообщением.',
-                       kb)
+    if await handle_readings(event, text, uid):
         return
 
     # Запрос вида «Седова 65а/2 кв 47» — где квартира, какой стояк
