@@ -12,6 +12,11 @@ COMPLEX_FILE = os.path.join(DATA_DIR, 'house_complex.txt')
 def _norm_addr(s: str) -> str:
     """Адрес в сравнимый вид: без регистра, ё, лишних пробелов и слов «ул.», «дом»."""
     s = s.lower().replace('ё', 'е')
+    # В справочнике «Байкальская 126/1», а вслух и в переписке говорят
+    # «сто двадцать шесть корпус один». До этой замены такой адрес не
+    # опознавался вовсе — и видеоотчёт оставался без дома
+    s = re.sub(r'(\d+[а-я]?)\s*(?:корпус|корп\.?|кор\.?|к\.|строение|стр\.?)\s*(\d)',
+               r'\1/\2', s)
     s = re.sub(r'[.,;]', ' ', s)
     # Отдельно стоящие слова, а не буквы внутри номера: «Пограничный 1-Г»
     # и «1-Д» иначе оба превращались в «1-» и становились неразличимы
@@ -228,6 +233,9 @@ def detect_house(text: str):
     t = _norm(numbers.to_digits(text, anywhere=True))
     if not t:
         return None
+    # Отдельно — та же речь, но со словом «дом»: _norm его убирает, а для
+    # «тридцатый дом» именно оно и говорит, что число перед ним — адрес
+    so_slovom = numbers.to_digits(text.lower().replace('ё', 'е'), anywhere=True)
     best = None
     for h in HOUSES:
         street, num = _split_addr(_norm(h['address']))
@@ -245,7 +253,42 @@ def detect_house(text: str):
             # длиннее совпадение улицы — точнее адрес (65а/2 против 65а)
             if best is None or len(street) > len(best[1]):
                 best = (h, street)
-    return best[0] if best else None
+    if best:
+        return best[0]
+    # Улицу называют не всегда: «Четыре солнца, тридцатый дом», «на тридцатом
+    # доме». Номер без улицы годится, только если дом с ним у нас один
+    return _by_unique_number(so_slovom, t)
+
+
+# Число рядом с меркой — не номер дома: «вентиль 32 мм», «труба 50»
+_UNITS = re.compile(r'^(мм|см|м|кг|шт|руб|гкал|куб|л|атм|бар|градус\w*|%)$')
+
+
+def _by_unique_number(so_slovom: str, t: str):
+    """Дом по одному номеру, если такой номер у нас единственный.
+
+    so_slovom — речь со словом «дом», t — она же в виде адреса.
+    """
+    kandidaty = []
+    # Номер при слове «дом» — сказано прямо, улица не нужна
+    kandidaty += re.findall(r'дом[а-я]*\s+(\d+[а-я]?(?:/\d+)?)', so_slovom)
+    kandidaty += re.findall(r'(\d+[а-я]?(?:/\d+)?)(?:-[а-я]+)?\s+дом', so_slovom)
+    # Названный ЖК заменяет улицу: «четыре солнца, тридцатый». Само название
+    # убираем — иначе «четыре» из «Четырёх солнц» станет номером дома
+    if any(alias in t for alias in _complex_aliases()):
+        bez_zhk = _strip_complex(t)
+        for m in re.finditer(r'(?<![\w/])(\d+[а-я]?(?:/\d+)?)(?:-[а-я]+)?(?![\w/])',
+                             bez_zhk):
+            hvost = bez_zhk[m.end():].strip().split(' ')[0]
+            if not _UNITS.match(hvost):
+                kandidaty.append(m.group(1))
+
+    for kandidat in kandidaty:
+        podhodyat = [h for h in HOUSES
+                     if _split_addr(_norm(h['address']))[1] == kandidat]
+        if len(podhodyat) == 1:
+            return podhodyat[0]
+    return None
 
 
 def map_links(h) -> str:

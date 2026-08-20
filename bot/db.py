@@ -848,6 +848,25 @@ def recent_issues(limit=10):
                          'ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
 
 
+def orphan_report(chat_id, limit=5):
+    """Последнее сообщение чата с вложением, к которому не привязан дом.
+
+    Нужно, чтобы ответ «Советская 30» на вопрос «какой адрес?» доехал до
+    самого отчёта, а не остался отдельной строкой в ленте.
+    """
+    with _conn() as c:
+        return c.execute(
+            'SELECT * FROM chat_messages WHERE chat_id = ? AND house_id IS NULL '
+            'AND has_files = 1 ORDER BY id DESC LIMIT 1', (chat_id,)).fetchone()
+
+
+def set_chat_house(record_id, house_id):
+    """Привязывает сообщение чата к дому."""
+    with _conn() as c:
+        c.execute('UPDATE chat_messages SET house_id = ? WHERE id = ?',
+                  (house_id, record_id))
+
+
 def set_chat_transcript(record_id, transcript, house_id=None, is_issue=None):
     """Дописывает расшифровку голосового/видео к сообщению чата."""
     fields = {'transcript': transcript}

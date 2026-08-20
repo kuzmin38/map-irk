@@ -1370,7 +1370,10 @@ async def short_summary(parts: list[str], address: str | None) -> str:
     head = f'🎙 {address}' if address else '🎙 Видеоотчёт'
     if len(parts) > 1:
         head += f' · {len(parts)} видео'
-    return head + '\n' + summary.strip()
+    # Без адреса отчёт повисает в воздухе: к дому он не привязан, в паспорт
+    # не попадёт. Спросить дешевле, чем потом искать, о каком доме речь
+    hvost = '' if address else '\n\n❓ Адрес не назвали — напишите, какой дом.'
+    return head + '\n' + summary.strip() + hvost
 
 
 # Серии видео копим по (чат, автор): первое обычно проблема, дальше — работа.
@@ -1473,6 +1476,8 @@ def record_chat_message(event, text: str):
             has_files=files,
             is_issue=bool(text and ISSUE_WORDS.search(text)),
         )
+        if house and text:
+            attach_house_to_report(event, record_id, house, text)
         # Голосовые и видеоотчёты расшифровываем фоном, чтобы не тормозить чат
         url = speech_url(body)
         if url:
@@ -1482,6 +1487,33 @@ def record_chat_message(event, text: str):
                 mid=getattr(body, 'mid', None)))
     except Exception:
         log.exception('Не удалось записать сообщение чата')
+
+
+def attach_house_to_report(event, record_id, house, text: str):
+    """Ответ «Советская 30» на вопрос об адресе — привязывает отчёт к дому.
+
+    Иначе адрес остаётся отдельной строкой в ленте, а видеоотчёт — ничьим.
+    Берём только короткие сообщения: длинную фразу с адресом внутри
+    цеплять к чужой записи нельзя, это уже отдельное сообщение.
+    """
+    if len(text.split()) > 4:
+        return
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if chat_id is None:
+        return
+    otchyot = db.orphan_report(chat_id)
+    if not otchyot or otchyot['id'] == record_id:
+        return
+    db.set_chat_house(otchyot['id'], house['id'])
+    log.info('Отчёт %s привязан к дому %s по ответу в чате',
+             otchyot['id'], house['address'])
+    otvet = send(event.message, f"📌 Поняла: тот отчёт — {house['address']}. Привязала.")
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        otvet.close()       # вне цикла событий (тесты) — только запись в базу
+        return
+    asyncio.create_task(otvet)
 
 
 async def maybe_banter(event, text: str):
