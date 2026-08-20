@@ -86,6 +86,7 @@ def _create_all(c):
         meter_id INTEGER NOT NULL,
         value REAL NOT NULL,
         period TEXT NOT NULL,
+        photo TEXT,
         submitted_by INTEGER,
         submitted_by_name TEXT,
         submitted_at TEXT NOT NULL)''')
@@ -511,6 +512,11 @@ def add_reading(meter_id, value, period, user_id, user_name) -> int:
                         'submitted_by_name, submitted_at) VALUES (?, ?, ?, ?, ?, ?)',
                         (meter_id, value, period, user_id, user_name, now()))
         return cur.lastrowid
+
+
+def set_reading_photo(reading_id, path):
+    with _conn() as c:
+        c.execute('UPDATE readings SET photo = ? WHERE id = ?', (path, reading_id))
 
 
 def meter_readings(meter_id, limit=8):

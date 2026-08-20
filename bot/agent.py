@@ -121,6 +121,32 @@ def _tool_get_equipment(house_id: int) -> str:
                       ensure_ascii=False)
 
 
+def _tool_get_meters(house_id: int) -> str:
+    """Счётчики дома и последние показания: что стоит, кто завёл, кто подавал."""
+    h = houses.HOUSES_BY_ID.get(house_id)
+    if not h:
+        return json.dumps({'error': 'дом не найден'}, ensure_ascii=False)
+    vidy = {'hvs': 'ХВС', 'gvs': 'ГВС', 'heat': 'тепло', 'other': 'другой'}
+    meters = []
+    for m in db.list_meters(h['id']):
+        rs = db.meter_readings(m['id'], limit=2)
+        meters.append({
+            'название': m['label'],
+            'вид': vidy.get(m['kind'], m['kind']),
+            'завёл': m['created_by_name'],
+            'последнее_показание': ({
+                'значение': rs[0]['value'],
+                'период': rs[0]['period'],
+                'подал': rs[0]['submitted_by_name'],
+                'есть_фото': bool(rs[0]['photo']),
+            } if rs else None),
+            'расход_за_период': (rs[0]['value'] - rs[1]['value']) if len(rs) >= 2 else None,
+        })
+    return json.dumps({'address': h['address'], 'счётчики': meters,
+                       'note': 'счётчиков не заведено' if not meters else None},
+                      ensure_ascii=False)
+
+
 def _tool_get_house_works(house_id: int) -> str:
     h = houses.HOUSES_BY_ID.get(house_id)
     if not h:
@@ -176,6 +202,12 @@ TOOLS = [
         'parameters': {'type': 'object', 'properties': {
             'house_id': {'type': 'integer'}}, 'required': ['house_id']}}},
     {'type': 'function', 'function': {
+        'name': 'get_meters',
+        'description': 'Счётчики дома: название, вид, кто завёл, последнее показание, '
+                        'кто его подал, расход за период. По id дома.',
+        'parameters': {'type': 'object', 'properties': {
+            'house_id': {'type': 'integer'}}, 'required': ['house_id']}}},
+    {'type': 'function', 'function': {
         'name': 'get_house_works', 'description': 'Работы и дедлайны по дому (id дома).',
         'parameters': {'type': 'object', 'properties': {
             'house_id': {'type': 'integer'}}, 'required': ['house_id']}}},
@@ -194,6 +226,7 @@ TOOL_FUNCS = {
     'get_riser': lambda a: _tool_get_riser(a['address'], a['flat']),
     'get_directory': lambda a: _tool_get_directory(a['section']),
     'get_equipment': lambda a: _tool_get_equipment(a['house_id']),
+    'get_meters': lambda a: _tool_get_meters(a['house_id']),
     'get_house_works': lambda a: _tool_get_house_works(a['house_id']),
     'get_open_requests': lambda a: _tool_get_open_requests(a.get('house_id')),
 }
@@ -224,7 +257,8 @@ def _build_prompt() -> str:
     'своя, с лёгкой иронией — можешь подтрунить или пошутить, но по делу '
     'отвечаешь точно и по существу. Обращаешься на «ты», по имени.\n\n'
     'У тебя есть инструменты, чтобы посмотреть реальные данные: паспорта '
-    'домов, документы, манометры со сроками поверки, стояки квартир, '
+    'домов, документы, манометры со сроками поверки, счётчики и показания, '
+    'стояки квартир, '
     'справочник и нормативы, работы и дедлайны, заявки. Всегда пользуйся инструментами вместо того, чтобы '
     'гадать — этих данных ты не помнишь, только через инструменты. Если по '
     'инструментам ничего не нашлось — так и скажи, не выдумывай данные.\n\n'

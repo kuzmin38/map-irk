@@ -666,6 +666,102 @@ def meter_line(m, with_last=True) -> str:
     return line
 
 
+# Как вид счётчика называют вслух и в переписке
+METER_WORDS = {
+    'hvs': ('хвс', 'холодная', 'холодную', 'холодной', 'хв', 'хол'),
+    'gvs': ('гвс', 'горячая', 'горячую', 'горячей', 'гв', 'гор'),
+    'heat': ('тепло', 'теплосчетчик', 'теплосчётчик', 'отопление', 'отоплению', 'гкал'),
+}
+
+_READING_RE = re.compile(r'(\d+(?:[.,]\d+)?)')
+
+
+def parse_readings(text: str):
+    """Разбирает «Седова 71 хвс 1234, гвс 567» → ('Седова 71', [('hvs', 1234)]).
+
+    Сантехник стоит у прибора с телефоном — ходить по меню ему неудобно.
+    Пишет как говорит. Возвращаем отдельно кусок с адресом и пары
+    «вид — число»: вид без числа и число без вида не считаются.
+
+    Адрес отрезаем по первому слову о счётчике. Иначе в «Седова 71 хвс 67»
+    показание 67 спуталось бы с номером дома — а дом Седова 67 существует.
+    """
+    low = text.lower().replace('ё', 'е')
+    # находим позиции слов вида и чисел, дальше сопоставляем по порядку
+    metki = []
+    for kind, words in METER_WORDS.items():
+        for w in words:
+            for m in re.finditer(rf'(?<![а-я]){re.escape(w)}(?![а-я])', low):
+                metki.append((m.start(), 'kind', kind))
+    for m in _READING_RE.finditer(low):
+        metki.append((m.start(), 'value', m.group(1)))
+    metki.sort()
+
+    result, ozhidaet = [], None
+    for _, tip, val in metki:
+        if tip == 'kind':
+            ozhidaet = val
+        elif ozhidaet is not None:
+            result.append((ozhidaet, float(val.replace(',', '.'))))
+            ozhidaet = None
+
+    pervoe = next((pos for pos, tip, _ in metki if tip == 'kind'), None)
+    adres = text[:pervoe].strip(' ,;.—-') if pervoe is not None else ''
+    return adres, result
+
+
+def pick_meter(house_id: int, kind: str):
+    """Счётчик дома нужного вида. None — если нет, список — если их несколько."""
+    same = [m for m in db.list_meters(house_id) if m['kind'] == kind]
+    if not same:
+        return None
+    return same[0] if len(same) == 1 else same
+
+
+async def record_reading(event, m, value: float, uid: int) -> str:
+    """Записывает показание и возвращает строку ответа. Аномалию рассылает сама."""
+    h = houses.HOUSES_BY_ID.get(m['house_id'])
+    delta, warning = check_anomaly(m['id'], value)
+    reading_id = db.add_reading(m['id'], value, current_period(), uid, _uname(event))
+
+    photo = await _save_reading_photo(event, reading_id)
+    line = (f"✅ {h['address'] if h else ''} — {m['label']}: "
+            f'{fmt_value(value)} ({fmt_period(current_period())})')
+    if delta is not None and delta >= 0:
+        line += f', расход {fmt_value(delta)}'
+    if photo:
+        line += ', фото сохранено'
+    if warning:
+        line += f'\n   ⚠️ {warning}'
+        for u in db.list_users():
+            if u['role'] in ('engineer', 'admin', 'director') and u['user_id'] != uid:
+                await notify(event.bot, u['user_id'],
+                             f"⚠️ Счётчики, {h['address'] if h else ''} — {m['label']}: "
+                             f'{warning} (подал {_uname(event)})')
+    return line
+
+
+async def _save_reading_photo(event, reading_id: int) -> bool:
+    """Фото счётчика к показанию: снимок с табло — лучшее подтверждение цифры."""
+    for a in (event.message.body.attachments or []):
+        url = getattr(a.payload, 'url', None) if a.payload else None
+        if not url:
+            continue
+        folder = os.path.join(DOCS_DIR, 'readings')
+        os.makedirs(folder, exist_ok=True)
+        try:
+            data = await _download(url)
+        except Exception:
+            log.exception('Не удалось скачать фото счётчика')
+            return False
+        path = os.path.join(folder, f'{reading_id}.jpg')
+        with open(path, 'wb') as f:
+            f.write(data)
+        db.set_reading_photo(reading_id, path)
+        return True
+    return False
+
+
 def check_anomaly(meter_id, new_value):
     """Сравнивает расход с прошлым периодом. Возвращает (delta, предупреждение | None)."""
     rs = db.meter_readings(meter_id, limit=3)  # без нового показания
@@ -1397,6 +1493,49 @@ async def on_text(event: MessageCreated):
                    f"✅ Задание создано! «{state['title']}» — {COMPLEX_NAMES.get(cid, '')}, "
                    f'работ: {len(house_ids)}, срок: {fmt_deadline(deadline)}.\n'
                    'Я оповестила команду и буду следить за прогрессом.', kb)
+        return
+
+    # Показания одним сообщением: «Седова 71 хвс 1234, гвс 567» (+ фото)
+    adres_text, readings = parse_readings(text)
+    if readings:
+        h = houses.detect_house(adres_text) or houses.detect_house(text)
+        if not h:
+            found = houses.search(adres_text) if adres_text else []
+            h = found[0] if len(found) == 1 else None
+        if not h:
+            await send(event.message,
+                       '🏠 Не поняла, по какому дому показания. Напишите с адресом, '
+                       f'например: «{_primer(0)} хвс 1234».')
+            return
+        otvety, nekuda = [], []
+        for kind, value in readings:
+            m = pick_meter(h['id'], kind)
+            if m is None:
+                nekuda.append((kind, value))
+            elif isinstance(m, list):
+                # несколько счётчиков одного вида — пусть выберет человек
+                kb = InlineKeyboardBuilder()
+                for one in m:
+                    kb.row(CallbackButton(text=f"✍️ {one['label'][:35]}",
+                                          payload=f"mtr:{one['id']}"))
+                await send(event.message,
+                           f"🤔 На {h['address']} несколько счётчиков "
+                           f'«{METER_KINDS[kind]}». Выберите, в какой записать {fmt_value(value)}:',
+                           kb)
+                return
+            else:
+                otvety.append(await record_reading(event, m, value, uid))
+        if otvety:
+            await send(event.message, '\n'.join(otvety))
+        if nekuda:
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='➕ Завести счётчик', payload=f"mta:{h['id']}"))
+            kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
+            vidy = ', '.join(METER_KINDS[k] for k, _ in nekuda)
+            await send(event.message,
+                       f"🤔 На {h['address']} нет счётчика: {vidy}. "
+                       'Заведите его — и показание сразу можно будет записывать одним сообщением.',
+                       kb)
         return
 
     # Запрос вида «Седова 65а/2 кв 47» — где квартира, какой стояк
