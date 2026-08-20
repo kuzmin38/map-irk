@@ -200,6 +200,9 @@ def search(query: str, limit: int = 8):
                 score = 80
         elif q in a:
             score = 40
+        elif h.get('note') and q in _norm(h['note']):
+            # «парковка», «нежилое» — так их и ищут, а не по номеру дома
+            score = 35
         else:
             # поиск по словам: все слова запроса встречаются в адресе
             words = q.split()
