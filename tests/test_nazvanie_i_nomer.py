@@ -219,3 +219,26 @@ async def test_bez_istorii_knopki_vozvrata_net():
     await H.run_action('mtpick', pick.msg, 100, pick)
 
     assert not [p for _, p in knopki(pick) if p.startswith('mtc:')]
+
+
+async def test_staryy_schyotchik_chinitsya_odnim_nazhatiem(dom):
+    """У заказчика номер уже сидит в названии — вынести его должно быть просто."""
+    m_id = db.add_meter(dom['id'], 'hvs', 'ВСХд-15 Номер: 64380455', 'Андрей')
+
+    e = Event()
+    await H.run_action(f'mtc:{m_id}', e.msg, 100, e)
+    fix = [p for _, p in knopki(e) if p.startswith('mtfix')]
+    assert fix == [f'mtfix:{m_id}']
+
+    e2 = Event()
+    await H.run_action(fix[0], e2.msg, 100, e2)
+
+    m = db.get_meter(m_id)
+    assert (m['label'], m['serial']) == ('ВСХд-15', '64380455')
+
+
+async def test_normalnomu_schyotchiku_knopka_pochinki_ne_nuzhna(schyotchik):
+    e = Event()
+    await H.run_action(f'mtc:{schyotchik}', e.msg, 100, e)
+
+    assert not [p for _, p in knopki(e) if p.startswith('mtfix')]

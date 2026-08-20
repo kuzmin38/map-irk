@@ -2728,6 +2728,11 @@ async def run_action(payload: str, msg, uid: int, event):
                 kb.row(CallbackButton(text='🔧 Снять на поверку',
                                       payload=f"mtoff:{m['id']}"))
             kb.row(CallbackButton(text='✏️ Название и номер', payload=f"mted:{m['id']}"))
+            # У приборов, заведённых до разделения полей, номер сидит внутри
+            # названия — вынести его должно быть одним нажатием, а не правкой
+            if not m['serial'] and split_name_serial(m['label'])[1]:
+                kb.row(CallbackButton(text='🔢 Вынести номер из названия',
+                                      payload=f"mtfix:{m['id']}"))
             kb.row(CallbackButton(text='📷 Прислать фото — прочту сама',
                                   payload=f"mtph:{m['id']}"))
             kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
@@ -2767,6 +2772,12 @@ async def run_action(payload: str, msg, uid: int, event):
             kb.row(CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}"))
             await send(msg, f"✅ «{m['label']}» на месте с {db.now()}, "
                             f'поставил {_uname_cb(event)}.', kb)
+
+    elif action == 'mtfix':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            db.remember_meter(uid, m['id'])
+            await apply_meter_edit(msg, m['id'], m['label'])
 
     # mtren и mtsn остались от прежних двух кнопок: они ещё висят в ленте
     # у людей, и нажатие не должно упираться в тишину
