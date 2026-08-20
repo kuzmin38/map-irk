@@ -4,7 +4,7 @@ import json
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from bot import db, webapp
+from bot import db, houses, webapp
 
 
 @pytest.fixture(autouse=True)
@@ -147,3 +147,59 @@ def test_bez_domena_adres_neizvesten(monkeypatch):
     monkeypatch.delenv('MINIAPP_HOST', raising=False)
     monkeypatch.delenv('RAILWAY_PUBLIC_DOMAIN', raising=False)
     assert webapp.public_url() is None
+
+
+def test_kartochka_doma_soderzhit_svodku(tmp_path, monkeypatch):
+    """Пустая карточка выглядела так, будто приложение ничего не умеет."""
+    monkeypatch.setattr(db, 'DB_PATH', str(tmp_path / 'svodka.db'))
+    db.init()
+    dom = houses.HOUSES[0]
+
+    state = webapp.house_state(dom['id'])
+
+    s = state['summary']
+    assert s['requests_open'] == 0 and s['meters'] == 0
+    assert s['passport_total'] == 12, 'знаменатель паспорта на месте'
+    assert 'meters' in state
+
+
+def test_schyotchiki_vidny_v_prilozhenii(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, 'DB_PATH', str(tmp_path / 'sch.db'))
+    db.init()
+    dom = houses.HOUSES[0]
+    m_id = db.add_meter(dom['id'], 'hvs', 'Подвал, ввод ХВС', 'Андрей')
+    db.update_meter(m_id, serial='04517')
+    from bot.handlers import current_period
+    db.add_reading(m_id, 1234, current_period(), 1, 'Андрей')
+
+    state = webapp.house_state(dom['id'])
+
+    m = state['meters'][0]
+    assert m['label'] == 'Подвал, ввод ХВС'
+    assert m['serial'] == '04517'
+    assert m['value'] == 1234 and m['done'] is True
+    assert state['summary']['meters_done'] == 1
+
+
+def test_spisok_domov_neset_chisla(tmp_path, monkeypatch):
+    """Список адресов без чисел — просто портянка, по нему ничего не понять."""
+    monkeypatch.setattr(db, 'DB_PATH', str(tmp_path / 'stats.db'))
+    db.init()
+    dom = houses.HOUSES[0]
+    db.add_meter(dom['id'], 'hvs', 'ХВС', 'Андрей')
+    db.add_request(dom['id'], dom['address'], 'течь в подвале', 1, 'Андрей')
+
+    payload = webapp.build_payload()
+
+    nash = next(h for h in payload['houses'] if h['id'] == dom['id'])
+    assert nash['meters'] == 1
+    assert nash['meters_done'] == 0
+    assert nash['requests_open'] == 1
+
+
+def test_chisla_po_domam_ne_ronyayut_stranicu(tmp_path, monkeypatch):
+    """Если сбор чисел упал, приложение всё равно должно открыться."""
+    monkeypatch.setattr(webapp.db, 'readings_for_period',
+                        lambda period: (_ for _ in ()).throw(RuntimeError('база занята')))
+
+    assert webapp.house_stats() == {}

@@ -90,6 +90,8 @@ a.doc:last-child{border-bottom:none}
 .sec{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;
   letter-spacing:.4px;margin:14px 0 6px;padding-left:2px}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+@media(max-width:420px){.grid2{grid-template-columns:1fr}}
 .kv:last-child{border-bottom:none}
 .kv .k{color:var(--dim);font-size:13px}
 .kv .v{text-align:right;font-weight:550;font-size:13px}
@@ -194,9 +196,16 @@ function renderHomes(filter){
     const tags = [];
     if(h.kind === 'nonres') tags.push('<span class="chip gray">нежилое</span>');
     if(cx) tags.push('<span class="chip">' + esc(cx) + '</span>');
+    // Значки делают список рабочим экраном: видно, где что нужно сделать
+    const marks = [];
+    if(h.requests_open) marks.push('📋 ' + h.requests_open);
+    if(h.meters) marks.push('🧮 ' + (h.meters_done || 0) + '/' + h.meters);
+    if(h.verify_overdue) marks.push('❌ поверка ' + h.verify_overdue);
+    const second = marks.length ? marks.join(' · ')
+                                : 'заявок за год: ' + h.requests_year;
     return `<div class="item" onclick="openHouse(${h.id})">
       <div><div class="t">${esc(h.address)}</div>
-      <div class="s">заявок за год: ${h.requests_year}</div></div>
+      <div class="s">${second}</div></div>
       <div>${tags.join(' ')}</div></div>`;
   }).join('') + '</div>';
 }
@@ -264,6 +273,24 @@ function block(title, inner){
 function renderLive(d){
   let html = '';
 
+  // Сводка рисуется всегда, даже из нулей: пустая карточка выглядела так,
+  // будто приложение ничего не умеет
+  const s = d.summary || {};
+  const cells = [
+    ['📋 Заявки', s.requests_open || 0],
+    ['📅 Работы', s.works_open || 0],
+    ['🧮 Счётчики', (s.meters_done || 0) + ' / ' + (s.meters || 0)],
+    ['🔧 Манометры', s.devices || 0],
+    ['🗂 Паспорт', (s.passport || 0) + ' / ' + (s.passport_total || 0)],
+    ['📁 Документы', s.docs || 0],
+  ];
+  html += block('📊 Коротко о доме',
+    '<div class="grid2">' + cells.map(([k, v]) =>
+      `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`
+    ).join('') + '</div>' +
+    (s.meters && s.meters_done < s.meters
+      ? `<div class="muted">Показания за месяц сняты не со всех счётчиков.</div>` : ''));
+
   const open = d.requests.filter(r => r.status !== 'done');
   if(open.length){
     html += block(`📋 Открытые заявки · ${open.length}`, '<div class="list">' +
@@ -297,6 +324,19 @@ function renderLive(d){
         return `<div class="rec">
           <div class="t">${mark} ${esc(m.tp || '')}${m.tp && m.place ? ', ' : ''}${esc(m.place || '')}</div>
           <div class="s">${m.serial ? '№ ' + esc(m.serial) + ' · ' : ''}${tail}</div>
+        </div>`;
+      }).join('') + '</div>');
+  }
+
+  if(d.meters && d.meters.length){
+    html += block(`🧮 Счётчики · ${d.meters.length}`, '<div class="list">' +
+      d.meters.map(m => {
+        const mark = m.done ? '✅' : (m.value === null ? '—' : '⏳');
+        const znach = m.value === null ? 'показаний ещё нет'
+          : `${m.value} (${m.period}${m.by ? ', ' + esc(m.by) : ''})`;
+        return `<div class="rec">
+          <div class="t">${mark} ${esc(m.label)}</div>
+          <div class="s">${esc(m.kind)}${m.serial ? ' · № ' + esc(m.serial) : ' · без номера'} · ${znach}</div>
         </div>`;
       }).join('') + '</div>');
   }

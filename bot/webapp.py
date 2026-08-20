@@ -41,6 +41,43 @@ def _load(name, default=None):
         return json.load(f)
 
 
+def house_stats() -> dict:
+    """Числа по каждому дому для списка: заявки, счётчики, просроченные поверки.
+
+    Список адресов сам по себе бесполезен — по нему не видно, где что нужно
+    сделать. Значки превращают его в рабочий экран.
+    """
+    from datetime import date
+
+    from .handlers import current_period
+
+    out = {}
+    try:
+        period = current_period()
+        sdano = {r['meter_id'] for r in db.readings_for_period(period)}
+        vsego = db.houses_with_meters()
+        otkrytye = {}
+        for r in db.list_requests(limit=500):
+            if r['status'] != 'done' and r['house_id'] is not None:
+                otkrytye[r['house_id']] = otkrytye.get(r['house_id'], 0) + 1
+        prosrocheno = {}
+        today = date.today().isoformat()
+        for d in db.devices_with_verification():
+            if d['verified_until'] < today:
+                prosrocheno[d['house_id']] = prosrocheno.get(d['house_id'], 0) + 1
+        for house_id, n in vsego.items():
+            out.setdefault(house_id, {})['meters'] = n
+            out[house_id]['meters_done'] = sum(
+                1 for m in db.list_meters(house_id) if m['id'] in sdano)
+        for house_id, n in otkrytye.items():
+            out.setdefault(house_id, {})['requests_open'] = n
+        for house_id, n in prosrocheno.items():
+            out.setdefault(house_id, {})['verify_overdue'] = n
+    except Exception:
+        log.exception('Не удалось собрать числа по домам — отдаю список без них')
+    return out
+
+
 def build_payload() -> dict:
     """Данные для приложения: справочники из файлов, привязка к ЖК — из базы.
 
@@ -58,11 +95,13 @@ def build_payload() -> dict:
         log.exception('Не удалось прочитать привязку домов к ЖК — отдаю без неё')
         house_complex = {}
 
+    stats = house_stats()
     for h in houses:
         h.pop('zveno', None)  # звенья больше не используются
         cx = house_complex.get(h['id']) or house_complex.get(str(h['id']))
         if cx:
             h['complex'] = cx
+        h.update(stats.get(h['id'], {}))
 
     return {
         'houses': houses,
@@ -152,20 +191,52 @@ def house_state(house_id: int) -> dict:
             'installed_by': d['installed_by'] if d else None,
         })
 
+    from .handlers import METER_LABELS, current_period
+
+    period = current_period()
+    sdano = {r['meter_id'] for r in db.readings_for_period(period)}
+    meters = []
+    for m in db.list_meters(house_id):
+        last = db.meter_readings(m['id'], limit=1)
+        meters.append({
+            'label': m['label'],
+            'kind': METER_LABELS.get(m['kind'], m['kind']),
+            'serial': m['serial'],
+            'value': last[0]['value'] if last else None,
+            'period': last[0]['period'] if last else None,
+            'by': last[0]['submitted_by_name'] if last else None,
+            'done': m['id'] in sdano,
+        })
+
     chat = [{'author': m['user_name'], 'at': m['created_at'],
              'text': m['text'] or m['transcript'] or '',
              'is_issue': bool(m['is_issue']), 'has_files': bool(m['has_files'])}
             for m in db.house_chat_records(house_id, limit=15)]
 
+    docs = [{'filename': d['filename'], 'note': d['note']}
+            for d in db.list_docs(house_id)]
     return {
         'passport': passport,
         'passport_total': len(PASSPORT_FIELDS),
         'requests': requests,
         'works': works,
         'devices': devices,
+        'meters': meters,
         'chat': chat,
-        'docs': [{'filename': d['filename'], 'note': d['note']}
-                 for d in db.list_docs(house_id)],
+        'docs': docs,
+        # Сводка показывается всегда, даже из нулей: пустая карточка
+        # выглядела так, будто приложение ничего не умеет
+        'summary': {
+            'requests_open': sum(1 for r in requests if r['status'] != 'done'),
+            'works_open': sum(1 for w in works if w['status'] != 'done'),
+            'devices': len(devices),
+            'meters': len(meters),
+            'meters_done': sum(1 for m in meters if m['done']),
+            'passport': len(passport),
+            'passport_total': len(PASSPORT_FIELDS),
+            'docs': len(docs),
+            'period': period,
+        },
     }
 
 
