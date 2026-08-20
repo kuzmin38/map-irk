@@ -65,6 +65,7 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         name TEXT,
         role TEXT NOT NULL DEFAULT 'none',
+        last_meter_id INTEGER,
         registered_at TEXT NOT NULL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS campaigns (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -521,6 +522,27 @@ def add_meter(house_id, kind, label, user_name) -> int:
 def get_meter(meter_id):
     with _conn() as c:
         return c.execute('SELECT * FROM meters WHERE id = ?', (meter_id,)).fetchone()
+
+
+def remember_meter(user_id, meter_id):
+    """Счётчик, с которым человек работал последним.
+
+    Карточка счётчика уезжает вверх по ленте, и чтобы вернуться к ней,
+    приходится заново идти меню → дом → прибор. С этой памятью возврат
+    в одно нажатие.
+    """
+    with _conn() as c:
+        c.execute('UPDATE users SET last_meter_id = ? WHERE user_id = ?',
+                  (meter_id, user_id))
+
+
+def last_meter(user_id):
+    """Последний счётчик человека — или None, если прибор успели удалить."""
+    with _conn() as c:
+        row = c.execute(
+            'SELECT m.* FROM users u JOIN meters m ON m.id = u.last_meter_id '
+            'WHERE u.user_id = ?', (user_id,)).fetchone()
+    return row
 
 
 def list_meters(house_id):

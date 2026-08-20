@@ -688,7 +688,7 @@ METER_HINTS = {
     'hvs': 'Например: «Подвал, ввод ХВС на дом, №123456»',
     'hvs_office': 'Например: «Подвал, ввод ХВС на офисы, №123456»',
     'heat': 'Например: «ИТП, теплосчётчик, №123456»',
-    'other': 'Например: «Где стоит и номер»',
+    'other': 'Например: «ВСХд-15 в подвале, №123456»',
 }
 
 MONTHS_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
@@ -766,6 +766,91 @@ def parse_readings(text: str):
     pervoe = next((pos for pos, tip, _ in metki if tip == 'kind'), None)
     adres = text[:pervoe].strip(' ,;.—-') if pervoe is not None else ''
     return adres, result
+
+
+# Заводской номер: либо назван прямо («№ 64380455», «зав. номер 12345»),
+# либо это длинная цифровая группа. Пять цифр подряд — потому что в названии
+# прибора цифры короткие: «ВСХд-15», «СТВ-50», «УТ-1».
+_SERIAL_MARKED = re.compile(
+    r'(?:зав(?:одск\w*)?\.?\s*)?(?:№|No|N°|номер\w*|s/?n)\s*[:.]?\s*'
+    r'([A-Za-zА-Яа-я0-9][A-Za-zА-Яа-я0-9/-]{2,})', re.IGNORECASE)
+_SERIAL_LONG = re.compile(r'(?<![\w/-])(\d{5,})(?![\w/-])')
+
+CLEAR = object()   # «-» — очистить поле, а не вписать в него прочерк
+
+
+def split_name_serial(text: str):
+    """Делит одну строку на название и заводской номер.
+
+    Человек пишет «ВСХд-15 № 64380455» одной строкой — так быстрее, чем
+    жать две кнопки и отвечать дважды. Раньше это целиком уезжало в название,
+    и заводской номер оставался пустым.
+
+    Возвращает (название, номер). Любое из двух — None, если его в строке
+    нет; номер CLEAR — если просят очистить.
+    """
+    text = (text or '').strip()
+    if text in ('-', '—'):
+        return None, CLEAR
+
+    serial = None
+    m = _SERIAL_MARKED.search(text)
+    if m and not re.search(r'\d', m.group(1)):
+        m = None       # «Nord» — не номер: в заводском номере всегда есть цифры
+    if m:
+        serial = m.group(1).strip(' .,;')
+        ostatok = text[:m.start()] + ' ' + text[m.end():]
+    else:
+        m = _SERIAL_LONG.search(text)
+        if m:
+            serial = m.group(1)
+            ostatok = text[:m.start()] + ' ' + text[m.end():]
+        else:
+            ostatok = text
+
+    # После вырезания номера остаются хвосты: «СТВ-50 ,», «номер», двойные пробелы
+    label = re.sub(r'\b(зав(одской)?|номер\w*)\b|№', ' ', ostatok, flags=re.IGNORECASE)
+    label = re.sub(r'\s+', ' ', label)
+    label = re.sub(r'\s+([,;.])', r'\1', label).strip(' ,;.:—-')
+    return (label or None), serial
+
+
+async def apply_meter_edit(msg, meter_id: int, text: str):
+    """Записывает название и номер из одной строки и говорит, что куда легло.
+
+    Разбор может ошибиться — например, если в названии есть длинное число.
+    Поэтому итог всегда показываем словами, а рядом кнопку «Исправить».
+    """
+    label, serial = split_name_serial(text)
+    fields, itog = {}, []
+    if label:
+        fields['label'] = label
+        itog.append(f'✏️ Название: {label}')
+    if serial is CLEAR:
+        fields['serial'] = None
+        itog.append('🔢 Заводской номер очищен')
+    elif serial:
+        fields['serial'] = serial
+        itog.append(f'🔢 Заводской номер: {serial}')
+    if fields:
+        db.update_meter(meter_id, **fields)
+
+    m = db.get_meter(meter_id)
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='✏️ Исправить', payload=f"mted:{meter_id}"),
+           CallbackButton(text='🧮 К счётчику', payload=f"mtc:{meter_id}"))
+    if not fields:
+        await send(msg, '🤔 Не поняла, что записать. Напишите название, номер '
+                        'или всё сразу: «ВСХд-15 № 64380455».', kb)
+        return
+    hvost = ''
+    if len(fields) == 1:
+        # Второе поле не тронуто — про него лучше сказать, чем оставить гадать
+        hvost = ('\n\nНомер прибора пока не указан.' if 'serial' not in fields
+                 and not m['serial'] else '')
+        if 'label' not in fields:
+            hvost = f"\n\nНазвание оставила прежним: «{m['label']}»."
+    await send(msg, '✅ Записала.\n' + '\n'.join(itog) + hvost, kb)
 
 
 def pick_meter(house_id: int, kind: str):
@@ -1634,35 +1719,34 @@ async def on_text(event: MessageCreated):
         return
 
     if state and state['mode'] == 'meter_label':
-        m_id = db.add_meter(state['house_id'], state['kind'], text, _uname(event))
+        # Заводим счётчик одной строкой: «ВСХд-15 № 64380455». Номер сразу
+        # ложится в своё поле — иначе он навсегда останется частью названия
+        label, serial = split_name_serial(text)
+        label = label or METER_LABELS[state['kind']]
+        m_id = db.add_meter(state['house_id'], state['kind'], label, _uname(event))
+        if serial and serial is not CLEAR:
+            db.update_meter(m_id, serial=serial)
+        db.remember_meter(uid, m_id)
         STATE.pop(uid, None)
         h = houses.HOUSES_BY_ID[state['house_id']]
         kb = InlineKeyboardBuilder()
         kb.row(CallbackButton(text='✍️ Внести первое показание', payload=f'mtr:{m_id}'),
                CallbackButton(text='➕ Ещё счётчик', payload=f"mta:{h['id']}"))
-        kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
+        kb.row(CallbackButton(text='✏️ Название и номер', payload=f'mted:{m_id}'),
+               CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{h['id']}"))
+        nomer = (f'\n🔢 Заводской номер: {serial}' if serial and serial is not CLEAR
+                 else '\n🔢 Заводской номер не указан — можно дописать кнопкой.')
         await send(event.message,
-                   f"✅ Запомнила: {METER_LABELS[state['kind']]} — «{text}» ({h['address']}).", kb)
+                   f"✅ Запомнила: {METER_LABELS[state['kind']]} — «{label}» "
+                   f"({h['address']}).{nomer}", kb)
         return
 
-    if state and state['mode'] == 'meter_rename':
-        db.update_meter(state['meter_id'], label=text)
+    # Три входа — «Название», «Номер» и общая правка — разбираются одинаково:
+    # человек пишет как удобно, а не как спросили. Раньше «ВСХд-15 № 64380455»
+    # в ответ на вопрос о названии целиком уезжало в название.
+    if state and state['mode'] in ('meter_rename', 'meter_serial', 'meter_edit'):
         STATE.pop(uid, None)
-        m = db.get_meter(state['meter_id'])
-        await send(event.message, f'✅ Переименовала: «{text}».',
-                   InlineKeyboardBuilder().row(
-                       CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}")))
-        return
-
-    if state and state['mode'] == 'meter_serial':
-        serial = None if text in ('-', '—') else text.strip()
-        db.update_meter(state['meter_id'], serial=serial)
-        STATE.pop(uid, None)
-        m = db.get_meter(state['meter_id'])
-        await send(event.message,
-                   f'✅ Заводской номер: {serial or "очищен"}.',
-                   InlineKeyboardBuilder().row(
-                       CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}")))
+        await apply_meter_edit(event.message, state['meter_id'], text)
         return
 
     if state and state['mode'] == 'meter_photo':
@@ -1698,8 +1782,7 @@ async def on_text(event: MessageCreated):
         kb = InlineKeyboardBuilder()
         kb.row(CallbackButton(text='✅ Всё верно, записать',
                               payload=f"mtok:{m['id']}"))
-        kb.row(CallbackButton(text='✏️ Название', payload=f"mtren:{m['id']}"),
-               CallbackButton(text='🔢 Номер', payload=f"mtsn:{m['id']}"))
+        kb.row(CallbackButton(text='✏️ Название и номер', payload=f"mted:{m['id']}"))
         kb.row(CallbackButton(text='✍️ Показание вручную', payload=f"mtr:{m['id']}"))
         await send(event.message, '\n'.join(lines), kb)
         return
@@ -2573,13 +2656,16 @@ async def run_action(payload: str, msg, uid: int, event):
         kind = parts[2]
         if h and kind in METER_KINDS:
             STATE[uid] = {'mode': 'meter_label', 'house_id': h['id'], 'kind': kind}
-            await send(msg, f'📟 {METER_LABELS[kind]}. Опишите одной строкой: '
-                            f'где стоит и номер.\n{METER_HINTS.get(kind, "")}\n'
-                            'Люся запомнит — дальше показание можно слать одним сообщением.')
+            await send(msg, f'📟 {METER_LABELS[kind]}. Напишите одной строкой — '
+                            'где стоит и заводской номер:\n'
+                            f'{METER_HINTS.get(kind, "")}\n\n'
+                            'Номер сама положу в своё поле. Не знаете его — '
+                            'напишите только название, допишем потом.')
 
     elif action == 'mtr':
         m = db.get_meter(int(parts[1]))
         if m:
+            db.remember_meter(uid, m['id'])
             h = houses.HOUSES_BY_ID.get(m['house_id'])
             STATE[uid] = {'mode': 'meter_value', 'meter_id': m['id']}
             last = db.meter_readings(m['id'], limit=1)
@@ -2609,6 +2695,7 @@ async def run_action(payload: str, msg, uid: int, event):
     elif action == 'mtc':
         m = db.get_meter(int(parts[1]))
         if m:
+            db.remember_meter(uid, m['id'])
             h = houses.HOUSES_BY_ID.get(m['house_id'])
             rs = db.meter_readings(m['id'], limit=1)
             lines = [f"🧮 {METER_LABELS.get(m['kind'], '📟')} — {m['label']}",
@@ -2640,8 +2727,7 @@ async def run_action(payload: str, msg, uid: int, event):
                        CallbackButton(text='📈 История', payload=f"mth:{m['id']}"))
                 kb.row(CallbackButton(text='🔧 Снять на поверку',
                                       payload=f"mtoff:{m['id']}"))
-            kb.row(CallbackButton(text='✏️ Название', payload=f"mtren:{m['id']}"),
-                   CallbackButton(text='🔢 Номер', payload=f"mtsn:{m['id']}"))
+            kb.row(CallbackButton(text='✏️ Название и номер', payload=f"mted:{m['id']}"))
             kb.row(CallbackButton(text='📷 Прислать фото — прочту сама',
                                   payload=f"mtph:{m['id']}"))
             kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
@@ -2682,19 +2768,21 @@ async def run_action(payload: str, msg, uid: int, event):
             await send(msg, f"✅ «{m['label']}» на месте с {db.now()}, "
                             f'поставил {_uname_cb(event)}.', kb)
 
-    elif action == 'mtren':
+    # mtren и mtsn остались от прежних двух кнопок: они ещё висят в ленте
+    # у людей, и нажатие не должно упираться в тишину
+    elif action in ('mted', 'mtren', 'mtsn'):
         m = db.get_meter(int(parts[1]))
         if m:
-            STATE[uid] = {'mode': 'meter_rename', 'meter_id': m['id']}
-            await send(msg, f'✏️ Название сейчас: «{m["label"]}».\n'
-                            'Напишите новое — где стоит и номер:')
-
-    elif action == 'mtsn':
-        m = db.get_meter(int(parts[1]))
-        if m:
-            STATE[uid] = {'mode': 'meter_serial', 'meter_id': m['id']}
-            await send(msg, f'🔢 Заводской номер сейчас: {m["serial"] or "не указан"}.\n'
-                            'Напишите номер с корпуса прибора (или «-», чтобы очистить):')
+            db.remember_meter(uid, m['id'])
+            STATE[uid] = {'mode': 'meter_edit', 'meter_id': m['id']}
+            await send(msg,
+                       f"✏️ {m['label']}\n"
+                       f"🔢 Заводской номер: {m['serial'] or '— не указан'}\n\n"
+                       'Напишите одной строкой — название и номер:\n'
+                       '«ВСХд-15 № 64380455»\n\n'
+                       'Можно и по отдельности: одно название («ХВС домовой») '
+                       'или одни цифры («64380455») — я разберу, где что. '
+                       '«-» очистит номер.')
 
     elif action == 'mtph':
         m = db.get_meter(int(parts[1]))
@@ -2749,6 +2837,14 @@ async def run_action(payload: str, msg, uid: int, event):
         # Показания подают ежедневно, поэтому дом выбирается кнопкой,
         # а не набором адреса руками
         kb = InlineKeyboardBuilder()
+        # Карточка прибора уезжает вверх по ленте, и человек ищет её глазами.
+        # Возврат к последнему — первой кнопкой, до всех домов
+        posledniy = db.last_meter(uid)
+        if posledniy:
+            dom = houses.HOUSES_BY_ID.get(posledniy['house_id'])
+            kb.row(CallbackButton(
+                text=f"↩️ {posledniy['label']}" + (f" · {dom['address']}" if dom else ''),
+                payload=f"mtc:{posledniy['id']}"))
         if _role(uid) in BRIEFING_ROLES:
             kb.row(CallbackButton(text='📊 Сводка за месяц', payload='mtall'))
         snyato = len(db.removed_meters())
