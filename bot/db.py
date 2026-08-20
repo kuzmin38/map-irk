@@ -184,10 +184,14 @@ def _sync_columns(c):
 
 
 def seed_house_complexes() -> int:
-    """Проставляет дома по комплексам из `bot/data/house_complex.txt`.
+    """Приводит привязку домов к ЖК в соответствие с `house_complex.txt`.
 
-    Заполняем только пустые: привязка, сделанная руками в боте, важнее файла
-    и перезаписывать её нельзя. Возвращает, сколько домов проставлено.
+    Файл — источник истины: он лежит в репозитории и правится осознанно.
+    Сначала заполнялись только пустые записи, чтобы не затирать правку,
+    сделанную руками в боте. На деле вышло хуже: исправление в файле до базы
+    не доезжало, и дома молча оставались в неверном комплексе.
+
+    Возвращает число изменённых домов.
     """
     from . import houses
 
@@ -196,19 +200,28 @@ def seed_house_complexes() -> int:
         return 0
     known = {houses._norm_addr(h['address']): h['id'] for h in houses.ALL_HOUSES}
     assigned = all_house_complexes()
-    added = 0
+    changed = 0
     for address, complex_id in mapping.items():
         house_id = known.get(address)
         if house_id is None:
             log.warning('В привязке к ЖК неизвестный адрес: %s', address)
             continue
-        if house_id in assigned:
+        было = assigned.get(house_id)
+        if было == complex_id:
             continue
         set_house_complex(house_id, complex_id)
-        added += 1
-    if added:
-        log.info('Дома привязаны к комплексам: %s', added)
-    return added
+        changed += 1
+        if было:
+            log.info('Дом %s переведён из %s в %s', address, было, complex_id)
+    if changed:
+        log.info('Привязка к ЖК обновлена, домов: %s', changed)
+
+    # Итог в лог: по нему видно фактическое состояние базы, а не файла
+    itog = {}
+    for cid in all_house_complexes().values():
+        itog[cid] = itog.get(cid, 0) + 1
+    log.info('Дома по комплексам: %s', itog or 'привязок нет')
+    return changed
 
 
 def init():

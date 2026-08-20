@@ -35,16 +35,19 @@ def test_primechaniya_i_pustye_stroki_propuskayutsya(chisto, monkeypatch):
     assert len(db.all_house_complexes()) == 1
 
 
-def test_zapis_rukami_ne_perezapisyvaetsya(chisto, monkeypatch):
-    """Человек в боте поправил — файл его мнение не отменяет."""
+def test_ispravlenie_v_fayle_doezzhaet_do_bazy(chisto, monkeypatch):
+    """Файл — источник истины. Сначала правка не доезжала, и дома молча
+    оставались в неверном комплексе: Седова 65а числилась Жемчужиной,
+    хотя в файле давно Центральный парк."""
     dom = next(h for h in houses.ALL_HOUSES if h['address'] == '4-я Советская 30')
     db.init()
     db.set_house_complex(dom['id'], 'kvartal')
 
     fayl(chisto, monkeypatch, '4-я Советская 30 = 4sun\n')
-    db.seed_house_complexes()
+    izmeneno = db.seed_house_complexes()
 
-    assert db.get_house_complex(dom['id']) == 'kvartal'
+    assert db.get_house_complex(dom['id']) == '4sun'
+    assert izmeneno == 1
 
 
 def test_neizvestnyy_adres_ne_ronyaet_zapusk(chisto, monkeypatch, caplog):

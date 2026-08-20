@@ -189,7 +189,7 @@ def main_menu_kb() -> InlineKeyboardBuilder:
     kb.row(CallbackButton(text='📢 Задание по ЖК', payload='camp'),
            CallbackButton(text='👥 Люди', payload='ppl'))
     kb.row(CallbackButton(text='📊 Брифинг', payload='brief'),
-           CallbackButton(text='🧮 Сводка счётчиков', payload='mtall'))
+           CallbackButton(text='🧮 Счётчики', payload='mtpick'))
     app = miniapp_button('🗺 Карта и таблицы')
     if app:
         kb.row(app, CallbackButton(text='📖 Справочник', payload='dir'))
@@ -251,6 +251,20 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
         kb.row(app, CallbackButton(text='🏠 Меню', payload='menu'))
     else:
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+    return kb
+
+
+def house_buttons(kb, hs, payload='h', counts=None):
+    """Каждый дом — отдельной кнопкой.
+
+    Списком текстом это не работает: набирать адрес руками, стоя в подвале
+    с телефоном, невозможно, а заказчик именно так и пробовал.
+    """
+    for h in hs:
+        n = (counts or {}).get(h['id'], 0)
+        znak = '🧮' if (counts is not None and n) else ('➕' if counts is not None else '🏠')
+        text = f"{znak} {h['address'][:32]}" + (f' ({n})' if n else '')
+        kb.row(CallbackButton(text=text, payload=f"{payload}:{h['id']}"))
     return kb
 
 
@@ -1679,15 +1693,14 @@ async def on_callback(event: MessageCallback):
         else:
             hs = [h for h in houses.HOUSES if assigned.get(h['id']) == cid]
             title = f"🏙 {COMPLEX_NAMES.get(cid, cid)}"
-        lines = [f'{title} — {len(hs)} домов:', '']
-        lines += [f"• {h['address']}" for h in hs]
-        lines.append('')
-        lines.append('💡 Напишите адрес, чтобы открыть карточку дома. '
-                     'Привязать дом к ЖК можно кнопкой «Указать ЖК» в карточке.')
         kb = InlineKeyboardBuilder()
+        # Дом — кнопка, а не строка списка: набирать адрес руками, стоя
+        # в подвале, невозможно
+        house_buttons(kb, hs)
         kb.row(CallbackButton(text='◀️ К списку ЖК', payload='homes'),
                CallbackButton(text='🏠 Меню', payload='menu'))
-        await send(msg, '\n'.join(lines), kb)
+        await send(msg, f'{title} — домов: {len(hs)}. Выберите дом:'
+                        if hs else f'{title}: домов пока нет.', kb)
 
     elif action == 'cxs':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
@@ -2406,6 +2419,19 @@ async def on_callback(event: MessageCallback):
                    CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
             await send(msg, '\n'.join(lines), kb)
 
+    elif action == 'mtpick':
+        # Показания подают ежедневно, поэтому дом выбирается кнопкой,
+        # а не набором адреса руками
+        kb = InlineKeyboardBuilder()
+        if _role(uid) in BRIEFING_ROLES:
+            kb.row(CallbackButton(text='📊 Сводка за месяц', payload='mtall'))
+        house_buttons(kb, houses.HOUSES, payload='mt', counts=db.houses_with_meters())
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '🧮 Счётчики — выберите дом.\n'
+                        '➕ значит, что счётчики там ещё не заведены.\n\n'
+                        '💡 Показание можно прислать и просто сообщением: '
+                        f'«{_primer(0)} хвс 1234».', kb)
+
     elif action == 'mtall':
         if _role(uid) not in BRIEFING_ROLES:
             await send(msg, '🧮 Сводка по всем домам доступна руководству. '
@@ -2435,7 +2461,14 @@ async def on_callback(event: MessageCallback):
                 lines.append('')
                 lines.append('⏳ Ещё не сдали: ' + ', '.join(sorted(missing)))
         kb = InlineKeyboardBuilder()
-        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        # Из сводки должен быть выход к делу, а не только «Меню»
+        for hid in list(with_meters)[:8]:
+            if hid in submitted_houses or hid not in houses.HOUSES_BY_ID:
+                continue
+            kb.row(CallbackButton(text=f"✍️ {houses.HOUSES_BY_ID[hid]['address'][:32]}",
+                                  payload=f"mt:{hid}"))
+        kb.row(CallbackButton(text='🧮 Все дома', payload='mtpick'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
 
     elif action == 'dir':
