@@ -81,8 +81,22 @@ def _create_all(c):
         label TEXT NOT NULL,
         serial TEXT,
         photo TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        status_at TEXT,
+        status_by TEXT,
         created_by_name TEXT,
         created_at TEXT NOT NULL)''')
+    # Журнал: счётчик снимают на поверку и ставят обратно, и каждый шаг
+    # должен быть подписан. Иначе выходит как с инспектором: сказали
+    # «поставлен», а прибор лежит в столярке
+    c.execute('''CREATE TABLE IF NOT EXISTS meter_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meter_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        note TEXT,
+        by_id INTEGER,
+        by_name TEXT,
+        at TEXT NOT NULL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS readings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         meter_id INTEGER NOT NULL,
@@ -519,6 +533,43 @@ def update_meter(meter_id, **fields):
     cols = ', '.join(f'{k} = ?' for k in fields)
     with _conn() as c:
         c.execute(f'UPDATE meters SET {cols} WHERE id = ?', (*fields.values(), meter_id))
+
+
+METER_ACTIVE = 'active'    # на месте
+METER_REMOVED = 'verify'   # снят на поверку
+
+
+def _meter_event(meter_id, action, user_id, user_name, note=None):
+    with _conn() as c:
+        c.execute('INSERT INTO meter_events (meter_id, action, note, by_id, by_name, at) '
+                  'VALUES (?, ?, ?, ?, ?, ?)',
+                  (meter_id, action, note, user_id, user_name, now()))
+
+
+def meter_remove(meter_id, user_id, user_name, note=None):
+    """Счётчик снят на поверку: с этого момента показаний по нему быть не должно."""
+    update_meter(meter_id, status=METER_REMOVED, status_at=now(), status_by=user_name)
+    _meter_event(meter_id, METER_REMOVED, user_id, user_name, note)
+
+
+def meter_install(meter_id, user_id, user_name, note=None):
+    """Счётчик поставлен на место — подтверждает тот, кто ставил."""
+    update_meter(meter_id, status=METER_ACTIVE, status_at=now(), status_by=user_name)
+    _meter_event(meter_id, METER_ACTIVE, user_id, user_name, note)
+
+
+def meter_events(meter_id, limit=20):
+    """Журнал снятий и установок, свежие первыми."""
+    with _conn() as c:
+        return c.execute('SELECT * FROM meter_events WHERE meter_id = ? '
+                         'ORDER BY id DESC LIMIT ?', (meter_id, limit)).fetchall()
+
+
+def removed_meters():
+    """Счётчики, снятые на поверку и пока не возвращённые."""
+    with _conn() as c:
+        return c.execute("SELECT * FROM meters WHERE status = ? ORDER BY house_id",
+                         (METER_REMOVED,)).fetchall()
 
 
 def houses_with_meters() -> dict:

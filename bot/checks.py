@@ -38,6 +38,17 @@ def rashod_problema(readings) -> tuple | None:
     return None
 
 
+def _dney_s(stamp: str | None):
+    """Сколько дней прошло с отметки вида «20.08.2026 11:15». None — не разобрали."""
+    if not stamp:
+        return None
+    try:
+        d, m, y = stamp.split()[0].split('.')
+        return (date.today() - date(int(y), int(m), int(d))).days
+    except (ValueError, IndexError):
+        return None
+
+
 def house_findings(house_id: int, period: str | None = None) -> list:
     """Список замечаний по дому: [{'level': 'red'|'yellow', 'text': ...}]."""
     today = date.today()
@@ -68,6 +79,15 @@ def house_findings(house_id: int, period: str | None = None) -> list:
         sdano = ({r['meter_id'] for r in db.readings_for_period(period)}
                  if period else set())
         for m in db.list_meters(house_id):
+            if m['status'] == db.METER_REMOVED:
+                # Главная беда: прибор сняли, а вернуть забыли. Через месяц
+                # приезжает инспектор пломбировать, а прибора нет
+                dney = _dney_s(m['status_at'])
+                uroven = RED if (dney is None or dney > 30) else YELLOW
+                add(uroven, f'{m["label"]}: снят на поверку'
+                            + (f' {dney} дн. назад' if dney is not None else '')
+                            + (f', снял {m["status_by"]}' if m['status_by'] else ''))
+                continue
             rs = db.meter_readings(m['id'], limit=3)
             beda = rashod_problema(rs)
             if beda:

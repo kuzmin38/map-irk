@@ -25,12 +25,13 @@ VIDY = {
 
 COLUMNS = [
     ('ЖК', 22), ('Адрес', 24), ('Счётчик', 34), ('Вид', 14),
-    ('Заводской №', 16), ('Прошлое', 12), ('Текущее', 12), ('Расход', 11),
-    ('Кто подал', 20), ('Когда', 18),
+    ('Заводской №', 16), ('Состояние', 26), ('Прошлое', 12), ('Текущее', 12),
+    ('Расход', 11), ('Кто подал', 20), ('Когда', 18),
 ]
 
 _HEAD = PatternFill('solid', fgColor='DCE6F1')
 _MISSING = PatternFill('solid', fgColor='FCE4D6')
+_REMOVED = PatternFill('solid', fgColor='F4CCCC')
 
 
 def meters_rows(period: str) -> list:
@@ -53,12 +54,17 @@ def meters_rows(period: str) -> list:
                 'Счётчик': m['label'],
                 'Вид': VIDY.get(m['kind'], m['kind']),
                 'Заводской №': m['serial'] or '',
+                'Состояние': ('СНЯТ НА ПОВЕРКУ'
+                              + (f", {m['status_at']}" if m['status_at'] else '')
+                              + (f", {m['status_by']}" if m['status_by'] else '')
+                              if m['status'] == db.METER_REMOVED else 'на месте'),
                 'Прошлое': proshloe['value'] if proshloe else None,
                 'Текущее': tekushchee['value'] if tekushchee else None,
                 'Расход': rashod,
                 'Кто подал': (tekushchee['submitted_by_name'] or '') if tekushchee else '',
                 'Когда': (tekushchee['submitted_at'] or '') if tekushchee else '',
-                '_нет': tekushchee is None,
+                '_нет': tekushchee is None and m['status'] != db.METER_REMOVED,
+                '_snyat': m['status'] == db.METER_REMOVED,
             })
     return rows
 
@@ -74,8 +80,12 @@ def meters_workbook(period: str, period_label: str = '') -> bytes:
     ws.append([zagolovok])
     ws['A1'].font = Font(bold=True, size=13)
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(COLUMNS))
-    sdano = sum(1 for r in rows if not r['_нет'])
-    ws.append([f'Сдано {sdano} из {len(rows)} счётчиков'])
+    sdano = sum(1 for r in rows if not r['_нет'] and not r.get('_snyat'))
+    snyato = sum(1 for r in rows if r.get('_snyat'))
+    itog = f'Сдано {sdano} из {len(rows)} счётчиков'
+    if snyato:
+        itog += f' · снято на поверку: {snyato}'
+    ws.append([itog])
     ws.append([])
 
     head_row = ws.max_row + 1
@@ -88,7 +98,10 @@ def meters_workbook(period: str, period_label: str = '') -> bytes:
 
     for r in rows:
         ws.append([r[name] for name, _ in COLUMNS])
-        if r['_нет']:
+        if r.get('_snyat'):
+            for i in range(1, len(COLUMNS) + 1):
+                ws.cell(row=ws.max_row, column=i).fill = _REMOVED
+        elif r['_нет']:
             # Не сданные подсвечиваем: инженеру важно видеть пробелы
             for i in range(1, len(COLUMNS) + 1):
                 ws.cell(row=ws.max_row, column=i).fill = _MISSING

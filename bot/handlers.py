@@ -766,7 +766,11 @@ def parse_readings(text: str):
 
 
 def pick_meter(house_id: int, kind: str):
-    """Счётчик дома нужного вида. None — если нет, список — если их несколько."""
+    """Счётчик дома нужного вида. None — если нет, список — если их несколько.
+
+    Снятые на поверку из выбора не исключаем: человеку важно узнать, что
+    прибора нет на месте, а не получить «счётчик не заведён».
+    """
     same = [m for m in db.list_meters(house_id) if m['kind'] == kind]
     if not same:
         return None
@@ -818,6 +822,15 @@ async def handle_readings(event, text: str, uid: int) -> bool:
             await send(event.message,
                        f"🤔 На {h['address']} несколько счётчиков "
                        f'«{METER_LABELS[kind]}». Куда записать {fmt_value(value)}?', kb)
+            return True
+        elif m['status'] == db.METER_REMOVED:
+            await send(event.message,
+                       f"🔧 «{m['label']}» числится снятым на поверку "
+                       f"({m['status_at'] or ''}, {m['status_by'] or '—'}). "
+                       'Показание не записала — сначала отметьте, что прибор на месте.',
+                       InlineKeyboardBuilder().row(
+                           CallbackButton(text='✅ Поставлен на место',
+                                          payload=f"mtback:{m['id']}")))
             return True
         else:
             otvety.append(await record_reading(event, m, value, uid))
@@ -2561,15 +2574,66 @@ async def on_callback(event: MessageCallback):
                 lines.append('📈 Показаний ещё нет')
             if m['photo']:
                 lines.append('📷 Фото есть')
+            snyat = m['status'] == db.METER_REMOVED
+            lines.append('')
+            if snyat:
+                lines.append(f"🔧 СНЯТ НА ПОВЕРКУ {m['status_at'] or ''}"
+                             + (f", снял {m['status_by']}" if m['status_by'] else ''))
+                lines.append('На месте прибора нет. Пока не вернёте — показания '
+                             'по нему не записываются.')
+            else:
+                lines.append('✅ На месте' + (f" с {m['status_at']}, поставил {m['status_by']}"
+                                              if m['status_at'] else ''))
             kb = InlineKeyboardBuilder()
-            kb.row(CallbackButton(text='✍️ Показание', payload=f"mtr:{m['id']}"),
-                   CallbackButton(text='📈 История', payload=f"mth:{m['id']}"))
+            if snyat:
+                kb.row(CallbackButton(text='✅ Поставлен на место',
+                                      payload=f"mtback:{m['id']}"))
+            else:
+                kb.row(CallbackButton(text='✍️ Показание', payload=f"mtr:{m['id']}"),
+                       CallbackButton(text='📈 История', payload=f"mth:{m['id']}"))
+                kb.row(CallbackButton(text='🔧 Снять на поверку',
+                                      payload=f"mtoff:{m['id']}"))
             kb.row(CallbackButton(text='✏️ Название', payload=f"mtren:{m['id']}"),
                    CallbackButton(text='🔢 Номер', payload=f"mtsn:{m['id']}"))
             kb.row(CallbackButton(text='📷 Прислать фото — прочту сама',
                                   payload=f"mtph:{m['id']}"))
             kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
             await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'mtoff':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            db.meter_remove(m['id'], uid, _uname_cb(event))
+            h = houses.HOUSES_BY_ID.get(m['house_id'])
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}"))
+            await send(msg, f"🔧 Записала: «{m['label']}» снят на поверку "
+                            f"{db.now()}, снял {_uname_cb(event)}.\n"
+                            f"{h['address'] if h else ''}: пока прибор не вернут, "
+                            'он будет помечен в списках красным.', kb)
+
+    elif action == 'mtback':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            # Отдельное подтверждение: «сказали поставлен, а он в столярке»
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='✅ Да, стоит на месте',
+                                  payload=f"mtback2:{m['id']}"))
+            kb.row(CallbackButton(text='◀️ Нет, ещё не ставили',
+                                  payload=f"mtc:{m['id']}"))
+            await send(msg, f"Подтвердите: «{m['label']}» действительно установлен "
+                            'на место?\n\nПодпись останется в журнале — по ней потом '
+                            'видно, кто ставил и когда.', kb)
+
+    elif action == 'mtback2':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            db.meter_install(m['id'], uid, _uname_cb(event))
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='✍️ Внести показание', payload=f"mtr:{m['id']}"))
+            kb.row(CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}"))
+            await send(msg, f"✅ «{m['label']}» на месте с {db.now()}, "
+                            f'поставил {_uname_cb(event)}.', kb)
 
     elif action == 'mtren':
         m = db.get_meter(int(parts[1]))
@@ -2640,12 +2704,34 @@ async def on_callback(event: MessageCallback):
         kb = InlineKeyboardBuilder()
         if _role(uid) in BRIEFING_ROLES:
             kb.row(CallbackButton(text='📊 Сводка за месяц', payload='mtall'))
+        snyato = len(db.removed_meters())
+        if snyato:
+            kb.row(CallbackButton(text=f'🔧 Снято на поверку: {snyato}',
+                                  payload='mtoffl'))
         house_buttons(kb, houses.HOUSES, payload='mt', counts=db.houses_with_meters())
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '🧮 Счётчики — выберите дом.\n'
                         '➕ значит, что счётчики там ещё не заведены.\n\n'
                         '💡 Показание можно прислать и просто сообщением: '
                         f'«{_primer(0)} хвс 1234».', kb)
+
+    elif action == 'mtoffl':
+        snyatye = db.removed_meters()
+        if not snyatye:
+            await send(msg, '✅ Снятых на поверку счётчиков нет — все на местах.',
+                       InlineKeyboardBuilder().row(
+                           CallbackButton(text='🧮 Счётчики', payload='mtpick')))
+            return
+        lines = [f'🔧 СНЯТЫ НА ПОВЕРКУ — {len(snyatye)}', '']
+        kb = InlineKeyboardBuilder()
+        for m in snyatye:
+            h = houses.HOUSES_BY_ID.get(m['house_id'])
+            lines.append(f"• {h['address'] if h else '?'} — {m['label']}\n"
+                         f"   снял {m['status_by'] or '—'}, {m['status_at'] or '—'}")
+            kb.row(CallbackButton(text=f"✅ Поставлен: {m['label'][:26]}",
+                                  payload=f"mtback:{m['id']}"))
+        kb.row(CallbackButton(text='🧮 Счётчики', payload='mtpick'))
+        await send(msg, '\n'.join(lines), kb)
 
     elif action == 'mtall':
         if _role(uid) not in BRIEFING_ROLES:
