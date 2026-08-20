@@ -16,6 +16,7 @@ import sys
 import time
 
 from maxapi import Bot
+from maxapi.types import BotCommand
 
 from . import db, handlers, status
 from .handlers import dp
@@ -116,6 +117,23 @@ async def poll_forever(bot):
         delay = min(delay * 2, MAX_DELAY)
 
 
+async def register_commands(bot):
+    """Отдаёт MAX список команд быстрого меню.
+
+    Клавиатура в MAX привязана к сообщению: чтобы вернуться к счётчикам,
+    приходится крутить ленту и искать нужное сообщение. Команды же всегда
+    лежат под полем ввода, и до любого экрана оттуда один шаг.
+    """
+    commands = [BotCommand(name=name, description=text)
+                for name, text, _ in handlers.QUICK_COMMANDS]
+    try:
+        await bot.set_commands(*commands)
+        log.info('Команды бота зарегистрированы: %d', len(commands))
+    except Exception:
+        # Меню — удобство, а не работа бота: команды всё равно наберутся руками
+        log.warning('Не удалось зарегистрировать команды бота', exc_info=True)
+
+
 async def main():
     token = os.environ.get('MAX_BOT_TOKEN')
     if not token:
@@ -137,6 +155,8 @@ async def main():
     except Exception as e:
         status.note_me(None, None, error=e)
         log.exception('Не удалось получить данные бота')
+
+    await register_commands(bot)
 
     mode = os.environ.get('BOT_MODE', 'polling').lower()
     watch_updates(bot)

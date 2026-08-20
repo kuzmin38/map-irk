@@ -209,7 +209,10 @@ MAIN_TEXT = (
     '• 🗂 Паспорт дома — розливы, арматура, где перекрывать, доступ\n'
     '• 📋 Заявки — запишу и буду вести: новая → в работе → выполнена\n'
     '• 📖 Справочник — телефоны, нормативы, сроки, шпаргалка по трубам\n\n'
-    f'💡 Просто напишите адрес (например: «{houses.examples(1)[0]}») — я всё найду. 😉'
+    f'💡 Просто напишите адрес (например: «{houses.examples(1)[0]}») — я всё найду. 😉\n\n'
+    '⚡️ Чтобы не искать кнопки в ленте, наберите «/» — под полем ввода откроется '
+    'быстрое меню: /schet — счётчики, /doma — дома, /svodka — показания за месяц, '
+    '/zayavki — заявки, /menu — сюда.'
 )
 
 
@@ -1047,6 +1050,42 @@ async def on_version(event: MessageCreated):
                f"🗺 Приложение: {app_url or 'домен не выдан'}")
 
 
+# Постоянное меню у поля ввода: клавиатура в MAX привязана к сообщению,
+# и её приходится искать в ленте. Команды всегда под рукой.
+QUICK_COMMANDS = [
+    ('menu', 'Главное меню', 'menu'),
+    ('doma', 'Наши дома по ЖК', 'homes'),
+    ('schet', 'Счётчики: выбрать дом', 'mtpick'),
+    ('svodka', 'Показания за месяц и выгрузка', 'mtall'),
+    ('poverka', 'Снятые на поверку', 'mtoffl'),
+    ('zayavki', 'Открытые заявки', 'rl'),
+    ('raboty', 'Все работы и сроки', 'wl'),
+    ('moi', 'Мои работы', 'myw'),
+    ('brief', 'Брифинг по хозяйству', 'brief'),
+    ('spravka', 'Справочник и нормативы', 'dir'),
+]
+
+
+def _make_command_handler(payload):
+    async def handler(event: MessageCreated):
+        uid = _uid(event)
+        db.upsert_user(uid, _uname(event))
+        bot_status.note_update('команда')
+        await run_action(payload, event.message, uid, event)
+    return handler
+
+
+def register_quick_commands():
+    """Вешает обработчики на команды быстрого меню."""
+    for name, _, payload in QUICK_COMMANDS:
+        if name == 'menu':
+            continue          # у меню уже есть свой обработчик
+        dp.message_created(Command(name))(_make_command_handler(payload))
+
+
+register_quick_commands()
+
+
 @dp.message_created(Command('reset'))
 async def on_reset(event: MessageCreated):
     """Стереть память разговора: Люся перестаёт опираться на прошлые ответы."""
@@ -1791,7 +1830,15 @@ async def on_callback(event: MessageCallback):
         log.warning('Не удалось подтвердить нажатие кнопки', exc_info=True)
 
     db.upsert_user(uid, getattr(event.callback.user, 'full_name', None) or '')
-    msg = event.message
+    await run_action(payload, event.message, uid, event)
+
+
+async def run_action(payload: str, msg, uid: int, event):
+    """Открывает экран по его коду.
+
+    Вызывается и с кнопки, и с команды из меню MAX: экран должен быть один
+    и тот же, иначе они разъедутся.
+    """
     parts = payload.split(':')
     action = parts[0]
 
