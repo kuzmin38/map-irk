@@ -848,6 +848,22 @@ def recent_issues(limit=10):
                          'ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
 
 
+def recent_house_of(chat_id, user_id, look_back=5):
+    """Дом, который этот же человек назвал в чате только что.
+
+    Адрес часто идёт отдельным сообщением перед роликом: сначала «8/5 Салон
+    красоты», потом видео. Для самого видео дома нет, а он рядом — в соседней
+    строке того же автора.
+    """
+    with _conn() as c:
+        row = c.execute(
+            'SELECT house_id FROM (SELECT house_id FROM chat_messages '
+            'WHERE chat_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?) '
+            'WHERE house_id IS NOT NULL LIMIT 1',
+            (chat_id, user_id, look_back)).fetchone()
+    return row['house_id'] if row else None
+
+
 def orphan_report(chat_id, limit=5):
     """Последнее сообщение чата с вложением, к которому не привязан дом.
 

@@ -1469,6 +1469,11 @@ async def transcribe_later(record_id: int, url: str, bot=None, chat_id=None, mid
             series = SERIES.get(key)
             if series and series.get('house_id') is not None:
                 house = houses.HOUSES_BY_ID.get(series['house_id'])
+        # Адрес мог уйти отдельным сообщением прямо перед роликом
+        if not house and record and chat_id:
+            ryadom = db.recent_house_of(chat_id, record['user_id'])
+            if ryadom:
+                house = houses.HOUSES_BY_ID.get(ryadom)
         is_issue = bool(ISSUE_WORDS.search(text))
         db.set_chat_transcript(record_id, text,
                                house_id=house['id'] if house else None,
