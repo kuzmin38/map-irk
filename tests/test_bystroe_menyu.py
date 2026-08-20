@@ -63,13 +63,31 @@ async def test_kazhdaya_komanda_vedyot_na_sushchestvuyushchiy_ekran():
         assert e.text.strip(), f'/{name} ведёт в никуда'
 
 
-def test_imena_komand_ne_povtoryayutsya_i_prigodny_dlya_max():
+def test_imena_komand_russkie_i_ne_povtoryayutsya():
+    """В меню человек читает «/счетчики», а не «/schet»."""
     names = [n for n, _, _ in H.QUICK_COMMANDS]
+    vse = names + [a for n in names for a in H.ALIASES.get(n, ())]
 
-    assert len(names) == len(set(names))
+    assert len(vse) == len(set(vse)), 'двойник одной команды достался другой'
     assert len(names) <= 32, 'MAX принимает не больше 32 команд'
     for name in names:
-        assert re.fullmatch(r'[a-z][a-z0-9_]{0,63}', name), name
+        assert re.fullmatch(r'[а-яё]{2,63}', name), name
+
+
+def test_u_kazhdoy_komandy_est_dvoynik_latinitsey():
+    """Запасной список: примет ли MAX кириллицу — в документации не сказано."""
+    for name, _, _ in H.QUICK_COMMANDS:
+        latinskie = [a for a in H.ALIASES.get(name, ())
+                     if re.fullmatch(r'[a-z][a-z0-9_]{0,63}', a)]
+        assert latinskie, name
+
+
+async def test_komandy_latinitsey_vedut_tuda_zhe():
+    """Их уже набирали руками и рассылали в переписке."""
+    e = Event('/schet')
+    await handler_for('schet')(e)
+
+    assert 'дом' in e.text.lower()
 
 
 def test_u_kazhdoy_komandy_est_opisanie():
@@ -79,10 +97,10 @@ def test_u_kazhdoy_komandy_est_opisanie():
 
 
 async def test_komanda_otkryvaet_tot_zhe_ekran_chto_i_knopka():
-    handler = handler_for('schet')
-    assert handler, 'команда /schet не зарегистрирована'
+    handler = handler_for('счетчики')
+    assert handler, 'команда /счетчики не зарегистрирована'
 
-    e = Event('/schet')
+    e = Event('/счетчики')
     await handler(e)
 
     assert 'дом' in e.text.lower()
@@ -90,8 +108,8 @@ async def test_komanda_otkryvaet_tot_zhe_ekran_chto_i_knopka():
 
 
 async def test_komanda_doma_pokazyvaet_zhk():
-    e = Event('/doma')
-    await handler_for('doma')(e)
+    e = Event('/дома')
+    await handler_for('дома')(e)
 
     assert 'ЖК' in e.text
 
@@ -115,10 +133,27 @@ async def test_komandy_uhodyat_v_max_pri_zapuske():
     assert [c.description for c in отправлено] == [t for _, t, _ in H.QUICK_COMMANDS]
 
 
+async def test_esli_max_ne_primet_kirillitsu_poydyot_latinitsa():
+    """Примет ли MAX русские имена команд — в документации не сказано."""
+    popytki = []
+
+    class FakeBot:
+        async def set_commands(self, *commands):
+            popytki.append([c.name for c in commands])
+            if len(popytki) == 1:
+                raise RuntimeError('MAX не принял кириллицу')
+
+    await main.register_commands(FakeBot())
+
+    assert len(popytki) == 2, 'вторая попытка — латиницей'
+    assert popytki[1] == [H.ALIASES[n][-1] for n, _, _ in H.QUICK_COMMANDS]
+    assert all(re.fullmatch(r'[a-z][a-z0-9_]*', n) for n in popytki[1])
+
+
 async def test_otkaz_max_ne_ronyaet_bota():
     """Меню — удобство. Без него бот обязан работать, команды наберутся руками."""
     class FakeBot:
         async def set_commands(self, *commands):
             raise RuntimeError('MAX недоступен')
 
-    await main.register_commands(FakeBot())   # не должно бросить
+    await main.register_commands(FakeBot())   # не должно бросить ни на одной попытке

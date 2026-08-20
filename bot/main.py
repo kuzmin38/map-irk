@@ -123,15 +123,23 @@ async def register_commands(bot):
     Клавиатура в MAX привязана к сообщению: чтобы вернуться к счётчикам,
     приходится крутить ленту и искать нужное сообщение. Команды же всегда
     лежат под полем ввода, и до любого экрана оттуда один шаг.
+
+    Имена русские — читать «/счетчики» в меню проще, чем «/schet». Примет
+    ли MAX кириллицу, в документации не сказано; если нет — отправляем те же
+    команды латиницей, они работают наравне.
     """
-    commands = [BotCommand(name=name, description=text)
-                for name, text, _ in handlers.QUICK_COMMANDS]
-    try:
-        await bot.set_commands(*commands)
-        log.info('Команды бота зарегистрированы: %d', len(commands))
-    except Exception:
-        # Меню — удобство, а не работа бота: команды всё равно наберутся руками
-        log.warning('Не удалось зарегистрировать команды бота', exc_info=True)
+    russkie = [(name, text) for name, text, _ in handlers.QUICK_COMMANDS]
+    latinicey = [(handlers.ALIASES[name][-1], text) for name, text in russkie]
+    for spisok, kak in ((russkie, 'по-русски'), (latinicey, 'латиницей')):
+        try:
+            await bot.set_commands(*[BotCommand(name=n, description=d)
+                                     for n, d in spisok])
+            log.info('Команды бота зарегистрированы (%s): %d', kak, len(spisok))
+            return
+        except Exception:
+            log.warning('MAX не принял команды %s', kak, exc_info=True)
+    # Меню — удобство, а не работа бота: команды всё равно наберутся руками
+    log.warning('Быстрое меню в MAX не зарегистрировано — команды работают вручную')
 
 
 async def main():
