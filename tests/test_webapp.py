@@ -203,3 +203,26 @@ def test_chisla_po_domam_ne_ronyayut_stranicu(tmp_path, monkeypatch):
                         lambda period: (_ for _ in ()).throw(RuntimeError('база занята')))
 
     assert webapp.house_stats() == {}
+
+
+def test_plitki_svodki_vedut_v_razdely():
+    """Плитка «Счётчики» должна прыгать к разделу, а не быть надписью."""
+    import re
+
+    with open('miniapp/template.html', encoding='utf-8') as f:
+        html = f.read()
+
+    assert 'function jump(' in html
+    assert 'onclick="jump(' in html
+    for razdel in ('requests', 'works', 'meters', 'devices', 'passport', 'docs'):
+        assert f"'{razdel}');" in html, f'нет якоря раздела {razdel}'
+
+
+def test_razdely_risuyutsya_dazhe_pustymi():
+    """Иначе прыгать с плитки «0 счётчиков» некуда."""
+    with open('miniapp/template.html', encoding='utf-8') as f:
+        html = f.read()
+
+    assert 'function empty(' in html
+    assert 'Счётчики не заведены' in html
+    assert 'Паспорт не заполнен' in html

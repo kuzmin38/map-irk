@@ -96,6 +96,10 @@ a.doc:last-child{border-bottom:none}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .dot.red{background:#C7472F}
 .dot.yellow{background:#E8A33D}
+.kv.tap{cursor:pointer;border-radius:6px;padding:2px 6px;margin:0 -6px}
+.kv.tap:active{background:#EEF3F9}
+.kv.tap .k{color:#2C5D8F}
+.card.flash{outline:2px solid #2C5D8F;outline-offset:2px;transition:outline-color .9s}
 @media(max-width:420px){.grid2{grid-template-columns:1fr}}
 .kv:last-child{border-bottom:none}
 .kv .k{color:var(--dim);font-size:13px}
@@ -272,8 +276,22 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const REQ_STATUS = {new: '🆕 новая', work: '🔧 в работе', done: '✅ выполнена'};
 const WORK_STATUS = {plan: '📋 план', work: '🔧 в работе', done: '✅ сдано'};
 
-function block(title, inner){
-  return `<div class="card"><h2>${title}</h2>${inner}</div>`;
+function block(title, inner, id){
+  return `<div class="card"${id ? ` id="sec-${id}"` : ''}><h2>${title}</h2>${inner}</div>`;
+}
+
+// Плитки сводки — кнопки: с них прыгаем к нужному разделу карточки
+function jump(id){
+  const el = document.getElementById('sec-' + id);
+  if(el){
+    el.scrollIntoView({behavior: 'smooth', block: 'start'});
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 900);
+  }
+}
+
+function empty(text){
+  return `<div class="muted">${text}</div>`;
 }
 
 function renderLive(d){
@@ -283,16 +301,16 @@ function renderLive(d){
   // будто приложение ничего не умеет
   const s = d.summary || {};
   const cells = [
-    ['📋 Заявки', s.requests_open || 0],
-    ['📅 Работы', s.works_open || 0],
-    ['🧮 Счётчики', (s.meters_done || 0) + ' / ' + (s.meters || 0)],
-    ['🔧 Манометры', s.devices || 0],
-    ['🗂 Паспорт', (s.passport || 0) + ' / ' + (s.passport_total || 0)],
-    ['📁 Документы', s.docs || 0],
+    ['📋 Заявки', s.requests_open || 0, 'requests'],
+    ['📅 Работы', s.works_open || 0, 'works'],
+    ['🧮 Счётчики', (s.meters_done || 0) + ' / ' + (s.meters || 0), 'meters'],
+    ['🔧 Манометры', s.devices || 0, 'devices'],
+    ['🗂 Паспорт', (s.passport || 0) + ' / ' + (s.passport_total || 0), 'passport'],
+    ['📁 Документы', s.docs || 0, 'docs'],
   ];
   html += block('📊 Коротко о доме',
-    '<div class="grid2">' + cells.map(([k, v]) =>
-      `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`
+    '<div class="grid2">' + cells.map(([k, v, id]) =>
+      `<div class="kv tap" onclick="jump('${id}')"><span class="k">${k} ›</span><span class="v">${v}</span></div>`
     ).join('') + '</div>' +
     (s.meters && s.meters_done < s.meters
       ? `<div class="muted">Показания за месяц сняты не со всех счётчиков.</div>` : ''));
@@ -311,28 +329,29 @@ function renderLive(d){
   }
 
   const open = d.requests.filter(r => r.status !== 'done');
-  if(open.length){
-    html += block(`📋 Открытые заявки · ${open.length}`, '<div class="list">' +
-      open.map(r => `<div class="rec">
+  html += block(`📋 Открытые заявки · ${open.length}`, open.length
+    ? '<div class="list">' + open.map(r => `<div class="rec">
         <div class="t">${esc(r.description)}</div>
         <div class="s">${REQ_STATUS[r.status] || esc(r.status)} · №${r.id} · ${RU_DATE(r.created_at)}${r.author ? ' · ' + esc(r.author) : ''}</div>
-      </div>`).join('') + '</div>');
-  }
+      </div>`).join('') + '</div>'
+    : empty('Открытых заявок нет. Новую заводят в боте: «Новая заявка».'),
+    'requests');
 
   const works = d.works.filter(w => w.status !== 'done');
-  if(works.length){
-    html += block(`📅 Работы и сроки · ${works.length}`, '<div class="list">' +
+  html += block(`📅 Работы и сроки · ${works.length}`, works.length
+    ? '<div class="list">' +
       works.map(w => {
         const late = w.deadline && w.deadline < TODAY;
         return `<div class="rec${late ? ' late' : ''}">
           <div class="t">${late ? '⚠️ ' : ''}${esc(w.title)}</div>
           <div class="s">${WORK_STATUS[w.status] || esc(w.status)}${w.deadline ? ' · до ' + RU_DATE(w.deadline) : ' · срок не задан'}${w.assignee ? ' · ' + esc(w.assignee) : ''}</div>
         </div>`;
-      }).join('') + '</div>');
-  }
+      }).join('') + '</div>'
+    : empty('Открытых работ нет. Наряд выдают в боте: «Все работы».'),
+    'works');
 
-  if(d.devices.length){
-    html += block(`🔧 Манометры на ТП · ${d.devices.length}`, '<div class="list">' +
+  html += block(`🔧 Манометры на ТП · ${d.devices.length}`, d.devices.length
+    ? '<div class="list">' +
       d.devices.map(m => {
         let mark = '—', tail = 'прибор не заведён';
         if(m.verified_until){
@@ -344,12 +363,14 @@ function renderLive(d){
           <div class="t">${mark} ${esc(m.tp || '')}${m.tp && m.place ? ', ' : ''}${esc(m.place || '')}</div>
           <div class="s">${m.serial ? '№ ' + esc(m.serial) + ' · ' : ''}${tail}</div>
         </div>`;
-      }).join('') + '</div>');
-  }
+      }).join('') + '</div>'
+    : empty('Манометры не заведены. Добавляют в боте: карточка дома → Техника.'),
+    'devices');
 
-  if(d.meters && d.meters.length){
-    html += block(`🧮 Счётчики · ${d.meters.length}`, '<div class="list">' +
-      d.meters.map(m => {
+  const meters = d.meters || [];
+  html += block(`🧮 Счётчики · ${meters.length}`, meters.length
+    ? '<div class="list">' +
+      meters.map(m => {
         const mark = m.done ? '✅' : (m.value === null ? '—' : '⏳');
         const znach = m.value === null ? 'показаний ещё нет'
           : `${m.value} (${m.period}${m.by ? ', ' + esc(m.by) : ''})`;
@@ -357,13 +378,15 @@ function renderLive(d){
           <div class="t">${mark} ${esc(m.label)}</div>
           <div class="s">${esc(m.kind)}${m.serial ? ' · № ' + esc(m.serial) : ' · без номера'} · ${znach}</div>
         </div>`;
-      }).join('') + '</div>');
-  }
+      }).join('') + '</div>'
+    : empty('Счётчики не заведены. Добавляют в боте: «Счётчики» → дом → «Добавить счётчик».'),
+    'meters');
 
-  if(d.passport.length){
-    html += block(`🗂 Паспорт дома · ${d.passport.length} из ${d.passport_total}`,
-      d.passport.map(f => `<div class="kv"><span class="k">${esc(f.label)}</span><span class="v">${esc(f.value)}</span></div>`).join(''));
-  }
+  html += block(`🗂 Паспорт дома · ${d.passport.length} из ${d.passport_total}`,
+    d.passport.length
+      ? d.passport.map(f => `<div class="kv"><span class="k">${esc(f.label)}</span><span class="v">${esc(f.value)}</span></div>`).join('')
+      : empty('Паспорт не заполнен. Заполняют в боте: карточка дома → Техника → Паспорт.'),
+    'passport');
 
   if(d.chat.length){
     html += block('💬 Из рабочего чата', '<div class="list">' +
@@ -373,16 +396,16 @@ function renderLive(d){
       </div>`).join('') + '</div>');
   }
 
-  if(d.docs.length){
-    html += block(`📁 Загруженные документы · ${d.docs.length}`, '<div class="list">' +
-      d.docs.map(f => `<div class="rec">
+  html += block(`📁 Загруженные документы · ${d.docs.length}`, d.docs.length
+    ? '<div class="list">' + d.docs.map(f => `<div class="rec">
         <div class="t">${esc(f.filename || 'файл')}</div>
         ${f.note ? `<div class="s">${esc(f.note)}</div>` : ''}
-      </div>`).join('') + '</div>');
-    html += '<div class="card muted">Сами файлы — в боте: карточка дома → Документы.</div>';
-  }
+      </div>`).join('') + '</div>'
+      + empty('Сами файлы — в боте: карточка дома → Документы.')
+    : empty('Документов нет. Загружают в боте: карточка дома → Документы.'),
+    'docs');
 
-  return html || '<div class="card muted">По этому дому в базе пока ничего нет: ни заявок, ни работ, ни паспорта.</div>';
+  return html;
 }
 
 async function loadLive(id){
