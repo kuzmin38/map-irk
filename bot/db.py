@@ -624,6 +624,16 @@ def set_reading_photo(reading_id, path):
         c.execute('UPDATE readings SET photo = ? WHERE id = ?', (path, reading_id))
 
 
+def delete_reading(reading_id):
+    """Убирает ошибочное показание.
+
+    Одна неверная цифра портит и расход, и выгрузку для сбытовой, а спорить
+    с ней потом некому: в таблице она выглядит как настоящая.
+    """
+    with _conn() as c:
+        c.execute('DELETE FROM readings WHERE id = ?', (reading_id,))
+
+
 def meter_readings(meter_id, limit=8):
     """История показаний счётчика, свежие первыми."""
     with _conn() as c:

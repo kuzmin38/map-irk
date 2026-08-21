@@ -759,6 +759,33 @@ METER_WORDS = {
 
 _READING_RE = re.compile(r'(\d+(?:[.,]\d+)?)')
 
+# Слова, по которым видно, что речь о приборе учёта. Без такого слова
+# сообщение показаниями не считается: «Офис Корал Трэвэл 28 дом. Течь
+# с потолка» Люся разобрала как показание 28 по офисному счётчику —
+# «офис» она принимала за вид прибора сама по себе
+_METER_MARKER = re.compile(
+    r'(?<![а-я])(сч[её]тчик\w*|показани\w*|хвс|гвс|хв|гв|холодн\w*|горяч\w*|'
+    r'тепло\w*|теплосч[её]тчик\w*|гкал|куб\w*|м3|водом[еэ]р\w*|прибор\w*\s+уч[её]та)'
+    r'(?![а-я])', re.IGNORECASE)
+
+
+def _tolko_tsifry_posle_vida(low: str) -> bool:
+    """Похоже ли на строку показаний: «... домовой 1234, офисный 567».
+
+    После первого слова о виде счётчика должны идти только числа и другие
+    такие же слова. Любой связный текст — уже не показания.
+    """
+    vse_slova = [w for words in METER_WORDS.values() for w in words]
+    pervoe = min((low.find(w) for w in vse_slova if re.search(
+        rf'(?<![а-я]){re.escape(w)}(?![а-я])', low)), default=-1)
+    if pervoe < 0:
+        return False
+    hvost = low[pervoe:]
+    for w in sorted(vse_slova, key=len, reverse=True):
+        hvost = re.sub(rf'(?<![а-я]){re.escape(w)}(?![а-я])', ' ', hvost)
+    hvost = re.sub(r'[\d.,;:()\s-]+', '', hvost)
+    return hvost == ''
+
 
 def parse_readings(text: str):
     """Разбирает «Седова 71 хвс 1234, гвс 567» → ('Седова 71', [('hvs', 1234)]).
@@ -771,6 +798,13 @@ def parse_readings(text: str):
     показание 67 спуталось бы с номером дома — а дом Седова 67 существует.
     """
     low = text.lower().replace('ё', 'е')
+    # «Офис» и «домовой» сами по себе про счётчик ничего не говорят: это
+    # уточнение вида. «Офис Корал Трэвэл 28 дом. Течь с потолка» Люся
+    # разобрала как показание 28 по офисному счётчику. Без явного слова
+    # про прибор такое принимается, только если после вида не осталось
+    # ничего, кроме чисел: «Седова 71 домовой 1234» — да, рассказ — нет
+    if not _METER_MARKER.search(text) and not _tolko_tsifry_posle_vida(low):
+        return '', []
     # находим позиции слов вида и чисел, дальше сопоставляем по порядку
     metki = []
     for kind, words in METER_WORDS.items():
@@ -904,6 +938,10 @@ async def handle_readings(event, text: str, uid: int) -> bool:
     """
     if _VOPROS.search(text or ''):
         return False
+    # Заявка — не показания. «Течь с потолка, предположительно канализация
+    # в кв. 3» разбиралось как показание по номеру квартиры
+    if ISSUE_WORDS.search(text or ''):
+        return False
     adres_text, readings = parse_readings(text)
     if not readings:
         return False
@@ -947,6 +985,20 @@ async def handle_readings(event, text: str, uid: int) -> bool:
                                           payload=f"mtback:{m['id']}")))
             return True
         else:
+            proshloe = db.meter_readings(m['id'], limit=1)
+            if proshloe and value < proshloe[0]['value']:
+                # Счётчики назад не крутятся. Значит, либо ошиблись цифрой,
+                # либо это вообще не показание: молча такое писать нельзя
+                kb = InlineKeyboardBuilder()
+                kb.row(CallbackButton(text='✅ Да, записать',
+                                      payload=f"mtyes:{m['id']}:{value:g}"))
+                kb.row(CallbackButton(text='✖️ Нет, это не показание',
+                                      payload=f"mtc:{m['id']}"))
+                await send(event.message,
+                           f"🤔 {h['address']} — {m['label']}: {fmt_value(value)} "
+                           f"меньше прошлого ({fmt_value(proshloe[0]['value'])}). "
+                           'Не записала. Так и было?', kb)
+                continue
             otvety.append(await record_reading(event, m, value, uid))
 
     if otvety:
@@ -3043,6 +3095,33 @@ async def run_action(payload: str, msg, uid: int, event):
         else:
             await send(msg, '🤔 Это подтверждение уже неактуально — пришлите фото заново.')
 
+    elif action == 'mtyes':
+        m = db.get_meter(int(parts[1]))
+        if m:
+            stroka = await record_reading(event, m, float(parts[2]), uid)
+            await send(msg, stroka, InlineKeyboardBuilder().row(
+                CallbackButton(text='📈 История', payload=f"mth:{m['id']}"),
+                CallbackButton(text='🧮 К счётчику', payload=f"mtc:{m['id']}")))
+
+    elif action == 'mtdel':
+        m = db.get_meter(int(parts[1]))
+        rs = db.meter_readings(m['id'], limit=1) if m else []
+        if rs:
+            kb = InlineKeyboardBuilder()
+            kb.row(CallbackButton(text='🗑 Да, удалить',
+                                  payload=f"mtdel2:{m['id']}:{rs[0]['id']}"))
+            kb.row(CallbackButton(text='◀️ Отмена', payload=f"mth:{m['id']}"))
+            await send(msg, f"Удалить последнее показание: {fmt_value(rs[0]['value'])} "
+                            f"({fmt_period(rs[0]['period'])}, {rs[0]['submitted_by_name'] or '—'})?\n"
+                            'Остальные записи останутся.', kb)
+
+    elif action == 'mtdel2':
+        db.delete_reading(int(parts[2]))
+        log.info('Пользователь %s удалил показание %s', uid, parts[2])
+        await send(msg, '🗑 Удалила.', InlineKeyboardBuilder().row(
+            CallbackButton(text='📈 История', payload=f"mth:{parts[1]}"),
+            CallbackButton(text='🧮 К счётчику', payload=f"mtc:{parts[1]}")))
+
     elif action == 'mth':
         m = db.get_meter(int(parts[1]))
         if m:
@@ -3057,8 +3136,13 @@ async def run_action(payload: str, msg, uid: int, event):
                     delta = f' ({r["value"] - rows[i - 1]["value"]:+g})'
                 lines.append(f"• {fmt_period(r['period'])}: {fmt_value(r['value'])}{delta} — {r['submitted_by_name'] or '—'}")
             kb = InlineKeyboardBuilder()
-            kb.row(CallbackButton(text='✍️ Новое показание', payload=f"mtr:{m['id']}"),
-                   CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
+            kb.row(CallbackButton(text='✍️ Новое показание', payload=f"mtr:{m['id']}"))
+            if rs:
+                # Ошибочную запись надо чем-то убирать: одна неверная цифра
+                # портит и расход, и выгрузку для сбытовой
+                kb.row(CallbackButton(text='🗑 Удалить последнее',
+                                      payload=f"mtdel:{m['id']}"))
+            kb.row(CallbackButton(text='🧮 Счётчики дома', payload=f"mt:{m['house_id']}"))
             await send(msg, '\n'.join(lines), kb)
 
     elif action == 'mtpick':
