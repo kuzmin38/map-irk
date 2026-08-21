@@ -858,20 +858,37 @@ def recent_issues(limit=10):
                          'ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
 
 
-def recent_house_of(chat_id, user_id, look_back=5):
+NEARBY_MINUTES = 20      # «рядом» — это соседнее сообщение, а не сегодняшнее
+
+
+def recent_house_of(chat_id, user_id, look_back=3, minutes=NEARBY_MINUTES):
     """Дом, который этот же человек назвал в чате только что.
 
     Адрес часто идёт отдельным сообщением перед роликом: сначала «8/5 Салон
     красоты», потом видео. Для самого видео дома нет, а он рядом — в соседней
     строке того же автора.
+
+    Строго по времени: без ограничения сюда подтягивался адрес, названный
+    несколько часов назад совсем по другому поводу, — и видео с Трилиссера
+    уезжало на 4-ю Советскую.
     """
     with _conn() as c:
-        row = c.execute(
-            'SELECT house_id FROM (SELECT house_id FROM chat_messages '
-            'WHERE chat_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?) '
-            'WHERE house_id IS NOT NULL LIMIT 1',
-            (chat_id, user_id, look_back)).fetchone()
-    return row['house_id'] if row else None
+        rows = c.execute(
+            'SELECT house_id, created_at FROM chat_messages '
+            'WHERE chat_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?',
+            (chat_id, user_id, look_back)).fetchall()
+    porog = datetime.now(IRKUTSK_TZ) - timedelta(minutes=minutes)
+    for row in rows:
+        if row['house_id'] is None:
+            continue
+        try:
+            kogda = datetime.strptime(row['created_at'], '%d.%m.%Y %H:%M')
+        except (TypeError, ValueError):
+            return row['house_id']       # старая запись без разбора времени
+        if kogda.replace(tzinfo=IRKUTSK_TZ) >= porog:
+            return row['house_id']
+        return None                      # ближайший адрес уже несвежий
+    return None
 
 
 def orphan_report(chat_id, limit=5):
