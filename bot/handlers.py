@@ -1561,8 +1561,9 @@ def record_chat_message(event, text: str):
             has_files=files,
             is_issue=bool(text and ISSUE_WORDS.search(text)),
         )
-        if house and text:
-            attach_house_to_report(event, record_id, house, text)
+        if text and not fix_report_house(event, record_id, text):
+            if house:
+                attach_house_to_report(event, record_id, house, text)
         # Голосовые и видеоотчёты расшифровываем фоном, чтобы не тормозить чат
         url = speech_url(body)
         if url:
@@ -1572,6 +1573,52 @@ def record_chat_message(event, text: str):
                 mid=getattr(body, 'mid', None)))
     except Exception:
         log.exception('Не удалось записать сообщение чата')
+
+
+# «Не 28 дом, а 18 б», «это не Седова, а Трилиссера 8/5» — поправка адреса
+_POPRAVKA = re.compile(r'(?<![а-я])не\b.{0,60}?(?<![а-я])а\b(.{2,60})$',
+                       re.IGNORECASE | re.DOTALL)
+
+
+def parse_correction(text: str):
+    """Дом из поправки «не то, а это». None — если это не поправка."""
+    m = _POPRAVKA.search((text or '').strip())
+    if not m:
+        return None
+    return houses.detect_house(m.group(1))
+
+
+def fix_report_house(event, record_id, text: str) -> bool:
+    """Поправка адреса в чате меняет дом у последнего отчёта. True — если поправили.
+
+    Человек пишет «не 28 дом, а 18 б» — и вправе считать, что этого хватило.
+    Раньше Люся отвечала «записала», хотя записать ничего не могла: у неё
+    все инструменты на чтение. Теперь адрес правда меняется, а Люся говорит,
+    что именно и на что.
+    """
+    dom = parse_correction(text)
+    if not dom:
+        return False
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if chat_id is None:
+        return False
+    otchyot = db.last_report_of(chat_id, _uid(event))
+    if not otchyot or otchyot['id'] == record_id or otchyot['house_id'] == dom['id']:
+        return False
+    bylo = houses.HOUSES_BY_ID.get(otchyot['house_id'])
+    db.set_chat_house(otchyot['id'], dom['id'])
+    log.info('Отчёт %s перепривязан: %s → %s', otchyot['id'],
+             bylo['address'] if bylo else '—', dom['address'])
+    otvet = send(event.message,
+                 f"📌 Исправила: тот отчёт теперь {dom['address']}"
+                 + (f" (было {bylo['address']})." if bylo else '.'))
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        otvet.close()
+        return True
+    asyncio.create_task(otvet)
+    return True
 
 
 def attach_house_to_report(event, record_id, house, text: str):

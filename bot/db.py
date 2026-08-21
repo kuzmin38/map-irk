@@ -903,6 +903,27 @@ def orphan_report(chat_id, limit=5):
             'AND has_files = 1 ORDER BY id DESC LIMIT 1', (chat_id,)).fetchone()
 
 
+def last_report_of(chat_id, user_id, hours=6):
+    """Последний отчёт этого человека в этом чате — тот, который поправляют.
+
+    «Не 28 дом, а 18 б» относится к тому, что человек только что прислал,
+    и почти всегда это ролик или голосовое.
+    """
+    with _conn() as c:
+        rows = c.execute(
+            'SELECT * FROM chat_messages WHERE chat_id = ? AND user_id = ? '
+            'AND has_files = 1 ORDER BY id DESC LIMIT 3', (chat_id, user_id)).fetchall()
+    porog = datetime.now(IRKUTSK_TZ) - timedelta(hours=hours)
+    for row in rows:
+        try:
+            kogda = datetime.strptime(row['created_at'], '%d.%m.%Y %H:%M')
+        except (TypeError, ValueError):
+            return row
+        if kogda.replace(tzinfo=IRKUTSK_TZ) >= porog:
+            return row
+    return None
+
+
 def set_chat_house(record_id, house_id):
     """Привязывает сообщение чата к дому."""
     with _conn() as c:
