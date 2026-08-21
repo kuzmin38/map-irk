@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import banter, checks, report, transcribe
+from . import backup, banter, checks, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -1228,6 +1228,7 @@ QUICK_COMMANDS = [
     ('мои', 'Мои работы', 'myw'),
     ('брифинг', 'Брифинг по хозяйству', 'brief'),
     ('справка', 'Справочник и нормативы', 'dir'),
+    ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
 ]
 
 # Те же команды латиницей. В меню они не показываются, но срабатывают:
@@ -1244,6 +1245,7 @@ ALIASES = {
     'мои': ('moi',),
     'брифинг': ('brief',),
     'справка': ('spravka',),
+    'копия': ('kopiya', 'backup'),
 }
 
 
@@ -2989,6 +2991,24 @@ async def run_action(payload: str, msg, uid: int, event):
                          if last else '')
             await send(msg, f"✍️ {h['address'] if h else ''} — {m['label']}.{last_line}\n"
                             'Напишите текущее показание числом (например: 1234,56):')
+
+    elif action == 'kopiya':
+        if _role(uid) not in ('admin', 'engineer'):
+            await send(msg, '🗄 Копию базы отдаю админу и инженеру.')
+            return
+        await send(msg, '🗄 Собираю копию…')
+        try:
+            data, name = await asyncio.to_thread(backup.make_archive)
+            media = await event.bot.upload_media(InputMediaBuffer(
+                buffer=data, filename=name, type=UploadType.FILE))
+            await msg.answer(
+                text='🗄 Готово. Внутри база и папка «Дома» — по заметке на дом '
+                     'в Markdown: паспорт, счётчики, манометры, работы, заявки '
+                     'и что говорили в чате. Папку можно положить в Obsidian.',
+                attachments=[media])
+        except Exception:
+            log.exception('Не удалось собрать резервную копию')
+            await send(msg, '⚠️ Не получилось собрать копию. Смотрю, в чём дело.')
 
     elif action == 'mtxls':
         if _role(uid) not in BRIEFING_ROLES:

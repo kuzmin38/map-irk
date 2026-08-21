@@ -1,11 +1,15 @@
-"""Подключение ИИ через OpenRouter (OpenAI-совместимый API, бесплатная модель).
+"""Подключение ИИ через OpenRouter (OpenAI-совместимый API).
+
+Все модели идут через один ключ и один счёт OpenRouter — и разговорная,
+и та, что расшифровывает голос. Отдельно ничего оплачивать не нужно.
 
 Переменные окружения:
-  OPENROUTER_API_KEY — ключ OpenRouter (тот же, что в вашем телеграм-боте).
-                        Без него ИИ-функции просто отключены, остальное
-                        работает как обычно.
-  OPENROUTER_MODEL    — идентификатор модели (по умолчанию бесплатная
-                        moonshotai/kimi-k2:free).
+  OPENROUTER_API_KEY   — ключ OpenRouter. Без него ИИ-функции отключены,
+                         остальное работает как обычно.
+  OPENROUTER_MODEL     — разговорная модель. По умолчанию gemini-2.5-flash:
+                         на kimi-k2 Люся дописывала в отчёты работы, которых
+                         не было, и хуже держала указания по-русски.
+  OPENROUTER_FALLBACK  — запасная модель на случай, когда основная молчит.
 """
 import asyncio
 import logging
@@ -18,7 +22,10 @@ log = logging.getLogger('ai')
 
 OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 KIMI_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-KIMI_MODEL = os.environ.get('OPENROUTER_MODEL', 'moonshotai/kimi-k2')
+KIMI_MODEL = os.environ.get('OPENROUTER_MODEL', 'google/gemini-2.5-flash')
+# Модель может молчать: перегружен поставщик, упал провайдер. Одна попытка
+# на запасной — дешевле, чем «Люся не ответила»
+FALLBACK_MODEL = os.environ.get('OPENROUTER_FALLBACK', 'moonshotai/kimi-k2')
 
 # Ждать модель полторы минуты нельзя: человек в мессенджере успевает решить,
 # что бот сломался. Лучше честно не ответить, чем молчать.
@@ -38,13 +45,21 @@ def enabled() -> bool:
 
 async def chat(messages: list[dict], tools: list[dict] | None = None,
                max_tokens: int = 900, temperature: float = 0.4) -> dict | None:
-    """Запрос к OpenRouter chat.completions с произвольными messages и,
-    опционально, инструментами. Возвращает message модели (dict, может
-    содержать tool_calls) или None при ошибке/отключённом ИИ."""
+    """Запрос к модели с инструментами. None — если не вышло и с запасной."""
     if not enabled():
         return None
+    message = await _one_call(KIMI_MODEL, messages, tools, max_tokens, temperature)
+    if message is None and FALLBACK_MODEL and FALLBACK_MODEL != KIMI_MODEL:
+        log.warning('Основная модель не ответила — пробую %s', FALLBACK_MODEL)
+        message = await _one_call(FALLBACK_MODEL, messages, tools,
+                                  max_tokens, temperature)
+    return message
+
+
+async def _one_call(model: str, messages: list[dict], tools, max_tokens: int,
+                    temperature: float) -> dict | None:
     payload = {
-        'model': KIMI_MODEL,
+        'model': model,
         'messages': messages,
         'max_tokens': max_tokens,
         'temperature': temperature,
@@ -71,12 +86,12 @@ async def chat(messages: list[dict], tools: list[dict] | None = None,
                     log.error('OpenRouter API %s: %s', resp.status, data)
                     return None
                 # Без этой строки непонятно, кто тормозит: модель или бот
-                log.info('Модель %s ответила за %.1f с', KIMI_MODEL,
+                log.info('Модель %s ответила за %.1f с', model,
                          time.monotonic() - started)
                 return data['choices'][0]['message']
     except asyncio.TimeoutError:
         # Обычное дело для перегруженной модели — трассировка тут только шумит
-        log.warning('Модель %s не ответила за %s с', KIMI_MODEL, REQUEST_TIMEOUT)
+        log.warning('Модель %s не ответила за %s с', model, REQUEST_TIMEOUT)
         return None
     except Exception:
         log.exception('Ошибка запроса к OpenRouter')
