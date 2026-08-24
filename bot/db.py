@@ -155,6 +155,18 @@ def _create_all(c):
         transcript TEXT,
         created_at TEXT NOT NULL)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_chat_house ON chat_messages(house_id)')
+    # Напоминания по просьбе: «напомни завтра в 9 про опрессовку»
+    c.execute('''CREATE TABLE IF NOT EXISTS reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id INTEGER,
+        user_id INTEGER NOT NULL,
+        user_name TEXT,
+        text TEXT NOT NULL,
+        due_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        sent_at TEXT,
+        cancelled INTEGER NOT NULL DEFAULT 0)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_rem_due ON reminders(due_at)')
     # Настройки конкретного чата: пока одна — болтает Люся там или молчит
     c.execute('''CREATE TABLE IF NOT EXISTS chat_settings (
         chat_id INTEGER PRIMARY KEY,
@@ -802,6 +814,57 @@ def recent_chat_records(limit=15):
     with _conn() as c:
         return c.execute('SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?',
                          (limit,)).fetchall()
+
+
+def add_reminder(user_id, user_name, text, due_at, chat_id=None) -> int:
+    """Напоминание по просьбе человека. due_at — «ДД.ММ.ГГГГ ЧЧ:ММ»."""
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO reminders (chat_id, user_id, user_name, text, due_at, '
+            'created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            (chat_id, user_id, user_name, text, due_at, now()))
+        return cur.lastrowid
+
+
+def due_reminders(limit=20):
+    """Напоминания, чей срок настал и которые ещё не отправлены."""
+    seychas = datetime.now(IRKUTSK_TZ)
+    with _conn() as c:
+        rows = c.execute(
+            'SELECT * FROM reminders WHERE sent_at IS NULL AND cancelled = 0 '
+            'ORDER BY id LIMIT 200').fetchall()
+    pora = []
+    for r in rows:
+        try:
+            srok = datetime.strptime(r['due_at'], '%d.%m.%Y %H:%M')
+        except (TypeError, ValueError):
+            continue
+        if srok.replace(tzinfo=IRKUTSK_TZ) <= seychas:
+            pora.append(r)
+    return pora[:limit]
+
+
+def mark_reminder_sent(reminder_id):
+    with _conn() as c:
+        c.execute('UPDATE reminders SET sent_at = ? WHERE id = ?', (now(), reminder_id))
+
+
+def cancel_reminder(reminder_id):
+    with _conn() as c:
+        c.execute('UPDATE reminders SET cancelled = 1 WHERE id = ?', (reminder_id,))
+
+
+def list_reminders(user_id=None, limit=20):
+    """Что ещё не сработало — свежие сверху."""
+    q = ('SELECT * FROM reminders WHERE sent_at IS NULL AND cancelled = 0')
+    args = []
+    if user_id is not None:
+        q += ' AND user_id = ?'
+        args.append(user_id)
+    q += ' ORDER BY due_at LIMIT ?'
+    args.append(limit)
+    with _conn() as c:
+        return c.execute(q, args).fetchall()
 
 
 def set_banter(chat_id, on: bool):

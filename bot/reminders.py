@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import date, datetime, timedelta
 
-from . import db, houses
+from . import db, houses, remind
 
 log = logging.getLogger('reminders')
 
@@ -98,6 +98,41 @@ async def _check_verifications(bot, today: date):
 
     for dev in zaranee + prosrocheno:
         db.update_device(dev['id'], last_reminded=today.isoformat())
+
+
+async def _send_asked(bot):
+    """Напоминания, о которых просили люди: «напомни завтра в 9 про опрессовку».
+
+    Пишем туда же, где просили: попросили в рабочем чате — напомним в чат,
+    в личке — в личку. Иначе напоминание находит не тех.
+    """
+    for r in db.due_reminders():
+        text = (f"⏰ {r['user_name'] or 'Просили'} напомнить: {r['text']}"
+                if r['chat_id'] else f"⏰ Напоминаю: {r['text']}")
+        try:
+            if r['chat_id']:
+                await bot.send_message(chat_id=r['chat_id'], text=text)
+            else:
+                await bot.send_message(user_id=r['user_id'], text=text)
+        except Exception:
+            log.warning('Не доставлено напоминание %s', r['id'], exc_info=True)
+            continue
+        db.mark_reminder_sent(r['id'])
+        log.info('Напоминание %s отправлено: %.50s', r['id'], r['text'])
+
+
+async def asked_loop(bot):
+    """Отдельный цикл: просьбы проверяем каждую минуту, а не раз в полчаса.
+
+    «Напомни через 20 минут перекрыть стояк» с получасовым шагом — это уже
+    не напоминание.
+    """
+    while True:
+        try:
+            await _send_asked(bot)
+        except Exception:
+            log.exception('Сбой в цикле напоминаний по просьбе')
+        await asyncio.sleep(60)
 
 
 async def reminder_loop(bot):

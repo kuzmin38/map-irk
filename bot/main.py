@@ -20,7 +20,7 @@ from maxapi.types import BotCommand
 
 from . import backup, db, handlers, status
 from .handlers import dp
-from .reminders import reminder_loop
+from .reminders import asked_loop, reminder_loop
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -170,6 +170,7 @@ async def main():
     watch_updates(bot)
     asyncio.create_task(reminder_loop(bot))       # напоминания о сроках
     asyncio.create_task(heartbeat())              # видно, что опрос жив
+    asyncio.create_task(asked_loop(bot))          # «напомни завтра в 9…»
     asyncio.create_task(backup.backup_loop(bot))  # ночная резервная копия
 
     # Мини-приложение отдаём сами, GitHub Pages не нужен. Railway обычно задаёт

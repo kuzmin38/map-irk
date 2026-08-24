@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import backup, banter, checks, report, transcribe
+from . import backup, banter, checks, remind, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -1228,6 +1228,7 @@ QUICK_COMMANDS = [
     ('мои', 'Мои работы', 'myw'),
     ('брифинг', 'Брифинг по хозяйству', 'brief'),
     ('справка', 'Справочник и нормативы', 'dir'),
+    ('напоминания', 'Что Люся должна напомнить', 'rem'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
 ]
 
@@ -1245,6 +1246,7 @@ ALIASES = {
     'мои': ('moi',),
     'брифинг': ('brief',),
     'справка': ('spravka',),
+    'напоминания': ('napominaniya',),
     'копия': ('kopiya', 'backup'),
 }
 
@@ -1650,6 +1652,47 @@ def attach_house_to_report(event, record_id, house, text: str):
     asyncio.create_task(otvet)
 
 
+async def handle_reminder(event, text: str, uid: int) -> bool:
+    """«Напомни завтра в 9 про опрессовку» — ставит напоминание. True, если взяла.
+
+    Разбираем кодом, а не моделью: время — то место, где догадка недопустима.
+    И записываем по-настоящему. Раньше на такую просьбу Люся отвечала что-то
+    вежливое, а назавтра молчала: механизма напоминаний по просьбе не было.
+    """
+    from datetime import datetime
+
+    razobrano = remind.parse_reminder(text, datetime.now(db.IRKUTSK_TZ))
+    if not razobrano:
+        # Слово «напомни» есть, а срока нет — переспросим, но не промолчим
+        if remind.TRIGGER.search(text or ''):
+            await send(event.message,
+                       '⏰ Скажите когда — «завтра в 9», «в понедельник», '
+                       '«через 2 часа», «25 августа». Например:\n'
+                       '«напомни завтра в 8 про опрессовку на Седова 71».')
+            return True
+        return False
+
+    when, o_chyom = razobrano
+    seychas = datetime.now(db.IRKUTSK_TZ)
+    if when <= seychas:
+        await send(event.message,
+                   f'⏰ {remind.fmt_when(when, seychas).capitalize()} — это уже прошло. '
+                   'Скажите другое время.')
+        return True
+    if not o_chyom:
+        await send(event.message, '⏰ О чём напомнить? Допишите одной фразой.')
+        return True
+
+    chat_id = _chat_id(event)
+    db.add_reminder(uid, _uname(event), o_chyom,
+                    when.strftime('%d.%m.%Y %H:%M'), chat_id=chat_id)
+    kuda = 'сюда, в чат' if chat_id else 'вам в личку'
+    await send(event.message,
+               f'⏰ Поставила на {remind.fmt_when(when, seychas)}: {o_chyom}.\n'
+               f'Напишу {kuda}. Посмотреть и отменить — /напоминания.')
+    return True
+
+
 async def maybe_banter(event, text: str):
     """Живая реплика в чат — если есть повод и давно не было.
 
@@ -1817,6 +1860,9 @@ async def on_text(event: MessageCreated):
             await maybe_banter(event, text)
             return
         db.upsert_user(uid, _uname(event))
+        # Напоминание ставится кодом, а не моделью: обещать и не сделать нельзя
+        if await handle_reminder(event, text, uid):
+            return
         # Отвечают на её сообщение — она должна понимать, на какое именно
         vopros = text
         if otvet_ey:
@@ -2183,6 +2229,9 @@ async def on_text(event: MessageCreated):
                        f'🤔 По адресу {addr} есть таблица стояков, но квартиры {flat_q} в ней нет.\n'
                        f'Здесь квартиры с {min(allf)} по {max(allf)}.')
             return
+
+    if await handle_reminder(event, text, uid):
+        return
 
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
@@ -2991,6 +3040,38 @@ async def run_action(payload: str, msg, uid: int, event):
                          if last else '')
             await send(msg, f"✍️ {h['address'] if h else ''} — {m['label']}.{last_line}\n"
                             'Напишите текущее показание числом (например: 1234,56):')
+
+    elif action == 'rem':
+        moi = db.list_reminders(uid)
+        if not moi:
+            await send(msg, '⏰ Напоминаний нет.\n\n'
+                            'Поставить: напишите «напомни завтра в 8 про опрессовку» — '
+                            'здесь или в рабочем чате. В чате напомню там же, всем.',
+                       main_menu_kb())
+            return
+        from datetime import datetime
+        seychas = datetime.now(db.IRKUTSK_TZ)
+        lines = ['⏰ Напоминания:', '']
+        kb = InlineKeyboardBuilder()
+        for r in moi:
+            try:
+                when = datetime.strptime(r['due_at'], '%d.%m.%Y %H:%M').replace(
+                    tzinfo=db.IRKUTSK_TZ)
+                kogda = remind.fmt_when(when, seychas)
+            except ValueError:
+                kogda = r['due_at']
+            gde = ' (в чат)' if r['chat_id'] else ''
+            lines.append(f"• {kogda}{gde} — {r['text']}")
+            kb.row(CallbackButton(text=f"✖️ {r['text'][:30]}",
+                                  payload=f"remx:{r['id']}"))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'remx':
+        db.cancel_reminder(int(parts[1]))
+        await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
+            CallbackButton(text='⏰ Напоминания', payload='rem'),
+            CallbackButton(text='🏠 Меню', payload='menu')))
 
     elif action == 'kopiya':
         if _role(uid) not in ('admin', 'engineer'):
