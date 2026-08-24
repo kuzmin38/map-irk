@@ -171,7 +171,7 @@ async def test_napominanie_prihodit_v_tot_zhe_chat():
 
     assert poslano[0][0] == 7, 'в чат, а не в личку'
     assert 'работы на Седова 71' in poslano[0][2]
-    assert 'Андрей' in poslano[0][2], 'видно, кто просил'
+    assert 'Андрей' not in poslano[0][2], 'кто просил — не афишируем'
 
 
 async def test_odno_napominanie_odin_raz():
