@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import backup, banter, checks, mat, remind, report, transcribe
+from . import backup, banter, checks, mat, plan, remind, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -769,6 +769,18 @@ _METER_MARKER = re.compile(
     r'(?![а-я])', re.IGNORECASE)
 
 
+def _ryadom(mezhdu: str) -> bool:
+    """Стоит ли число вплотную к слову о счётчике.
+
+    «Ремонт насоса ГВС. 14, 65/4, 22 дом» — это план работ, а не показание
+    14 по ГВС: число в другом предложении и относится к домам. Показание
+    пишут рядом с прибором: «хвс 1234», «гвс — 567».
+    """
+    if re.search(r'[.!?;\n]', mezhdu):
+        return False            # разные предложения — разные вещи
+    return len(mezhdu.split()) <= 2
+
+
 def _tolko_tsifry_posle_vida(low: str) -> bool:
     """Похоже ли на строку показаний: «... домовой 1234, офисный 567».
 
@@ -810,20 +822,21 @@ def parse_readings(text: str):
     for kind, words in METER_WORDS.items():
         for w in words:
             for m in re.finditer(rf'(?<![а-я]){re.escape(w)}(?![а-я])', low):
-                metki.append((m.start(), 'kind', kind))
+                metki.append((m.start(), m.end(), 'kind', kind))
     for m in _READING_RE.finditer(low):
-        metki.append((m.start(), 'value', m.group(1)))
+        metki.append((m.start(), m.end(), 'value', m.group(1)))
     metki.sort()
 
-    result, ozhidaet = [], None
-    for _, tip, val in metki:
+    result, ozhidaet, konets = [], None, 0
+    for nachalo, kon, tip, val in metki:
         if tip == 'kind':
-            ozhidaet = val
+            ozhidaet, konets = val, kon
         elif ozhidaet is not None:
-            result.append((ozhidaet, float(val.replace(',', '.'))))
+            if _ryadom(low[konets:nachalo]):
+                result.append((ozhidaet, float(val.replace(',', '.'))))
             ozhidaet = None
 
-    pervoe = next((pos for pos, tip, _ in metki if tip == 'kind'), None)
+    pervoe = next((pos for pos, _, tip, _ in metki if tip == 'kind'), None)
     adres = text[:pervoe].strip(' ,;.—-') if pervoe is not None else ''
     return adres, result
 
@@ -1665,6 +1678,51 @@ def attach_house_to_report(event, record_id, house, text: str):
     asyncio.create_task(otvet)
 
 
+# «сохрани», «запиши», «занеси» — просьба сохранить присланный список
+SAVE_TRIGGER = re.compile(
+    r'(?<![а-я])(сохран(и|ите|ить)|запиши|запишите|записать|занеси|занесите|'
+    r'внеси|внесите)(?![а-я])', re.IGNORECASE)
+
+
+async def handle_save_plan(event, text: str, uid: int) -> bool:
+    """«Люся, это план работ. Сохрани» — раскладывает список по домам в работы.
+
+    Сама запись — после подтверждения человеком. Модель может слепить два
+    пункта в один или потерять адрес, и увидеть это надо до того, как в
+    работах появятся неверные задачи.
+    """
+    if not SAVE_TRIGGER.search(text or ''):
+        return False
+    # Сохраняем то, на что ответили: сам план прислал мастер, а просьба
+    # приходит ответом на его сообщение
+    plan_text = quoted_text(event)
+    if not plan_text:
+        return False
+    if not plan.looks_like_plan(plan_text):
+        return False
+
+    await send(event.message, '📋 Разбираю список…')
+    punkty = await plan.parse_plan(plan_text)
+    if not punkty:
+        await send(event.message,
+                   '🤔 Не смогла разложить это на работы. Пришлите списком: '
+                   'адрес — что сделать, по строке на пункт.')
+        return True
+
+    STATE[uid] = {'mode': 'plan_confirm', 'punkty': punkty}
+    izvestnye = sum(1 for p in punkty if p['house'])
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text=f'✅ Записать в работы ({izvestnye})',
+                          payload='plansave'))
+    kb.row(CallbackButton(text='✖️ Не надо', payload='plancancel'))
+    hvost = ('' if izvestnye == len(punkty) else
+             '\n\n⚠️ Пункты без дома не запишу — допишите адрес и пришлите заново.')
+    await send(event.message,
+               f'📋 Разобрала {len(punkty)} пунктов:\n\n'
+               + plan.preview(punkty) + hvost, kb)
+    return True
+
+
 async def handle_reminder(event, text: str, uid: int) -> bool:
     """«Напомни завтра в 9 про опрессовку» — ставит напоминание. True, если взяла.
 
@@ -1873,7 +1931,10 @@ async def on_text(event: MessageCreated):
             await maybe_banter(event, text)
             return
         db.upsert_user(uid, _uname(event))
-        # Напоминание ставится кодом, а не моделью: обещать и не сделать нельзя
+        # Сохранить присланный план и поставить напоминание Люся должна
+        # по-настоящему, а не ответить что-то вежливое
+        if await handle_save_plan(event, text, uid):
+            return
         if await handle_reminder(event, text, uid):
             return
         # Отвечают на её сообщение — она должна понимать, на какое именно
@@ -3085,6 +3146,27 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action == 'plansave':
+        state = STATE.pop(uid, None)
+        if not state or state.get('mode') != 'plan_confirm':
+            await send(msg, '🤔 Список уже неактуален. Пришлите заново.')
+            return
+        zapisano = []
+        for p in state['punkty']:
+            if not p['house']:
+                continue
+            db.add_work(p['house']['id'], p['work'], None, _uname_cb(event), uid)
+            zapisano.append(f"• {p['house']['address']} — {p['work']}")
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📅 Все работы', payload='wl'))
+        await send(msg, f'✅ Записала в работы ({len(zapisano)}):\n'
+                        + '\n'.join(zapisano)
+                        + '\n\nСроки и исполнителей проставьте в «Все работы».', kb)
+
+    elif action == 'plancancel':
+        STATE.pop(uid, None)
+        await send(msg, '✖️ Не записала.')
 
     elif action == 'kopiya':
         if _role(uid) not in ('admin', 'engineer'):

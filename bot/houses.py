@@ -327,7 +327,21 @@ def _by_unique_number(so_slovom: str, t: str):
                      if _split_addr(_norm(h['address']))[1] == kandidat]
         if len(podhodyat) == 1:
             return podhodyat[0]
+    # Букву корпуса в разговоре опускают: «65/2» — это «Седова 65а/2»,
+    # «восемнадцатый» — «Трилиссера 18б». Пробуем без буквы, но по-прежнему
+    # только если такой дом один
+    for kandidat in kandidaty:
+        svobodno = _bez_bukvy(kandidat)
+        podhodyat = [h for h in HOUSES
+                     if _bez_bukvy(_split_addr(_norm(h['address']))[1]) == svobodno]
+        if len(podhodyat) == 1:
+            return podhodyat[0]
     return None
+
+
+def _bez_bukvy(num: str) -> str:
+    """«65а/2» → «65/2», «18б» → «18»: буква корпуса в речи часто опускается."""
+    return re.sub(r'^(\d+)[а-я](?=/|$)', r'\1', num)
 
 
 def map_links(h) -> str:
