@@ -202,3 +202,89 @@ def test_bez_bukvy_ischem_tolko_kogda_dom_odin():
     """Послабление не должно превращаться в угадывание."""
     assert houses.detect_house('привезли 8 задвижек') is None
     assert houses.detect_house('поставили 2/3 задвижек') is None
+
+
+# ---------- Выбор пунктов ----------
+
+@pytest.mark.parametrize('fraza, ozhidaem', [
+    ('Первые 4 пункта сохрани', {0, 1, 2, 3}),      # как написал заказчик
+    ('первые четыре', {0, 1, 2, 3}),
+    ('1-4', {0, 1, 2, 3}),
+    ('1,3,5', {0, 2, 4}),
+    ('с 2 по 6', {1, 2, 3, 4, 5}),
+    ('кроме 5', {0, 1, 2, 3, 5, 6}),
+    ('последние 2', {5, 6}),
+    ('все', {0, 1, 2, 3, 4, 5, 6}),
+])
+def test_vybor_slovami(fraza, ozhidaem):
+    from bot import plan as P
+
+    assert P.parse_choice(fraza, 7) == ozhidaem
+
+
+@pytest.mark.parametrize('ne_vybor', [
+    'поеду в 14 на объект',
+    'да ладно',
+    'Сохрани',
+    '',
+])
+def test_obychnaya_rech_vyborom_ne_schitaetsya(ne_vybor):
+    from bot import plan as P
+
+    assert P.parse_choice(ne_vybor, 7) is None
+
+
+@pytest.fixture
+async def razobrano(razbor):
+    """Список из двух пунктов уже показан и ждёт подтверждения."""
+    e = event('Сохрани', PLAN)
+    await H.handle_save_plan(e, 'Сохрани', 100)
+    return e
+
+
+async def test_po_umolchaniyu_otmecheno_vsyo_s_domom(razobrano):
+    assert H.STATE[100]['vybrano'] == {0, 1}
+
+
+async def test_vybor_slovami_menyaet_otmetki(razobrano):
+    e = event('первый пункт сохрани')
+
+    vzyala = await H.handle_plan_choice(e, 'первый пункт сохрани', 100)
+
+    assert vzyala is True
+    assert H.STATE[100]['vybrano'] == {0}
+
+
+async def test_zapisyvaem_tolko_otmechennoe(razobrano):
+    await H.handle_plan_choice(event('1'), '1', 100)
+
+    c = event('')
+    await H.run_action('plansave', c.message, 100, c)
+
+    raboty = db.list_works(open_only=False)
+    assert len(raboty) == 1
+    assert raboty[0]['title'] == 'Ремонт теплообменника отопления'
+
+
+async def test_galochka_snimaetsya_knopkoy(razobrano):
+    c = event('')
+    await H.run_action('plantog:1', c.message, 100, c)
+
+    assert H.STATE[100]['vybrano'] == {0}
+
+
+async def test_snyat_vsyo_i_zapisat_nechego(razobrano):
+    c = event('')
+    await H.run_action('plannone', c.message, 100, c)
+    await H.run_action('plansave', c.message, 100, c)
+
+    assert db.list_works(open_only=False) == []
+    assert 'Ничего не отмечено' in c.message.sent[-1]
+
+
+async def test_otvet_na_svoy_razbor_ne_razbiraetsya_zanovo(razbor, monkeypatch):
+    """Люся не должна принимать собственный список за новый план."""
+    monkeypatch.setitem(H.BOT_ME, 'user_id', 555)
+    e = event('Первые 4 пункта сохрани', '📋 Разобрала 7 пунктов: 1. Седова 65а/2 — Ремонт')
+
+    assert await H.handle_save_plan(e, 'Первые 4 пункта сохрани', 100) is False

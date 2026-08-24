@@ -87,3 +87,77 @@ def preview(punkty: list) -> str:
             nazvan = f" ({p['address']})" if p['address'] else ''
             lines.append(f"{i}. ⚠️ дом не опознан{nazvan} — {p['work']}")
     return '\n'.join(lines)
+
+
+# ---------- Выбор пунктов ----------
+
+CHOICE = re.compile(r'^[\s,;и0-9первыхйедпоследнбкромевсёе.\-–—]+$', re.IGNORECASE)
+
+
+def parse_choice(text: str, vsego: int) -> set | None:
+    """Какие пункты выбрал человек. Индексы с нуля, None — не про выбор.
+
+    «Первые 4 пункта сохрани», «1-4», «1,3,5», «все», «кроме 5». Заказчик
+    написал «первые 4» — и это самый естественный способ, а Люся его не
+    поняла и попыталась разобрать свой же список заново.
+    """
+    if not text or vsego <= 0:
+        return None
+    low = text.lower().replace('ё', 'е').strip()
+
+    m = re.search(r'(?<![а-я])(перв\w+|последн\w+)\s+(\d+|\w+)', low)
+    if m:
+        n = _chislo(m.group(2))
+        if n:
+            n = min(n, vsego)
+            return set(range(n)) if m.group(1).startswith('перв') else \
+                set(range(vsego - n, vsego))
+
+    # «второй пункт», «третий пункт сохрани» — один пункт по порядку
+    m = re.search(r'(?<![а-я])(' + '|'.join(PORYADOK) + r')\w*\s+пункт', low)
+    if m:
+        return {PORYADOK[m.group(1)] - 1}
+
+    krome = re.search(r'(?<![а-я])(кроме|без)\s+([\d\s,;и-]+)', low)
+    if krome:
+        ubrat = _nomera(krome.group(2), vsego)
+        if ubrat:
+            return set(range(vsego)) - ubrat
+
+    if re.fullmatch(r'(все|всё|все\s+пункты|целиком)[.!]?', low):
+        return set(range(vsego))
+
+    nomera = _nomera(low, vsego)
+    # Одинокое число в свободной фразе за выбор не считаем: «сохрани 1»
+    # понятно, а «поеду в 14» — нет
+    if nomera and (re.search(r'(пункт|сохран|запиш|занес|только|с\s*\d+\s*по)', low)
+                   or CHOICE.fullmatch(low)):
+        return nomera
+    return None
+
+
+# Порядковые словом: «второй пункт». Основы, чтобы падеж не мешал
+PORYADOK = {'перв': 1, 'втор': 2, 'трет': 3, 'четверт': 4, 'пят': 5,
+            'шест': 6, 'седьм': 7, 'восьм': 8, 'девят': 9, 'десят': 10}
+
+SLOVA = {'один': 1, 'два': 2, 'две': 2, 'три': 3, 'четыре': 4, 'пять': 5,
+         'шесть': 6, 'семь': 7, 'восемь': 8, 'девять': 9, 'десять': 10}
+
+
+def _chislo(s: str):
+    if s.isdigit():
+        return int(s)
+    return SLOVA.get(s)
+
+
+def _nomera(text: str, vsego: int) -> set:
+    """Номера и диапазоны: «1-4», «1,3,5», «с 2 по 6»."""
+    out = set()
+    for a, b in re.findall(r'(\d+)\s*(?:[-–—]|по)\s*(\d+)', text):
+        out |= {i for i in range(int(a) - 1, int(b)) if 0 <= i < vsego}
+    bez_diapazonov = re.sub(r'\d+\s*(?:[-–—]|по)\s*\d+', ' ', text)
+    for n in re.findall(r'\d+', bez_diapazonov):
+        i = int(n) - 1
+        if 0 <= i < vsego:
+            out.add(i)
+    return out

@@ -1706,6 +1706,34 @@ SAVE_TRIGGER = re.compile(
     r'внеси|внесите)(?![а-я])', re.IGNORECASE)
 
 
+async def show_plan_screen(msg, punkty: list, vybrano: set):
+    """Перерисовывает список на месте, чтобы чат не заваливало копиями."""
+    text_ekrana, kb = plan_screen(punkty, vybrano)
+    try:
+        await msg.edit(text=text_ekrana, attachments=[kb.as_markup()])
+    except Exception:
+        log.warning('Не вышло обновить список — отправляю заново', exc_info=True)
+        await send(msg, text_ekrana, kb)
+
+
+async def handle_plan_choice(event, text: str, uid: int) -> bool:
+    """«Первые 4 пункта сохрани» — выбор словами, а не только галочками.
+
+    Так написал заказчик, и это самый естественный способ. Раньше Люся не
+    понимала и пыталась разобрать свой же список заново.
+    """
+    state = STATE.get(uid)
+    if not state or state.get('mode') != 'plan_confirm':
+        return False
+    vybor = plan.parse_choice(text, len(state['punkty']))
+    if vybor is None:
+        return False
+    # Пункты без дома записать нельзя, как их ни выбирай
+    state['vybrano'] = {i for i in vybor if state['punkty'][i]['house']}
+    await show_plan_screen(event.message, state['punkty'], state['vybrano'])
+    return True
+
+
 async def resume_passport_house(event, text: str, uid: int) -> bool:
     """Ответ на вопрос «по какому дому записать». True — если разобрались.
 
@@ -1793,6 +1821,8 @@ async def handle_save_plan(event, text: str, uid: int) -> bool:
     plan_text = quoted_text(event)
     if not plan_text:
         return False
+    if quoted_is_mine(event):
+        return False        # это ответ на её же разбор, а не новый план
     if not plan.looks_like_plan(plan_text):
         return False
 
@@ -1804,18 +1834,40 @@ async def handle_save_plan(event, text: str, uid: int) -> bool:
                    'адрес — что сделать, по строке на пункт.')
         return True
 
-    STATE[uid] = {'mode': 'plan_confirm', 'punkty': punkty}
-    izvestnye = sum(1 for p in punkty if p['house'])
-    kb = InlineKeyboardBuilder()
-    kb.row(CallbackButton(text=f'✅ Записать в работы ({izvestnye})',
-                          payload='plansave'))
-    kb.row(CallbackButton(text='✖️ Не надо', payload='plancancel'))
-    hvost = ('' if izvestnye == len(punkty) else
-             '\n\n⚠️ Пункты без дома не запишу — допишите адрес и пришлите заново.')
-    await send(event.message,
-               f'📋 Разобрала {len(punkty)} пунктов:\n\n'
-               + plan.preview(punkty) + hvost, kb)
+    # По умолчанию отмечено всё, что удалось привязать к дому
+    vybrano = {i for i, p in enumerate(punkty) if p['house']}
+    STATE[uid] = {'mode': 'plan_confirm', 'punkty': punkty, 'vybrano': vybrano}
+    text_ekrana, kb = plan_screen(punkty, vybrano)
+    await send(event.message, text_ekrana, kb)
     return True
+
+
+def plan_screen(punkty: list, vybrano: set):
+    """Список пунктов с галочками: что записывать, человек решает сам.
+
+    Модель раскладывает как умеет, и часть пунктов почти всегда лишняя —
+    «гидравлика держит» работой не является. Поэтому каждый пункт можно
+    снять нажатием, а не переписывать весь список заново.
+    """
+    lines = [f'📋 Разобрала {len(punkty)} пунктов. Отметьте, что записать:', '']
+    kb = InlineKeyboardBuilder()
+    for i, p in enumerate(punkty):
+        galka = '☑️' if i in vybrano else '⬜️'
+        if p['house']:
+            lines.append(f"{galka} {i + 1}. {p['house']['address']} — {p['work']}")
+            kb.row(CallbackButton(text=f"{galka} {i + 1}. {p['work'][:30]}",
+                                  payload=f'plantog:{i}'))
+        else:
+            nazvan = f" ({p['address']})" if p['address'] else ''
+            lines.append(f"⚠️ {i + 1}. дом не опознан{nazvan} — {p['work']}")
+    lines.append('')
+    lines.append('Можно и словами: «первые 4», «1-4», «кроме 5», «все».')
+    kb.row(CallbackButton(text=f'✅ Записать отмеченные ({len(vybrano)})',
+                          payload='plansave'))
+    kb.row(CallbackButton(text='☑️ Все', payload='planall'),
+           CallbackButton(text='⬜️ Снять', payload='plannone'))
+    kb.row(CallbackButton(text='✖️ Отмена', payload='plancancel'))
+    return '\n'.join(lines), kb
 
 
 async def handle_reminder(event, text: str, uid: int) -> bool:
@@ -1903,6 +1955,19 @@ def replied_to_me(event) -> bool:
     # Отправителя MAX иногда не присылает: тогда судим по тому, что ответили
     # на сообщение с нашей разметкой — но лучше ответить лишний раз, чем молча
     return me is None or sender_id is None or sender_id == me
+
+
+def quoted_is_mine(event) -> bool:
+    """Точно ли процитировано сообщение самой Люси.
+
+    Отличается от replied_to_me: там при неизвестном отправителе лучше
+    ответить лишний раз, а здесь наоборот — сомневаешься, значит чужое.
+    Иначе она начнёт разбирать собственные разборы.
+    """
+    me = BOT_ME.get('user_id')
+    link = getattr(event.message, 'link', None)
+    sender_id = getattr(getattr(link, 'sender', None), 'user_id', None)
+    return bool(me) and sender_id == me
 
 
 def quoted_text(event) -> str:
@@ -2016,6 +2081,8 @@ async def on_text(event: MessageCreated):
                  getattr(event.message.recipient, 'chat_id', '?'), text)
         record_chat_message(event, text)
         # Люся спросила адрес — ответ придёт сюда же, обычным сообщением
+        if await handle_plan_choice(event, text, uid):
+            return
         if await resume_passport_house(event, text, uid):
             return
         # Показания, присланные в чат, попадают в учёт наравне с личкой:
@@ -2147,6 +2214,9 @@ async def on_text(event: MessageCreated):
         STATE.pop(uid, None)
         r = db.get_request(req_id)
         await send(event.message, '✅ Записала заявку!\n\n' + request_card_text(r), request_card_kb(r))
+        return
+
+    if await handle_plan_choice(event, text, uid):
         return
 
     if await resume_passport_house(event, text, uid):
@@ -3279,17 +3349,38 @@ async def run_action(payload: str, msg, uid: int, event):
                CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
 
+    elif action in ('plantog', 'planall', 'plannone'):
+        state = STATE.get(uid)
+        if not state or state.get('mode') != 'plan_confirm':
+            await send(msg, '🤔 Список уже неактуален. Пришлите заново.')
+            return
+        punkty, vybrano = state['punkty'], state['vybrano']
+        if action == 'plantog':
+            i = int(parts[1])
+            if punkty[i]['house']:
+                vybrano.symmetric_difference_update({i})
+        elif action == 'planall':
+            vybrano.clear()
+            vybrano.update(i for i, p in enumerate(punkty) if p['house'])
+        else:
+            vybrano.clear()
+        await show_plan_screen(msg, punkty, vybrano)
+
     elif action == 'plansave':
         state = STATE.pop(uid, None)
         if not state or state.get('mode') != 'plan_confirm':
             await send(msg, '🤔 Список уже неактуален. Пришлите заново.')
             return
+        vybrano = state.get('vybrano', set())
         zapisano = []
-        for p in state['punkty']:
-            if not p['house']:
+        for i, p in enumerate(state['punkty']):
+            if not p['house'] or i not in vybrano:
                 continue
             db.add_work(p['house']['id'], p['work'], None, _uname_cb(event), uid)
             zapisano.append(f"• {p['house']['address']} — {p['work']}")
+        if not zapisano:
+            await send(msg, '⬜️ Ничего не отмечено — записывать нечего.')
+            return
         kb = InlineKeyboardBuilder()
         kb.row(CallbackButton(text='📅 Все работы', payload='wl'))
         await send(msg, f'✅ Записала в работы ({len(zapisano)}):\n'
