@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import backup, banter, checks, mat, plan, remind, report, transcribe
+from . import backup, banter, checks, mat, passport, plan, remind, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -355,9 +355,29 @@ def passport_text(h) -> str:
             lines.append(f'▫️ {label}: —')
     lines.append('')
     lines += equipment_lines(h)
+    lines += works_lines(h)
     lines.append(f'Заполнено: {filled}/{len(PASSPORT_FIELDS)}. '
                  'Нажмите «Редактировать», чтобы дополнить.')
     return '\n'.join(lines)
+
+
+def works_lines(h) -> list:
+    """Плановые работы по дому — часть паспорта, а не отдельный список.
+
+    Паспорт для того и нужен, чтобы всё про дом было в одном месте: что
+    стоит, что с ним делали и что запланировано.
+    """
+    raboty = db.list_works(house_id=h['id'], open_only=True, limit=15)
+    if not raboty:
+        return ['📅 Плановых работ нет.', '']
+    lines = [f'📅 ПЛАНОВЫЕ РАБОТЫ ({len(raboty)}):']
+    for w in raboty:
+        srok = f" — до {fmt_deadline(w['deadline'])}" if w['deadline'] else ''
+        kto = f", {w['assignee']}" if w['assignee'] else ''
+        znak = db.WORK_LABELS.get(w['status'], '•').split()[0]
+        lines.append(f"   {znak} {w['title']}{srok}{kto}")
+    lines.append('')
+    return lines
 
 
 def equipment_lines(h) -> list:
@@ -1241,6 +1261,7 @@ QUICK_COMMANDS = [
     ('мои', 'Мои работы', 'myw'),
     ('брифинг', 'Брифинг по хозяйству', 'brief'),
     ('справка', 'Справочник и нормативы', 'dir'),
+    ('паспорта', 'Паспорта домов: что заполнено', 'plist'),
     ('напоминания', 'Что Люся должна напомнить', 'rem'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
 ]
@@ -1259,6 +1280,7 @@ ALIASES = {
     'мои': ('moi',),
     'брифинг': ('brief',),
     'справка': ('spravka',),
+    'паспорта': ('pasporta',),
     'напоминания': ('napominaniya',),
     'копия': ('kopiya', 'backup'),
 }
@@ -1684,6 +1706,79 @@ SAVE_TRIGGER = re.compile(
     r'внеси|внесите)(?![а-я])', re.IGNORECASE)
 
 
+async def resume_passport_house(event, text: str, uid: int) -> bool:
+    """Ответ на вопрос «по какому дому записать». True — если разобрались.
+
+    Работает и в личке, и в чате: спросили в чате — там же и отвечают,
+    коротким сообщением с адресом, не называя Люсю по имени.
+    """
+    state = STATE.get(uid)
+    if not state or state.get('mode') != 'pass_house':
+        return False
+    dom = houses.detect_house(text)
+    if not dom:
+        found = houses.search(text)
+        dom = found[0] if len(found) == 1 else None
+    if not dom:
+        await send(event.message,
+                   f'🏠 Не поняла адрес. Напишите, например, «{_primer(0)}».')
+        return True
+    STATE.pop(uid, None)
+    await save_passport_note(event, dom, state['text'], uid)
+    return True
+
+
+async def handle_passport_note(event, text: str, uid: int) -> bool:
+    """«Розлив нижний, сталь ДУ50. В паспорт» — сведения ложатся в паспорт дома.
+
+    Дом назван прямо — записываем молча. Не назван — спрашиваем какой и
+    ждём ответа: подставлять дом наугад в паспорт нельзя, потом с этим
+    поедет бригада.
+    """
+    if not passport.wants_passport(text):
+        return False
+    # Сведения могли прислать сообщением выше, а просьбу — ответом на него
+    svedeniya = passport.strip_trigger(text)
+    citata = quoted_text(event)
+    if citata and len(svedeniya) < 15:
+        svedeniya = citata
+    if len(svedeniya) < 5:
+        await send(event.message, '🗂 Что записать в паспорт? Напишите сведения '
+                                  'одной фразой или ответьте на нужное сообщение.')
+        return True
+
+    dom = houses.detect_house(svedeniya) or (houses.detect_house(citata) if citata else None)
+    if not dom:
+        STATE[uid] = {'mode': 'pass_house', 'text': svedeniya}
+        await send(event.message, '🏠 По какому дому записать? Напишите адрес.')
+        return True
+
+    await save_passport_note(event, dom, svedeniya, uid)
+    return True
+
+
+async def save_passport_note(event, dom, svedeniya: str, uid: int):
+    """Определяет раздел паспорта и дописывает сведения."""
+    razobrano = await passport.pick_field(svedeniya)
+    if not razobrano:
+        field, znachenie = 'notes', svedeniya
+    else:
+        field, znachenie = razobrano
+    znachenie = mat.mask(znachenie)
+
+    bylo = (db.get_passport(dom['id']) or {}).get(field)
+    # Дописываем, а не затираем: в графе может быть чужая работа
+    novoe = f'{bylo}\n{znachenie}' if bylo and znachenie not in bylo else znachenie
+    db.set_passport_field(dom['id'], field, novoe, _uname(event))
+
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='🗂 Паспорт дома', payload=f"p:{dom['id']}"))
+    dopisano = ' (дописала к прежнему)' if bylo and novoe != znachenie else ''
+    await send(event.message,
+               f"🗂 {dom['address']} → {PASSPORT_LABELS.get(field, field)}"
+               f"{dopisano}:\n{znachenie}", kb)
+
+
 async def handle_save_plan(event, text: str, uid: int) -> bool:
     """«Люся, это план работ. Сохрани» — раскладывает список по домам в работы.
 
@@ -1920,6 +2015,9 @@ async def on_text(event: MessageCreated):
         log.info('Сообщение из чата %s: %.60s',
                  getattr(event.message.recipient, 'chat_id', '?'), text)
         record_chat_message(event, text)
+        # Люся спросила адрес — ответ придёт сюда же, обычным сообщением
+        if await resume_passport_house(event, text, uid):
+            return
         # Показания, присланные в чат, попадают в учёт наравне с личкой:
         # сантехник пишет туда, где удобно
         if await handle_readings(event, text, uid):
@@ -1933,6 +2031,8 @@ async def on_text(event: MessageCreated):
         db.upsert_user(uid, _uname(event))
         # Сохранить присланный план и поставить напоминание Люся должна
         # по-настоящему, а не ответить что-то вежливое
+        if await handle_passport_note(event, text, uid):
+            return
         if await handle_save_plan(event, text, uid):
             return
         if await handle_reminder(event, text, uid):
@@ -2047,6 +2147,9 @@ async def on_text(event: MessageCreated):
         STATE.pop(uid, None)
         r = db.get_request(req_id)
         await send(event.message, '✅ Записала заявку!\n\n' + request_card_text(r), request_card_kb(r))
+        return
+
+    if await resume_passport_house(event, text, uid):
         return
 
     if state and state['mode'] == 'pass_edit':
@@ -2303,6 +2406,9 @@ async def on_text(event: MessageCreated):
                        f'🤔 По адресу {addr} есть таблица стояков, но квартиры {flat_q} в ней нет.\n'
                        f'Здесь квартиры с {min(allf)} по {max(allf)}.')
             return
+
+    if await handle_passport_note(event, text, uid):
+        return
 
     if await handle_reminder(event, text, uid):
         return
@@ -3146,6 +3252,32 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action == 'plist':
+        zapolneno, pusto = [], []
+        for h in houses.HOUSES:
+            data = db.get_passport(h['id']) or {}
+            n = sum(1 for key, _ in PASSPORT_FIELDS if data.get(key))
+            (zapolneno if n else pusto).append((h, n))
+        vsego = len(PASSPORT_FIELDS)
+        lines = [f'🗂 ПАСПОРТА ДОМОВ — {len(zapolneno)} из {len(houses.HOUSES)} начаты', '']
+        if zapolneno:
+            for h, n in sorted(zapolneno, key=lambda x: -x[1]):
+                lines.append(f"▪️ {h['address']} — {n}/{vsego}")
+            lines.append('')
+        if pusto:
+            lines.append(f'▫️ Пустые ({len(pusto)}):')
+            lines.append(', '.join(h['address'] for h, _ in pusto))
+            lines.append('')
+        lines.append('Заполнять проще всего из чата: напишите сведения и '
+                     'добавьте «в паспорт» — разложу по разделам сама.')
+        kb = InlineKeyboardBuilder()
+        for h, n in sorted(zapolneno, key=lambda x: -x[1])[:10]:
+            kb.row(CallbackButton(text=f"🗂 {h['address']} ({n}/{vsego})",
+                                  payload=f"p:{h['id']}"))
+        kb.row(CallbackButton(text='🏘 Все дома', payload='homes'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
 
     elif action == 'plansave':
         state = STATE.pop(uid, None)
