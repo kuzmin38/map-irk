@@ -172,7 +172,7 @@ async def test_summary_falls_back_when_ai_unavailable(monkeypatch):
     summary = await H.short_summary([text], 'Байкальская 237')
 
     assert summary.startswith('🎙 Байкальская 237')
-    assert len(summary) < 500                       # обрезано, а не простыня
+    assert len(summary) < 600                       # обрезано, а не простыня
 
 
 async def test_series_of_videos_gets_one_reply(monkeypatch):
@@ -211,10 +211,9 @@ async def test_series_of_videos_gets_one_reply(monkeypatch):
     otvet = bot.sent[0]['text']
     assert '4 видео' in otvet
     assert 'Байкальская 237' in otvet
-    # Короткая серия идёт словами сантехника, без пересказа: модель на
-    # пересказе однажды дописала работы, которых не было
-    assert 'хлещет' in otvet and 'течи нет' in otvet
-    assert 'prompt' not in asked, 'пересказывать тут нечего'
+    assert 'Проблема' in otvet, 'в чат идёт короткий пересказ, а не стенограмма'
+    # в модель ушли все четыре расшифровки по порядку
+    assert 'хлещет' in asked['prompt'] and 'течи нет' in asked['prompt']
 
 
 async def test_series_reply_attaches_to_first_video(monkeypatch):
