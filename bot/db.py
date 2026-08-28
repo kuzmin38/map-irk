@@ -969,16 +969,36 @@ def recent_house_of(chat_id, user_id, look_back=3, minutes=NEARBY_MINUTES):
     return None
 
 
-def orphan_report(chat_id, limit=5):
-    """Последнее сообщение чата с вложением, к которому не привязан дом.
+ORPHAN_MINUTES = 30      # адрес называют сразу после ролика, а не через день
+
+
+def orphan_report(chat_id, user_id=None, minutes=ORPHAN_MINUTES):
+    """Свежий отчёт без дома, к которому относится названный следом адрес.
 
     Нужно, чтобы ответ «Советская 30» на вопрос «какой адрес?» доехал до
     самого отчёта, а не остался отдельной строкой в ленте.
+
+    Раньше срока не было вовсе: любое упоминание дома цепляло ролик
+    недельной давности. И автор не проверялся — адрес одного человека
+    приклеивался к чужому отчёту.
     """
+    q = ('SELECT * FROM chat_messages WHERE chat_id = ? AND house_id IS NULL '
+         'AND has_files = 1')
+    args = [chat_id]
+    if user_id is not None:
+        q += ' AND user_id = ?'
+        args.append(user_id)
+    q += ' ORDER BY id DESC LIMIT 1'
     with _conn() as c:
-        return c.execute(
-            'SELECT * FROM chat_messages WHERE chat_id = ? AND house_id IS NULL '
-            'AND has_files = 1 ORDER BY id DESC LIMIT 1', (chat_id,)).fetchone()
+        row = c.execute(q, args).fetchone()
+    if not row:
+        return None
+    porog = datetime.now(IRKUTSK_TZ) - timedelta(minutes=minutes)
+    try:
+        kogda = datetime.strptime(row['created_at'], '%d.%m.%Y %H:%M')
+    except (TypeError, ValueError):
+        return row
+    return row if kogda.replace(tzinfo=IRKUTSK_TZ) >= porog else None
 
 
 def last_report_of(chat_id, user_id, hours=6):

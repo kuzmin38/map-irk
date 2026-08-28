@@ -171,8 +171,9 @@ def house_markdown(house) -> str:
         lines.append('_Нет._')
     lines.append('')
 
-    records = db.house_chat_records(hid, limit=20)
-    lines.append('## Что говорили в чате')
+    from .handlers import znachimo
+    records = [r for r in db.house_chat_records(hid, limit=60) if znachimo(r)][:20]
+    lines.append('## Что делали на доме')
     if records:
         for rec in records:
             what = (rec['transcript'] or rec['text'] or '').strip()
@@ -182,7 +183,7 @@ def house_markdown(house) -> str:
             lines.append(f"- **{rec['created_at']}** {rec['user_name'] or '—'}: "
                          f"{mark}{what}")
     else:
-        lines.append('_Тихо._')
+        lines.append('_Отчётов и работ не записано._')
     lines.append('')
 
     return '\n'.join(lines)

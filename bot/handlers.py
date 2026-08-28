@@ -1737,31 +1737,73 @@ def fix_report_house(event, record_id, text: str) -> bool:
     return True
 
 
+# Сделанная работа: по такому сообщению видно, что на доме что-то менялось.
+# Это и есть «ключевое», ради чего лента дома вообще нужна
+WORK_FACT = re.compile(
+    r'(?<![а-я])(замен\w+|поменя\w+|постав\w+|установ\w+|смонтирова\w+|'
+    r'снял\w*|сняли|демонтирова\w+|промы\w+|прочист\w+|опрессова\w+|'
+    r'включ\w+|отключ\w+|перекр\w+|запуст\w+|подключ\w+|подал\w*|подали|'
+    r'устран\w+|отремонтирова\w+|починил\w*|заварил\w*|сварил\w*|'
+    r'восстанов\w+|отогре\w+|заглуш\w+|сдела\w+|выполн\w+)(?![а-я])',
+    re.IGNORECASE)
+
+
+def znachimo(rec) -> bool:
+    """Стоит ли запись в ленте дома. Остальное — разговор, он в архиве.
+
+    Заказчик: «пусть собирает, но лишь бы мусор не собирала, а фиксировала
+    только ключевое». Ключевое — это отчёт, авария или сделанная работа.
+    «Крутая УК)))» в паспорт дома попадать не должно.
+    """
+    if rec['transcript'] or rec['is_issue'] or rec['has_files']:
+        return True
+    return bool(rec['text'] and WORK_FACT.search(rec['text']))
+
+
+# Мелочь вокруг адреса, которая не мешает считать сообщение ответом:
+# «это Седова 71», «по Советской 30»
+_ADRES_MUSOR = re.compile(
+    r'(?<![а-я])(это|вот|дом|дома|адрес|адресу|по|на|в|во|у|же|там|тут)(?![а-я])',
+    re.IGNORECASE)
+
+
+def tolko_adres(text: str, house) -> bool:
+    """Сообщение состоит из одного адреса и ничего больше.
+
+    Костя написал «Только что включил 65/3,4» — обычная рабочая реплика, а
+    Люся вытащила из неё номер дома и приклеила к ней чужой видеоотчёт.
+    Ответ на вопрос «какой адрес?» выглядит иначе: в нём нет ничего, кроме
+    самого адреса.
+    """
+    ostatok = inventory.ubrat_adres(text or '', house)
+    ostatok = _ADRES_MUSOR.sub(' ', ostatok)
+    ostatok = re.sub(r'[^А-Яа-яЁёA-Za-z]+', '', ostatok)
+    return len(ostatok) <= 2
+
+
 def attach_house_to_report(event, record_id, house, text: str):
     """Ответ «Советская 30» на вопрос об адресе — привязывает отчёт к дому.
 
     Иначе адрес остаётся отдельной строкой в ленте, а видеоотчёт — ничьим.
-    Берём только короткие сообщения: длинную фразу с адресом внутри
-    цеплять к чужой записи нельзя, это уже отдельное сообщение.
+
+    Условий три, и все обязательны: сообщение — только адрес, отчёт свежий
+    и он того же человека. Без них Люся цепляла ролики к любой реплике,
+    где мелькнул номер дома, и каждый раз об этом объявляла.
+
+    Привязывает молча. Это служебное действие, а не новость: увидеть его
+    можно в ленте дома, а поправить — обычным «не 28, а 18б».
     """
-    if len(text.split()) > 4:
+    if not tolko_adres(text, house):
         return
     chat_id = getattr(event.message.recipient, 'chat_id', None)
     if chat_id is None:
         return
-    otchyot = db.orphan_report(chat_id)
+    otchyot = db.orphan_report(chat_id, user_id=_uid(event))
     if not otchyot or otchyot['id'] == record_id:
         return
     db.set_chat_house(otchyot['id'], house['id'])
     log.info('Отчёт %s привязан к дому %s по ответу в чате',
              otchyot['id'], house['address'])
-    otvet = send(event.message, f"📌 Поняла: тот отчёт — {house['address']}. Привязала.")
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        otvet.close()       # вне цикла событий (тесты) — только запись в базу
-        return
-    asyncio.create_task(otvet)
 
 
 # «сохрани», «запиши», «занеси» — просьба сохранить присланный список
@@ -3249,10 +3291,14 @@ async def run_action(payload: str, msg, uid: int, event):
     elif action == 'chat':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
         if h:
-            records = db.house_chat_records(h['id'])
+            vse = db.house_chat_records(h['id'])
+            records = [r for r in vse if znachimo(r)]
+            boltovnya = len(vse) - len(records)
             lines = [f"💬 Из рабочего чата — {h['address']}", '']
-            if not records:
+            if not vse:
                 lines.append('По этому дому в чате пока ничего не писали.')
+            elif not records:
+                lines.append('Отчётов и работ по этому дому в чате не было.')
             for r in records:
                 mark = '🔴 ' if r['is_issue'] else ''
                 files = ' 📎' if r['has_files'] else ''
@@ -3263,6 +3309,10 @@ async def run_action(payload: str, msg, uid: int, event):
                     lines.append(f"   🎙 {r['transcript'][:300]}")
                 elif not r['text']:
                     lines.append('   (вложение без текста)')
+            if boltovnya:
+                lines.append('')
+                lines.append(f'Ещё {boltovnya} сообщений без работ — они в общей '
+                             'ленте, командой /chat.')
             kb = InlineKeyboardBuilder()
             kb.row(CallbackButton(text='🔧 Техника', payload=f"tech:{h['id']}"),
                    CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
