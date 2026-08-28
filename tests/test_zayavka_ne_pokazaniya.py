@@ -136,3 +136,52 @@ async def test_v_istorii_est_knopka_udaleniya(schyotchik):
     payloads = [b.payload for row in e.message.keyboards[-1][0].payload.buttons
                 for b in row]
     assert f'mtdel:{schyotchik}' in payloads
+
+
+# ---------- ГВС — это не только счётчик ----------
+
+# Маша написала в рабочий чат про подачу горячей воды, а Люся ответила
+# «ГВС мы не учитываем — показание не записала». Показаний в сообщении не
+# было вовсе: «65а/5» она приняла за показание 65 по ГВС
+PRO_GVS = ('Привет. Если бэк сегодня не продлит. То гвс на 65а/5 и 65а/6 '
+           'нужно подать сегодня после 8 утра.')
+
+
+@pytest.mark.parametrize('rabota', [
+    PRO_GVS,
+    'Завтра отключение ГВС по Седова 65а/5',
+    'ГВС подали, циркуляция пошла',
+    'Гвс перекрыли на время опрессовки',
+    'Продлили заявку на ГВС до вечера',
+])
+def test_razgovor_pro_resurs_ne_pokazaniya(rabota):
+    assert H.parse_readings(rabota)[1] == [], f'принято за показания: {rabota}'
+
+
+def test_nomer_doma_s_korpusom_ne_pokazanie():
+    """«65а/5» — адрес. Показания так не пишут."""
+    assert H.parse_readings('гвс на 65а/5 подать')[1] == []
+    assert H.parse_readings('126/3 гвс 567')[1] == [('gvs', 567.0)], \
+        'адрес не мешает настоящему показанию'
+
+
+async def test_pro_gvs_lusya_molchit():
+    e = event(PRO_GVS)
+
+    razobrano = await H.handle_readings(e, PRO_GVS, 100)
+
+    assert razobrano is False, 'это работа, пусть идёт своим путём'
+    assert e.message.sent == [], 'ничего не отвечаем про счётчики'
+
+
+async def test_chistaya_stroka_pokazaniy_prohodit_i_s_rabochim_slovom():
+    """Запрет на рабочие слова не должен глушить настоящие показания."""
+    dom = next(h for h in houses.ALL_HOUSES if h['address'] == 'Седова 71')
+    meter = db.add_meter(dom['id'], 'hvs', 'Ввод ХВС', 'Андрей')
+    text = 'Перекрыл задвижку. Седова 71 хвс 1234'
+    e = event(text)
+
+    razobrano = await H.handle_readings(e, text, 100)
+
+    assert razobrano is True
+    assert [r['value'] for r in db.meter_readings(meter)] == [1234.0]
