@@ -48,8 +48,15 @@ def test_podskazka_obyasnyaet_razgovornye_nazvaniya():
 
 
 def test_podskazka_ne_razdulas():
-    """86 адресов — меньше двух килобайт, это допустимая плата за надёжность."""
-    assert len(agent.SYSTEM_PROMPT) < 6000
+    """Список адресов растёт сам — сторожим то, что пишем руками.
+
+    Раньше здесь стоял общий потолок, и он упирался не в лишние слова, а
+    в новые дома: домов прибавляется каждый год, а подсказка от этого
+    «раздувшейся» не становится.
+    """
+    adresa = len(agent._houses_block())
+    assert len(agent.SYSTEM_PROMPT) - adresa < 5200, 'инструкции разрослись'
+    assert adresa < 4000, 'адреса занимают слишком много'
 
 
 async def test_vyzovy_instrumentov_popadayut_v_log(monkeypatch, caplog):

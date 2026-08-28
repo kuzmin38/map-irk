@@ -94,6 +94,34 @@ def _tool_get_directory(section: str) -> str:
     return json.dumps({'error': f'раздела "{section}" нет, доступные: {ids}'}, ensure_ascii=False)
 
 
+def _tool_find_item(query: str) -> str:
+    """Где лежит вещь по описи.
+
+    Мотопомпа в компании была, а на затопленной парковке о ней не
+    вспомнили. Теперь достаточно спросить.
+    """
+    from . import inventory
+
+    nashlos = []
+    for it in db.list_items():
+        if not inventory.matches(query, it['name'], it['place'] or ''):
+            continue
+        dom = houses.HOUSES_BY_ID.get(it['house_id']) if it['house_id'] else None
+        nashlos.append({
+            'что': it['name'],
+            'сколько': it['qty'],
+            'адрес': dom['address'] if dom else None,
+            'место': it['place'],
+            'записал': it['added_by_name'],
+        })
+    if not nashlos:
+        return json.dumps({'найдено': 0,
+                           'подсказка': 'в описи такого нет — так и скажи, и предложи '
+                                        'записать: «в инвентарь: название, место, адрес»'},
+                          ensure_ascii=False)
+    return json.dumps({'найдено': len(nashlos), 'вещи': nashlos[:15]}, ensure_ascii=False)
+
+
 def _tool_get_equipment(house_id: int) -> str:
     """Приборы дома: что стоит, с каким номером, до какого числа поверка.
 
@@ -249,6 +277,14 @@ TOOLS = [
                         'или «что там было» — речь про ленту этого чата.',
         'parameters': {'type': 'object', 'properties': {}, 'required': []}}},
     {'type': 'function', 'function': {
+        'name': 'find_item',
+        'description': 'Опись имущества: где лежит вещь — насос, мотопомпа, пушка, '
+                        'тура, инструмент. Спрашивают «где у нас …», «есть ли у нас …», '
+                        '«что лежит на таком-то доме» — сюда. query — название вещи '
+                        'словами человека.',
+        'parameters': {'type': 'object', 'properties': {
+            'query': {'type': 'string'}}, 'required': ['query']}}},
+    {'type': 'function', 'function': {
         'name': 'get_open_requests',
         'description': 'Заявки (открытые и недавно выполненные). house_id можно не указывать — '
                         'тогда по всем домам.',
@@ -267,6 +303,7 @@ TOOL_FUNCS = {
     'get_house_works': lambda a: _tool_get_house_works(a['house_id']),
     'get_open_requests': lambda a: _tool_get_open_requests(a.get('house_id')),
     'get_chat_reports': lambda a: _tool_chat_reports(CHAT.get()),
+    'find_item': lambda a: _tool_find_item(a['query']),
 }
 
 # Чат, в котором идёт разговор. Модель его не знает и знать не должна —
@@ -353,6 +390,10 @@ def _build_prompt() -> str:
     'скажи: ответьте на сообщение с планом и напишите «сохрани». Когда '
     'разбор показан, пункты выбирают галочками или словами — «первые 4», '
     '«1-4», «кроме 5», «второй пункт»; это тоже разбирает код.\n'
+    'Опись имущества ведёт код: «в инвентарь: мотопомпа, подвал, Седова 71». '
+    'Искать умеешь сама — find_item: на «где у нас мотопомпа» сначала загляни '
+    'туда, а не отвечай по памяти. Чего в описи нет, того ты не знаешь. '
+    'Вся опись — по команде /опись.\n'
     'Напоминания ты ставишь: «напомни завтра в 9 про опрессовку», «напомни '
     'через два часа», «напомни в понедельник». Это разбирает код, не ты — '
     'если человек просит напомнить, а срок назвал невнятно, попроси сказать '

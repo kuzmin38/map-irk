@@ -136,6 +136,17 @@ def house_markdown(house) -> str:
         lines.append('_Не заведены._')
     lines.append('')
 
+    veshchi = db.list_items(house_id=hid)
+    lines.append('## Что здесь лежит')
+    if veshchi:
+        for it in veshchi:
+            skolko = f" ×{it['qty']}" if it['qty'] > 1 else ''
+            mesto = f" — {it['place']}" if it['place'] else ''
+            lines.append(f"- {it['name']}{skolko}{mesto}")
+    else:
+        lines.append('_Ничего не записано._')
+    lines.append('')
+
     works = db.list_works(house_id=hid, open_only=False, limit=50)
     lines.append('## Работы')
     if works:
@@ -177,6 +188,30 @@ def house_markdown(house) -> str:
     return '\n'.join(lines)
 
 
+def inventory_markdown() -> str:
+    """Опись одним файлом: искать вещь удобнее в общем списке, а не по домам."""
+    veshchi = db.list_items()
+    lines = ['---', 'tags: [опись]', f'обновлено: {db.now()}', '---', '',
+             '# Что где лежит', '',
+             f'Позиций: {len(veshchi)}.', '']
+    if not veshchi:
+        lines.append('_Опись пуста._')
+        return '\n'.join(lines)
+    po_mestu = {}
+    for it in veshchi:
+        dom = houses.HOUSES_BY_ID.get(it['house_id']) if it['house_id'] else None
+        po_mestu.setdefault(dom['address'] if dom else 'Без адреса', []).append(it)
+    for adres in sorted(po_mestu):
+        zagolovok = f'## [[{_safe(adres)}]]' if adres != 'Без адреса' else '## Без адреса'
+        lines.append(zagolovok)
+        for it in po_mestu[adres]:
+            skolko = f" ×{it['qty']}" if it['qty'] > 1 else ''
+            mesto = f" — {it['place']}" if it['place'] else ''
+            lines.append(f"- {it['name']}{skolko}{mesto}")
+        lines.append('')
+    return '\n'.join(lines)
+
+
 def index_markdown() -> str:
     """Оглавление: ссылки на дома, сгруппированные по ЖК."""
     complexes = db.all_house_complexes()
@@ -208,6 +243,7 @@ def make_archive() -> tuple[bytes, str]:
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
             z.write(tmp_db, 'bot.db')
             z.writestr('Дома/00 Оглавление.md', index_markdown())
+            z.writestr('Дома/00 Опись имущества.md', inventory_markdown())
             for h in houses.HOUSES:
                 z.writestr(f"Дома/{_safe(h['address'])}.md", house_markdown(h))
     finally:

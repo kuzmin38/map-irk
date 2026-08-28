@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import backup, banter, checks, mat, passport, plan, remind, report, transcribe
+from . import backup, banter, checks, inventory, mat, passport, plan, remind, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -236,9 +236,11 @@ MAIN_TEXT = (
     '• 📋 Заявки — запишу и буду вести: новая → в работе → выполнена\n'
     '• 📖 Справочник — телефоны, нормативы, сроки, шпаргалка по трубам\n\n'
     f'💡 Просто напишите адрес (например: «{houses.examples(1)[0]}») — я всё найду. 😉\n\n'
+    '🧰 Опись — что где лежит: «в инвентарь: мотопомпа, подвал, Седова 71». '
+    'Потом достаточно спросить «где мотопомпа».\n\n'
     '⚡️ Чтобы не искать кнопки в ленте, наберите «/» — под полем ввода откроется '
-    'быстрое меню: /счетчики, /дома, /сводка — показания за месяц, /заявки, '
-    '/меню — сюда.'
+    'быстрое меню: /счетчики, /дома, /сводка — показания за месяц, /опись, '
+    '/заявки, /меню — сюда.'
 )
 
 
@@ -336,7 +338,10 @@ def tech_kb(h) -> InlineKeyboardBuilder:
     kb.row(CallbackButton(text='📜 История работ', payload=f"hist:{h['id']}"),
            CallbackButton(text=f'💬 Из чата{f" ({n_chat})" if n_chat else ""}',
                           payload=f"chat:{h['id']}"))
-    kb.row(CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
+    n_inv = len(db.list_items(house_id=h['id']))
+    kb.row(CallbackButton(text=f'🧰 Что здесь лежит{f" ({n_inv})" if n_inv else ""}',
+                          payload=f"invh:{h['id']}"),
+           CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
     kb.row(CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"),
            CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
@@ -355,6 +360,7 @@ def passport_text(h) -> str:
             lines.append(f'▫️ {label}: —')
     lines.append('')
     lines += equipment_lines(h)
+    lines += inventory_lines(h)
     lines += works_lines(h)
     lines.append(f'Заполнено: {filled}/{len(PASSPORT_FIELDS)}. '
                  'Нажмите «Редактировать», чтобы дополнить.')
@@ -392,6 +398,36 @@ def equipment_lines(h) -> list:
     lines = [f'🔧 Манометры ({len(points)}):']
     for p in points:
         lines.append('   ' + point_line(p).replace('\n   ', '\n      '))
+    lines.append('')
+    return lines
+
+
+def item_line(it, s_adresom=True) -> str:
+    """Строка описи: «🧰 Мотопомпа ×2 — Седова 71, подвал»."""
+    skolko = f" ×{it['qty']}" if it['qty'] > 1 else ''
+    gde = []
+    if s_adresom and it['house_id']:
+        dom = houses.HOUSES_BY_ID.get(it['house_id'])
+        if dom:
+            gde.append(dom['address'])
+    if it['place']:
+        gde.append(it['place'])
+    hvost = ' — ' + ', '.join(gde) if gde else ' — место не указано'
+    return f"🧰 {it['name']}{skolko}{hvost}"
+
+
+def inventory_lines(h) -> list:
+    """Что лежит в этом доме — прямо в паспорте.
+
+    Отдельный раздел «опись» открывать никто не станет. А в паспорте это
+    увидит тот, кто уже стоит в этом подвале.
+    """
+    veshchi = db.list_items(house_id=h['id'])
+    if not veshchi:
+        return []
+    lines = [f'🧰 ЗДЕСЬ ЛЕЖИТ ({len(veshchi)}):']
+    for it in veshchi:
+        lines.append('   ' + item_line(it, s_adresom=False))
     lines.append('')
     return lines
 
@@ -1263,6 +1299,7 @@ QUICK_COMMANDS = [
     ('справка', 'Справочник и нормативы', 'dir'),
     ('паспорта', 'Паспорта домов: что заполнено', 'plist'),
     ('напоминания', 'Что Люся должна напомнить', 'rem'),
+    ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
 ]
 
@@ -1282,6 +1319,7 @@ ALIASES = {
     'справка': ('spravka',),
     'паспорта': ('pasporta',),
     'напоминания': ('napominaniya',),
+    'опись': ('opis', 'inventar'),
     'копия': ('kopiya', 'backup'),
 }
 
@@ -1807,6 +1845,96 @@ async def save_passport_note(event, dom, svedeniya: str, uid: int):
                f"{dopisano}:\n{znachenie}", kb)
 
 
+async def handle_inventory(event, text: str, uid: int) -> bool:
+    """«В инвентарь: мотопомпа, подвал, Седова 71» — вещь встаёт на учёт.
+
+    Разбираем кодом, а не моделью: название вещи должно попасть в опись
+    ровно так, как его сказал человек. «Мотопомпа Хонда» — это и есть
+    название, переписывать его нельзя, иначе потом не найдётся.
+    """
+    if not inventory.wants_add(text):
+        return False
+    razbor = inventory.parse_add(text)
+    if not razbor:
+        await send(event.message,
+                   '🧰 Что записать? Напишите одной строкой: '
+                   '«мотопомпа, подвал, Седова 71».')
+        return True
+    nazvanie, mesto, dom, skolko = razbor
+    item_id = db.add_item(mat.mask(nazvanie), mesto or None,
+                          dom['id'] if dom else None, skolko,
+                          user_id=uid, user_name=_uname(event))
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='🧰 Вся опись', payload='inv'))
+    if dom:
+        kb.row(CallbackButton(text=f"🏠 {dom['address']}", payload=f"invh:{dom['id']}"))
+    await send(event.message, '🧰 Записала в опись:\n'
+               + item_line(db.get_item(item_id)), kb)
+    return True
+
+
+async def resume_inventory(event, text: str, uid: int, state) -> bool:
+    """Ответ на «что и где лежит» и на «куда переехало»."""
+    from . import houses as houses_mod
+
+    if state['mode'] == 'inv_add':
+        razbor = inventory.parse_add(text)
+        if not razbor:
+            await send(event.message, '🧰 Не разобрала. Напишите вещь и место: '
+                                      '«мотопомпа, подвал, Седова 71».')
+            return True
+        nazvanie, mesto, dom, skolko = razbor
+        house_id = dom['id'] if dom else state.get('house_id')
+        STATE.pop(uid, None)
+        item_id = db.add_item(mat.mask(nazvanie), mesto or None, house_id, skolko,
+                              user_id=uid, user_name=_uname(event))
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='➕ Ещё вещь', payload='invadd'),
+               CallbackButton(text='🧰 Вся опись', payload='inv'))
+        await send(event.message, '🧰 Записала:\n' + item_line(db.get_item(item_id)), kb)
+        return True
+
+    it = db.get_item(state['item_id'])
+    if not it:
+        STATE.pop(uid, None)
+        await send(event.message, '🧰 Такой записи уже нет.')
+        return True
+    dom = houses_mod.detect_house(text)
+    mesto = inventory.strip_trigger(text)
+    if dom:
+        mesto = inventory.ubrat_adres(mesto, dom)
+    STATE.pop(uid, None)
+    db.move_item(it['id'], dom['id'] if dom else None, mesto or None)
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='🧰 Вся опись', payload='inv'))
+    await send(event.message, '🚚 Переставила:\n' + item_line(db.get_item(it['id'])), kb)
+    return True
+
+
+async def handle_where(event, text: str, uid: int) -> bool:
+    """«Где мотопомпа?» — ищем по описи. False — вопрос не про имущество.
+
+    Молчим, когда ничего не нашли: «где Костя» и «где ключи от 22-го» —
+    это к людям и к паспорту, туда вопрос и уйдёт дальше по цепочке.
+    """
+    chto = inventory.chto_ishchut(text)
+    if not chto:
+        return False
+    nashlos = [it for it in db.list_items()
+               if inventory.matches(chto, it['name'], it['place'] or '')]
+    if not nashlos:
+        return False
+    lines = [f'🧰 Нашла по описи ({len(nashlos)}):', '']
+    kb = InlineKeyboardBuilder()
+    for it in nashlos[:8]:
+        lines.append(item_line(it))
+        kb.row(CallbackButton(text=f"🧰 {it['name'][:32]}", payload=f"invx:{it['id']}"))
+    if len(nashlos) > 8:
+        lines.append(f'…и ещё {len(nashlos) - 8}.')
+    await send(event.message, '\n'.join(lines), kb)
+    return True
+
+
 async def handle_save_plan(event, text: str, uid: int) -> bool:
     """«Люся, это план работ. Сохрани» — раскладывает список по домам в работы.
 
@@ -2100,6 +2228,12 @@ async def on_text(event: MessageCreated):
         # по-настоящему, а не ответить что-то вежливое
         if await handle_passport_note(event, text, uid):
             return
+        if await handle_inventory(event, text, uid):
+            return
+        # «Где мотопомпа» — если по описи нашлось, отвечаем сразу; если нет,
+        # вопрос идёт дальше, к ИИ: «где Костя» описи не касается
+        if await handle_where(event, text, uid):
+            return
         if await handle_save_plan(event, text, uid):
             return
         if await handle_reminder(event, text, uid):
@@ -2221,6 +2355,10 @@ async def on_text(event: MessageCreated):
 
     if await resume_passport_house(event, text, uid):
         return
+
+    if state and state['mode'] in ('inv_add', 'inv_move'):
+        if await resume_inventory(event, text, uid, state):
+            return
 
     if state and state['mode'] == 'pass_edit':
         h = houses.HOUSES_BY_ID[state['house_id']]
@@ -2478,6 +2616,12 @@ async def on_text(event: MessageCreated):
             return
 
     if await handle_passport_note(event, text, uid):
+        return
+
+    if await handle_inventory(event, text, uid):
+        return
+
+    if await handle_where(event, text, uid):
         return
 
     if await handle_reminder(event, text, uid):
@@ -3322,6 +3466,114 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action == 'inv':
+        veshchi = db.list_items()
+        kb = InlineKeyboardBuilder()
+        if not veshchi:
+            kb.row(CallbackButton(text='➕ Записать вещь', payload='invadd'))
+            kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+            await send(msg, '🧰 Опись пуста.\n\n'
+                            'Записать можно прямо из чата одной строкой:\n'
+                            '«в инвентарь: мотопомпа, подвал, Седова 71».\n'
+                            'Потом достаточно спросить «где мотопомпа».', kb)
+            return
+        # Группируем по месту: человек ищет «что есть на этом адресе»,
+        # а не «где лежит вещь номер 12»
+        po_mestu = {}
+        for it in veshchi:
+            dom = houses.HOUSES_BY_ID.get(it['house_id']) if it['house_id'] else None
+            po_mestu.setdefault(dom['address'] if dom else 'Без адреса', []).append(it)
+        lines = [f'🧰 ОПИСЬ — {len(veshchi)} позиций', '']
+        for adres in sorted(po_mestu):
+            lines.append(f'📍 {adres}')
+            for it in po_mestu[adres]:
+                skolko = f" ×{it['qty']}" if it['qty'] > 1 else ''
+                mesto = f" — {it['place']}" if it['place'] else ''
+                lines.append(f"   • {it['name']}{skolko}{mesto}")
+            lines.append('')
+        lines.append('Спросить можно словами: «где мотопомпа».')
+        for it in veshchi[:8]:
+            kb.row(CallbackButton(text=f"🧰 {it['name'][:32]}", payload=f"invx:{it['id']}"))
+        kb.row(CallbackButton(text='➕ Записать вещь', payload='invadd'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'invadd':
+        STATE[uid] = {'mode': 'inv_add'}
+        await send(msg, '🧰 Что и где лежит? Одной строкой:\n'
+                        '«мотопомпа, подвал, Седова 71»\n'
+                        '«2 тепловые пушки, бытовка»\n\n'
+                        'Адрес можно не писать — тогда запишу без привязки к дому.')
+
+    elif action == 'invh':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if not h:
+            return
+        veshchi = db.list_items(house_id=h['id'])
+        kb = InlineKeyboardBuilder()
+        for it in veshchi[:8]:
+            kb.row(CallbackButton(text=f"🧰 {it['name'][:32]}", payload=f"invx:{it['id']}"))
+        kb.row(CallbackButton(text='➕ Записать сюда', payload=f"invaddh:{h['id']}"))
+        kb.row(CallbackButton(text='🔧 Техника дома', payload=f"tech:{h['id']}"),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        if not veshchi:
+            await send(msg, f"🧰 {h['address']}: в описи по этому дому пусто.", kb)
+            return
+        lines = [f"🧰 {h['address']} — что здесь лежит ({len(veshchi)}):", '']
+        for it in veshchi:
+            lines.append('• ' + item_line(it, s_adresom=False)[2:].strip())
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'invaddh':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if h:
+            STATE[uid] = {'mode': 'inv_add', 'house_id': h['id']}
+            await send(msg, f"🧰 {h['address']}: что здесь лежит? Напишите вещь и "
+                            'место, например «мотопомпа, подвал».')
+
+    elif action == 'invx':
+        it = db.get_item(int(parts[1]))
+        if not it:
+            await send(msg, '🧰 Такой записи уже нет.')
+            return
+        dom = houses.HOUSES_BY_ID.get(it['house_id']) if it['house_id'] else None
+        lines = [f"🧰 {it['name']}" + (f" ×{it['qty']}" if it['qty'] > 1 else ''), '']
+        lines.append(f"📍 {dom['address'] if dom else 'без привязки к дому'}")
+        if it['place']:
+            lines.append(f"   {it['place']}")
+        if it['note']:
+            lines.append(f"📝 {it['note']}")
+        lines.append('')
+        lines.append(f"Записал: {it['added_by_name'] or '—'}, {it['created_at']}")
+        if it['updated_at'] != it['created_at']:
+            lines.append(f"Обновлено: {it['updated_at']}")
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🚚 Переехало', payload=f"invm:{it['id']}"),
+               CallbackButton(text='🗑 Списать', payload=f"invoff:{it['id']}"))
+        kb.row(CallbackButton(text='🧰 Вся опись', payload='inv'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'invm':
+        it = db.get_item(int(parts[1]))
+        if not it:
+            await send(msg, '🧰 Такой записи уже нет.')
+            return
+        STATE[uid] = {'mode': 'inv_move', 'item_id': it['id']}
+        await send(msg, f"🚚 Куда переехала «{it['name']}»? Напишите новое место, "
+                        'например «подвал, Седова 71» или «бытовка».')
+
+    elif action == 'invoff':
+        it = db.get_item(int(parts[1]))
+        if not it:
+            await send(msg, '🧰 Такой записи уже нет.')
+            return
+        db.write_off_item(it['id'])
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🧰 Вся опись', payload='inv'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, f"🗑 «{it['name']}» убрала из описи.", kb)
 
     elif action == 'plist':
         zapolneno, pusto = [], []

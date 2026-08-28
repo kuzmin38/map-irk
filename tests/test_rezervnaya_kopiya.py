@@ -97,7 +97,9 @@ def test_arhiv_soderzhit_bazu_i_zametki(dom):
     assert 'bot.db' in imena
     assert 'Дома/Седова 71.md' in imena
     assert 'Дома/00 Оглавление.md' in imena
-    assert len([n for n in imena if n.startswith('Дома/')]) == len(houses.HOUSES) + 1
+    assert 'Дома/00 Опись имущества.md' in imena
+    # заметка на дом плюс два общих файла: оглавление и опись
+    assert len([n for n in imena if n.startswith('Дома/')]) == len(houses.HOUSES) + 2
     assert name.startswith('lusya_') and name.endswith('.zip')
 
 

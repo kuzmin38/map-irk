@@ -176,6 +176,21 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         profile TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL)''')
+    # Опись имущества: что где лежит. Мотопомпа в компании была, а на
+    # затопленной парковке о ней не вспомнили — искать больше негде
+    c.execute('''CREATE TABLE IF NOT EXISTS inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        qty INTEGER NOT NULL DEFAULT 1,
+        house_id INTEGER,
+        place TEXT,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT 'here',
+        added_by INTEGER,
+        added_by_name TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_inv_house ON inventory(house_id)')
     c.execute('''CREATE TABLE IF NOT EXISTS chat_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -1010,3 +1025,59 @@ def set_chat_transcript(record_id, transcript, house_id=None, is_issue=None):
 def get_chat_record(record_id):
     with _conn() as c:
         return c.execute('SELECT * FROM chat_messages WHERE id = ?', (record_id,)).fetchone()
+
+
+# ---------- Опись имущества ----------
+
+INV_HERE = 'here'          # лежит на месте
+INV_GONE = 'gone'          # списано или отдано
+
+
+def add_item(name, place=None, house_id=None, qty=1, note=None,
+             user_id=None, user_name=None) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO inventory (name, qty, house_id, place, note, '
+            'added_by, added_by_name, created_at, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (name, qty, house_id, place, note, user_id, user_name, now(), now()))
+        return cur.lastrowid
+
+
+def list_items(house_id=None, include_gone=False, limit=300):
+    q = 'SELECT * FROM inventory WHERE 1 = 1'
+    args = []
+    if house_id is not None:
+        q += ' AND house_id = ?'
+        args.append(house_id)
+    if not include_gone:
+        q += ' AND status = ?'
+        args.append(INV_HERE)
+    q += ' ORDER BY house_id IS NULL, house_id, name LIMIT ?'
+    args.append(limit)
+    with _conn() as c:
+        return c.execute(q, args).fetchall()
+
+
+def get_item(item_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM inventory WHERE id = ?', (item_id,)).fetchone()
+
+
+def move_item(item_id, house_id, place):
+    """Вещь переехала: место меняем, историю появления не трогаем."""
+    with _conn() as c:
+        c.execute('UPDATE inventory SET house_id = ?, place = ?, updated_at = ? '
+                  'WHERE id = ?', (house_id, place, now(), item_id))
+
+
+def write_off_item(item_id):
+    with _conn() as c:
+        c.execute('UPDATE inventory SET status = ?, updated_at = ? WHERE id = ?',
+                  (INV_GONE, now(), item_id))
+
+
+def set_item_qty(item_id, qty):
+    with _conn() as c:
+        c.execute('UPDATE inventory SET qty = ?, updated_at = ? WHERE id = ?',
+                  (max(1, int(qty)), now(), item_id))
