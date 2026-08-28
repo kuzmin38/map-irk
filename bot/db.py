@@ -176,6 +176,19 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         profile TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL)''')
+    # Замечания по квартирам: что уже находили за этой дверью. Подмес,
+    # найденный однажды, находят там же снова — и об этом надо помнить
+    c.execute('''CREATE TABLE IF NOT EXISTS flat_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER NOT NULL,
+        flat INTEGER NOT NULL,
+        kind TEXT,
+        text TEXT NOT NULL,
+        record_id INTEGER,
+        author_id INTEGER,
+        author TEXT,
+        created_at TEXT NOT NULL)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_flatnotes ON flat_notes(house_id, flat)')
     # Опись имущества: что где лежит. Мотопомпа в компании была, а на
     # затопленной парковке о ней не вспомнили — искать больше негде
     c.execute('''CREATE TABLE IF NOT EXISTS inventory (
@@ -1101,3 +1114,65 @@ def set_item_qty(item_id, qty):
     with _conn() as c:
         c.execute('UPDATE inventory SET qty = ?, updated_at = ? WHERE id = ?',
                   (max(1, int(qty)), now(), item_id))
+
+
+# ---------- Замечания по квартирам ----------
+
+def add_flat_note(house_id, flat, text, kind=None, record_id=None,
+                  author_id=None, author=None) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO flat_notes (house_id, flat, kind, text, record_id, '
+            'author_id, author, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (house_id, flat, kind, text, record_id, author_id, author, now()))
+        return cur.lastrowid
+
+
+def flat_notes(house_id, flat=None, limit=50):
+    """Что находили в квартире (или во всём доме), свежее первым."""
+    q = 'SELECT * FROM flat_notes WHERE house_id = ?'
+    args = [house_id]
+    if flat is not None:
+        q += ' AND flat = ?'
+        args.append(flat)
+    q += ' ORDER BY id DESC LIMIT ?'
+    args.append(limit)
+    with _conn() as c:
+        return c.execute(q, args).fetchall()
+
+
+def flat_note_exists(house_id, flat, kind, hours=24) -> bool:
+    """Такую же находку сегодня уже записали.
+
+    Один выезд — одно сообщение с подписью и одно голосовое об этом же.
+    Писать дважды не нужно.
+    """
+    if not kind:
+        return False
+    porog = datetime.now(IRKUTSK_TZ) - timedelta(hours=hours)
+    with _conn() as c:
+        rows = c.execute(
+            'SELECT created_at FROM flat_notes WHERE house_id = ? AND flat = ? '
+            'AND kind = ? ORDER BY id DESC LIMIT 5',
+            (house_id, flat, kind)).fetchall()
+    for r in rows:
+        try:
+            kogda = datetime.strptime(r['created_at'], '%d.%m.%Y %H:%M')
+        except (TypeError, ValueError):
+            return True
+        if kogda.replace(tzinfo=IRKUTSK_TZ) >= porog:
+            return True
+    return False
+
+
+def delete_flat_note(note_id):
+    with _conn() as c:
+        c.execute('DELETE FROM flat_notes WHERE id = ?', (note_id,))
+
+
+def houses_with_flat_notes():
+    """Сколько замечаний по каждому дому — для списка."""
+    with _conn() as c:
+        rows = c.execute('SELECT house_id, COUNT(*) n FROM flat_notes '
+                         'GROUP BY house_id').fetchall()
+    return {r['house_id']: r['n'] for r in rows}

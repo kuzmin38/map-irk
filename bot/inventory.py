@@ -124,7 +124,9 @@ def ubrat_adres(chast: str, dom) -> str:
         koren = re.escape(slovo[:-2]) if len(slovo) > 5 else re.escape(slovo)
         out = re.sub(rf'(?<![а-я]){koren}[а-яё]*', ' ', out, count=1, flags=re.IGNORECASE)
     # номер дома: «65а/2», «д. 30», «14»
-    out = re.sub(r'(?<![\d/])(?:д\.?|дом)?\s*\d{1,3}\s*[а-я]?(?:\s*/\s*\d+)?(?![\d])',
+    # буква корпуса — только если она отдельная: «65а», но не «105 квартира»
+    out = re.sub(r'(?<![\d/])(?:д\.?|дом)?\s*\d{1,3}(?:\s*[а-яё](?![а-яё]))?'
+                 r'(?:\s*/\s*\d+)?(?![\d])',
                  ' ', out, count=1, flags=re.IGNORECASE)
     # предлог, оставшийся без адреса
     out = re.sub(r'(?<![а-я])(?:на|по|с)\s*(?=[\s,;.]|$)', ' ', out, flags=re.IGNORECASE)

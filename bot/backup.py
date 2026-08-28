@@ -147,6 +147,16 @@ def house_markdown(house) -> str:
         lines.append('_Ничего не записано._')
     lines.append('')
 
+    zametki = db.flat_notes(hid, limit=100)
+    lines.append('## Находки по квартирам')
+    if zametki:
+        for z in zametki:
+            lines.append(f"- **кв. {z['flat']}** — {z['text']} "
+                         f"({z['created_at']}, {z['author'] or '—'})")
+    else:
+        lines.append('_Нет._')
+    lines.append('')
+
     works = db.list_works(house_id=hid, open_only=False, limit=50)
     lines.append('## Работы')
     if works:

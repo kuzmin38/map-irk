@@ -94,6 +94,18 @@ def _tool_get_directory(section: str) -> str:
     return json.dumps({'error': f'раздела "{section}" нет, доступные: {ids}'}, ensure_ascii=False)
 
 
+def _tool_flat_notes(house_id: int, flat=None) -> str:
+    """Что находили по квартирам: подмес найдут там же снова, и это надо знать."""
+    h = houses.HOUSES_BY_ID.get(house_id)
+    if not h:
+        return json.dumps({'error': 'дом не найден'}, ensure_ascii=False)
+    zametki = [{'квартира': z['flat'], 'что': z['text'], 'когда': z['created_at'],
+                'кто': z['author']}
+               for z in db.flat_notes(house_id, flat, limit=30)]
+    return json.dumps({'адрес': h['address'], 'найдено': len(zametki),
+                       'находки': zametki}, ensure_ascii=False)
+
+
 def _tool_find_item(query: str) -> str:
     """Где лежит вещь по описи.
 
@@ -277,6 +289,14 @@ TOOLS = [
                         'или «что там было» — речь про ленту этого чата.',
         'parameters': {'type': 'object', 'properties': {}, 'required': []}}},
     {'type': 'function', 'function': {
+        'name': 'get_flat_notes',
+        'description': 'Что уже находили по квартирам дома: подмес, течь, засор, '
+                        'неисправные краны. Спрашивают «что было по такой-то '
+                        'квартире», «тут уже было?» — сюда. flat можно не указывать.',
+        'parameters': {'type': 'object', 'properties': {
+            'house_id': {'type': 'integer'}, 'flat': {'type': 'integer'}},
+            'required': ['house_id']}}},
+    {'type': 'function', 'function': {
         'name': 'find_item',
         'description': 'Опись имущества: где лежит вещь — насос, мотопомпа, пушка, '
                         'тура, инструмент. Спрашивают «где у нас …», «есть ли у нас …», '
@@ -304,6 +324,7 @@ TOOL_FUNCS = {
     'get_open_requests': lambda a: _tool_get_open_requests(a.get('house_id')),
     'get_chat_reports': lambda a: _tool_chat_reports(CHAT.get()),
     'find_item': lambda a: _tool_find_item(a['query']),
+    'get_flat_notes': lambda a: _tool_flat_notes(a['house_id'], a.get('flat')),
 }
 
 # Чат, в котором идёт разговор. Модель его не знает и знать не должна —
@@ -390,6 +411,9 @@ def _build_prompt() -> str:
     'скажи: ответьте на сообщение с планом и напишите «сохрани». Когда '
     'разбор показан, пункты выбирают галочками или словами — «первые 4», '
     '«1-4», «кроме 5», «второй пункт»; это тоже разбирает код.\n'
+    'Находки по квартирам ведёт код: адрес, квартира и что нашли, сказанные '
+    'вместе, записываются сами. Смотри их через get_flat_notes, когда речь '
+    'о конкретной квартире.\n'
     'Опись имущества ведёт код: «в инвентарь: мотопомпа, подвал, Седова 71». '
     'Искать умеешь сама — find_item: на «где у нас мотопомпа» сначала загляни '
     'туда, а не отвечай по памяти. Чего в описи нет, того ты не знаешь. '

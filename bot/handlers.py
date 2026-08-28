@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import backup, banter, checks, inventory, mat, passport, plan, remind, report, transcribe
+from . import backup, banter, checks, flats, inventory, mat, passport, plan, remind, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -339,9 +339,12 @@ def tech_kb(h) -> InlineKeyboardBuilder:
            CallbackButton(text=f'💬 Из чата{f" ({n_chat})" if n_chat else ""}',
                           payload=f"chat:{h['id']}"))
     n_inv = len(db.list_items(house_id=h['id']))
+    n_flat = len(db.flat_notes(h['id'], limit=99))
     kb.row(CallbackButton(text=f'🧰 Что здесь лежит{f" ({n_inv})" if n_inv else ""}',
                           payload=f"invh:{h['id']}"),
-           CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
+           CallbackButton(text=f'🚪 По квартирам{f" ({n_flat})" if n_flat else ""}',
+                          payload=f"fl:{h['id']}"))
+    kb.row(CallbackButton(text='🏙 Указать ЖК', payload=f"cxs:{h['id']}"))
     kb.row(CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"),
            CallbackButton(text='🏠 Меню', payload='menu'))
     return kb
@@ -360,6 +363,7 @@ def passport_text(h) -> str:
             lines.append(f'▫️ {label}: —')
     lines.append('')
     lines += equipment_lines(h)
+    lines += flat_note_lines(h)
     lines += inventory_lines(h)
     lines += works_lines(h)
     lines.append(f'Заполнено: {filled}/{len(PASSPORT_FIELDS)}. '
@@ -563,6 +567,15 @@ def riser_card_text(block, addr, flat, floor, riser, on_floor) -> str:
         lines += ['', f"ℹ️ На этаж{'ах' if len(partial) > 1 else 'е'} "
                       f"{', '.join(map(str, partial))} квартир меньше "
                       '(нежилые помещения) — крайних стояков там нет.']
+    # Что здесь уже находили. Смотрят карточку стояка перед выездом — значит,
+    # и напомнить надо здесь, а не в отдельном разделе
+    dom = houses.detect_house(addr)
+    zametki = db.flat_notes(dom['id'], flat) if dom else []
+    if zametki:
+        lines += ['', f'⚠️ По этой квартире уже находили ({len(zametki)}):']
+        for z in zametki[:3]:
+            lines.append(f"   {z['created_at'][:10]} — {z['text'][:90]} "
+                         f"({z['author'] or '—'})")
     return '\n'.join(lines)
 
 
@@ -1653,6 +1666,17 @@ async def transcribe_later(record_id: int, url: str, bot=None, chat_id=None, mid
                                is_issue=is_issue)
         log.info('Расшифровано сообщение %s: %.80s', record_id, text)
 
+        # Квартиру называют в подписи к ролику, а находку — голосом в кадре.
+        # Поэтому ищем по подписи и расшифровке вместе
+        zapis = db.get_chat_record(record_id)
+        if zapis is not None:
+            dom = house or houses.HOUSES_BY_ID.get(zapis['house_id'])
+            vmeste = f"{zapis['text'] or ''} {text}".strip()
+            otvet = zapisat_nahodku(record_id, dom, vmeste,
+                                    zapis['user_id'], zapis['user_name'])
+            if otvet and bot and chat_id:
+                await bot.send_message(chat_id=chat_id, text=otvet)
+
         if bot and chat_id:
             queue_series(key, text, house, is_issue, bot, chat_id, mid)
     except Exception:
@@ -1680,6 +1704,10 @@ def record_chat_message(event, text: str):
         if text and not fix_report_house(event, record_id, text):
             if house:
                 attach_house_to_report(event, record_id, house, text)
+        if text and house:
+            otvet = zapisat_nahodku(record_id, house, text, _uid(event), _uname(event))
+            if otvet:
+                asyncio.create_task(send(event.message, otvet))
         # Голосовые и видеоотчёты расшифровываем фоном, чтобы не тормозить чат
         url = speech_url(body)
         if url:
@@ -1746,6 +1774,59 @@ WORK_FACT = re.compile(
     r'устран\w+|отремонтирова\w+|починил\w*|заварил\w*|сварил\w*|'
     r'восстанов\w+|отогре\w+|заглуш\w+|сдела\w+|выполн\w+)(?![а-я])',
     re.IGNORECASE)
+
+
+def flat_note_lines(h, limit: int = 8) -> list:
+    """Что находили по квартирам этого дома."""
+    zametki = db.flat_notes(h['id'], limit=limit + 1)
+    if not zametki:
+        return []
+    lines = [f'🚪 НАХОДКИ ПО КВАРТИРАМ ({len(zametki)}):']
+    for z in zametki[:limit]:
+        lines.append(f"   кв. {z['flat']} — {z['text'][:90]} "
+                     f"({z['created_at'][:10]}, {z['author'] or '—'})")
+    if len(zametki) > limit:
+        lines.append(f'   … и ещё {len(zametki) - limit}')
+    lines.append('')
+    return lines
+
+
+def zapisat_nahodku(record_id, house, text: str, uid, uname) -> str | None:
+    """«71/1, 105 квартира, нашёл подмес» — находка ложится в карточку квартиры.
+
+    Заказчик: «вот эту информацию нужно сохранить — в этой квартире уже был
+    обнаружен подмес, он может обнаружиться снова, опять забудут перекрыть
+    краны». Дом, квартира и находка должны быть названы все три: без любой
+    из них не пишем ничего.
+
+    Возвращает текст ответа или None. Отправляет вызывающий: находку ловим
+    и из живого сообщения, и из фоновой расшифровки, а там события нет.
+    """
+    if not house or not text:
+        return None
+    razbor = flats.parse_note(text, house)
+    if not razbor:
+        return None
+    kvartira, chto = razbor
+    kind = flats.kind_of(chto)
+    if db.flat_note_exists(house['id'], kvartira, kind):
+        return None         # подпись и голосовое об одном и том же выезде
+
+    bylo = db.flat_notes(house['id'], kvartira, limit=3)
+    db.add_flat_note(house['id'], kvartira, mat.mask(flats.summary(text)), kind=kind,
+                     record_id=record_id, author_id=uid, author=uname)
+    log.info('Находка: %s кв.%s — %s', house['address'], kvartira, chto)
+
+    stroki = [f"📌 {house['address']}, кв. {kvartira} — записала: {chto}."]
+    # Ради этого всё и затевалось: сказать, что здесь такое уже находили
+    povtor = [z for z in bylo if z['kind'] == kind]
+    if povtor:
+        stroki.append(f"⚠️ Тут это уже находили — {povtor[0]['created_at'][:10]}, "
+                      f"{povtor[0]['author'] or '—'}.")
+    elif bylo:
+        stroki.append(f"Раньше по этой квартире было: {bylo[0]['text'][:80]} "
+                      f"({bylo[0]['created_at'][:10]}).")
+    return '\n'.join(stroki)
 
 
 def znachimo(rec) -> bool:
@@ -3542,6 +3623,34 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action == 'fl':
+        h = houses.HOUSES_BY_ID.get(int(parts[1]))
+        if not h:
+            return
+        zametki = db.flat_notes(h['id'], limit=60)
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🔧 Техника дома', payload=f"tech:{h['id']}"),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        if not zametki:
+            await send(msg, f"🚪 {h['address']}: находок по квартирам пока нет.\n\n"
+                            'Записываются сами: напишите или наговорите в чат '
+                            'адрес, квартиру и что нашли — «71/1, 105 квартира, '
+                            'подмес».', kb)
+            return
+        po_kvartiram = {}
+        for z in zametki:
+            po_kvartiram.setdefault(z['flat'], []).append(z)
+        lines = [f"🚪 {h['address']} — находки по квартирам "
+                 f'({len(zametki)} в {len(po_kvartiram)} кв.)', '']
+        for kv in sorted(po_kvartiram):
+            spisok = po_kvartiram[kv]
+            znak = '⚠️ ' if len(spisok) > 1 else ''
+            lines.append(f'{znak}кв. {kv}:')
+            for z in spisok[:4]:
+                lines.append(f"   {z['created_at'][:10]} — {z['text'][:100]} "
+                             f"({z['author'] or '—'})")
+        await send(msg, '\n'.join(lines), kb)
 
     elif action == 'inv':
         veshchi = db.list_items()
