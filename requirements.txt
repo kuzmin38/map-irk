@@ -2,3 +2,4 @@ maxapi[webhook]
 aiohttp
 pytest
 pytest-asyncio
+markitdown[pdf,docx,xlsx]

@@ -94,3 +94,40 @@ async def download_all(progress=None) -> tuple[int, int, list]:
                 await progress(i, len(CATALOG))
             await asyncio.sleep(0.3)  # не частим запросами к Диску
     return ok, len(CATALOG), report
+
+
+async def index_all(progress=None, force=False) -> tuple[int, int, list]:
+    """Разбирает скачанные документы в текст и складывает его в базу.
+
+    Возвращает (прочитано, всего файлов, отчёт). Уже разобранное пропускается,
+    если не попросили `force` — повторный проход после обновления каталога
+    стоит копейки.
+    """
+    from . import db, doc_text
+
+    report, ok = [], 0
+    files = [(d, local_path(d)) for d in CATALOG]
+    files = [(d, p) for d, p in files if p]
+    for i, (doc, path) in enumerate(files, 1):
+        fid = file_id(doc['url'])
+        if not force:
+            saved = db.get_doc_text('project', fid)
+            if saved and saved['status'] == db.DOC_OK:
+                ok += 1
+                report.append(f"✅ {doc['title']}: уже прочитан")
+                continue
+        text, status = await doc_text.extract_async(path)
+        db.save_doc_text('project', fid, text, status, title=doc['title'],
+                         addresses='; '.join(doc.get('addresses') or []))
+        if status == db.DOC_OK:
+            ok += 1
+            report.append(f"✅ {doc['title']}: {len(text):,} знаков".replace(',', ' '))
+        elif status == db.DOC_EMPTY:
+            report.append(f"⚠️ {doc['title']}: текста нет (скан без распознавания)")
+        elif status == db.DOC_SKIPPED:
+            report.append(f"➖ {doc['title']}: формат не читается")
+        else:
+            report.append(f"⚠️ {doc['title']}: не удалось разобрать")
+        if progress and i % 5 == 0:
+            await progress(i, len(files))
+    return ok, len(files), report

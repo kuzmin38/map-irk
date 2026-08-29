@@ -16,6 +16,10 @@ STATUS_LABELS = {STATUS_NEW: '🆕 Новая', STATUS_WORK: '🔧 В работ
 def _conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # LIKE в SQLite не различает регистр только у латиницы, а у нас всё
+    # по-русски: без своей функции «розлив» не найдёт «Розлив».
+    conn.create_function('lower_ru', 1,
+                         lambda v: v.lower() if isinstance(v, str) else v)
     return conn
 
 
@@ -145,6 +149,19 @@ def init():
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             created_at TEXT NOT NULL)''')
+        # Тексты документов: PDF/Word/Excel, разобранные в читаемый вид
+        c.execute('''CREATE TABLE IF NOT EXISTS doc_texts (
+            source TEXT NOT NULL,
+            key TEXT NOT NULL,
+            title TEXT,
+            addresses TEXT,
+            house_id INTEGER,
+            text TEXT,
+            chars INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'ok',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (source, key))''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_doc_texts_house ON doc_texts(house_id)')
         # Планёрки: расшифровка записи и разобранный из неё протокол (JSON)
         c.execute('''CREATE TABLE IF NOT EXISTS meetings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -674,3 +691,77 @@ def list_meetings(limit=15):
 def delete_meeting(meeting_id):
     with _conn() as c:
         c.execute('DELETE FROM meetings WHERE id = ?', (meeting_id,))
+
+
+# --- Тексты документов ---
+
+DOC_OK = 'ok'            # текст извлечён
+DOC_EMPTY = 'empty'      # файл прочитан, но букв нет (скан без текстового слоя)
+DOC_SKIPPED = 'skipped'  # формат не читается (чертёж) или нет markitdown
+DOC_FAILED = 'failed'    # файл битый или разбор упал
+
+
+def save_doc_text(source, key, text, status, title=None, addresses=None, house_id=None):
+    """Кладёт разобранный документ. Повторный разбор перезаписывает прежний."""
+    with _conn() as c:
+        c.execute(
+            'INSERT INTO doc_texts (source, key, title, addresses, house_id, text, chars, '
+            'status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT(source, key) DO UPDATE SET title = excluded.title, '
+            'addresses = excluded.addresses, house_id = excluded.house_id, '
+            'text = excluded.text, chars = excluded.chars, status = excluded.status, '
+            'updated_at = excluded.updated_at',
+            (source, str(key), title, addresses, house_id, text, len(text or ''),
+             status, now()))
+
+
+def get_doc_text(source, key):
+    with _conn() as c:
+        return c.execute('SELECT * FROM doc_texts WHERE source = ? AND key = ?',
+                         (source, str(key))).fetchone()
+
+
+def list_doc_texts(source=None, status=DOC_OK, limit=100):
+    q, args = 'SELECT * FROM doc_texts WHERE 1 = 1', []
+    if source:
+        q += ' AND source = ?'
+        args.append(source)
+    if status:
+        q += ' AND status = ?'
+        args.append(status)
+    q += ' ORDER BY title LIMIT ?'
+    args.append(limit)
+    with _conn() as c:
+        return c.execute(q, args).fetchall()
+
+
+def doc_texts_stats() -> dict:
+    """Сколько документов разобрано и сколько не поддалось — по статусам."""
+    with _conn() as c:
+        rows = c.execute('SELECT status, COUNT(*) n FROM doc_texts GROUP BY status').fetchall()
+    return {r['status']: r['n'] for r in rows}
+
+
+def search_doc_texts(query, house_id=None, address=None, limit=5):
+    """Документы, где встречается запрос. Совпадение в названии — важнее."""
+    if not query or not query.strip():
+        return []
+    like = f'%{query.strip().lower()}%'
+    q = ("SELECT * FROM doc_texts WHERE status = 'ok' "
+         'AND (lower_ru(text) LIKE ? OR lower_ru(title) LIKE ?)')
+    args = [like, like]
+    # Документ относится к дому двумя способами: файл дома привязан по id,
+    # а проектный — перечнем адресов в каталоге. Годится любой из них.
+    if house_id is not None and address:
+        q += ' AND (house_id = ? OR lower_ru(addresses) LIKE ?)'
+        args += [house_id, f'%{address.lower()}%']
+    elif house_id is not None:
+        q += ' AND house_id = ?'
+        args.append(house_id)
+    elif address:
+        q += ' AND lower_ru(addresses) LIKE ?'
+        args.append(f'%{address.lower()}%')
+    q += ' ORDER BY (lower_ru(title) LIKE ?) DESC, chars DESC LIMIT ?'
+    args += [like, limit]
+    with _conn() as c:
+        return c.execute(q, args).fetchall()

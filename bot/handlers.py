@@ -23,7 +23,7 @@ from maxapi.enums.message_link_type import MessageLinkType
 from maxapi.types import InputMedia
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
-from . import agent, ai, db, houses
+from . import agent, ai, db, doc_text, houses
 from . import meetings
 from . import project_docs
 from . import risers as risers_mod
@@ -1569,7 +1569,7 @@ async def on_callback(event: MessageCallback):
                 by_section.setdefault(d['section'], []).append(d)
             lines = [f"📐 Проектная документация — {h['address']}", '']
             kb = InlineKeyboardBuilder()
-            n_local = 0
+            n_local = n_read = 0
             for section, items in by_section.items():
                 lines.append(f'▪️ {section}:')
                 for d in items:
@@ -1578,6 +1578,10 @@ async def on_callback(event: MessageCallback):
                     if project_docs.local_path(d):
                         n_local += 1
                         mark = ' 📥'
+                        saved = db.get_doc_text('project', project_docs.file_id(d['url']))
+                        if saved and saved['status'] == db.DOC_OK:
+                            mark += '📖'
+                            n_read += 1
                         kb.row(CallbackButton(text=d['title'][:60], payload=f'pdf:{idx}'))
                     else:
                         kb.row(LinkButton(text=d['title'][:60], url=d['url']))
@@ -1588,6 +1592,9 @@ async def on_callback(event: MessageCallback):
             lines.append('📥 — файл лежит у Люси, придёт прямо в чат.'
                          if n_local else
                          '💡 Документы открываются с Google Диска — нужен доступ к папке УК.')
+            if n_read:
+                lines.append(f'📖 — Люся прочитала документ ({n_read} шт.), '
+                             'можно спрашивать по содержанию.')
             kb.row(CallbackButton(text='📁 Файлы дома', payload=f"dl:{h['id']}"),
                    CallbackButton(text='🏠 К дому', payload=f"h:{h['id']}"))
             await send(msg, '\n'.join(lines), kb)
@@ -1624,6 +1631,33 @@ async def on_callback(event: MessageCallback):
         if ok < total:
             head += ('\nЧто не получилось — ниже. Чаще всего причина в том, '
                      'что на Диске закрыт доступ по ссылке.')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, head + '\n\n' + '\n'.join(report), kb)
+
+    elif action == 'pdindex':
+        if _role(uid) not in ('admin', 'engineer'):
+            await send(msg, '📖 Разбирать документацию может админ или инженер.')
+            return
+        n_local = project_docs.downloaded_count()
+        if not n_local:
+            await send(msg, '📖 Сначала заберите документы с Диска — '
+                            'кнопка «📥 Документация с Диска».')
+            return
+        if not doc_text.available():
+            log.warning('markitdown не установлен — читаю только простые форматы')
+        await send(msg, f'📖 Разбираю {n_local} документов в текст. '
+                        'Займёт пару минут, пришлю отчёт.')
+
+        async def progress(done, all_n):
+            log.info('Разбор документации: %s/%s', done, all_n)
+
+        ok, total, report = await project_docs.index_all(progress)
+        head = f'📖 Прочитано {ok} из {total}.'
+        if ok < total:
+            head += ('\nОстальные — сканы без текстового слоя или чертежи: '
+                     'в них букв нет, их Люся читать не может.')
+        head += '\n\nТеперь можно спрашивать: «Люся, какой диаметр розлива на Седова 65а/2 по проекту?»'
         kb = InlineKeyboardBuilder()
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, head + '\n\n' + '\n'.join(report), kb)
@@ -1963,6 +1997,9 @@ async def on_callback(event: MessageCallback):
             total = len(project_docs.CATALOG)
             kb.row(CallbackButton(text=f'📥 Документация с Диска ({n_local}/{total})',
                                   payload='pdsync'))
+            n_read = db.doc_texts_stats().get(db.DOC_OK, 0)
+            kb.row(CallbackButton(text=f'📖 Прочитать документацию ({n_read}/{n_local})',
+                                  payload='pdindex'))
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
 

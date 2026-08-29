@@ -131,6 +131,41 @@ def _tool_get_meetings(limit: int = 3) -> str:
     return json.dumps({'meetings': out}, ensure_ascii=False)
 
 
+def _tool_search_docs(query: str, address: str | None = None) -> str:
+    """Ищет по разобранным документам и отдаёт фрагменты вокруг совпадения."""
+    from . import doc_text
+
+    house = houses.detect_house(address) if address else None
+    rows = db.search_doc_texts(query, house_id=house['id'] if house else None,
+                               address=house['address'] if house else address)
+    if not rows:
+        stats = db.doc_texts_stats()
+        if not stats.get(db.DOC_OK):
+            return json.dumps({'found': [], 'note': 'документы ещё не разобраны — '
+                               'инженеру нужно нажать «Прочитать документацию»'},
+                              ensure_ascii=False)
+        return json.dumps({'found': [], 'note': f'по запросу "{query}" ничего нет'},
+                          ensure_ascii=False)
+    return json.dumps({'found': [
+        {'key': r['key'], 'title': r['title'], 'addresses': r['addresses'],
+         'excerpt': doc_text.excerpt(r['text'], query),
+         'chars': r['chars']} for r in rows]}, ensure_ascii=False)
+
+
+def _tool_read_doc(key: str, part: int = 1) -> str:
+    """Отдаёт документ кусками по 4000 знаков — целиком он в ответ не влезет."""
+    row = db.get_doc_text('project', key) or db.get_doc_text('house', key)
+    if not row or not row['text']:
+        return json.dumps({'error': 'документ не найден или не разобран'},
+                          ensure_ascii=False)
+    size = 4000
+    part = max(1, int(part or 1))
+    total = max(1, (len(row['text']) + size - 1) // size)
+    chunk = row['text'][(part - 1) * size:part * size]
+    return json.dumps({'title': row['title'], 'part': part, 'parts_total': total,
+                       'text': chunk}, ensure_ascii=False)
+
+
 TOOLS = [
     {'type': 'function', 'function': {
         'name': 'find_house', 'description': 'Найти дом по адресу или части адреса.',
@@ -168,6 +203,22 @@ TOOLS = [
         'parameters': {'type': 'object', 'properties': {
             'house_id': {'type': 'integer'}}, 'required': []}}},
     {'type': 'function', 'function': {
+        'name': 'search_docs',
+        'description': 'Поиск по проектной документации и документам домов '
+                        '(отопление, ВК, тепловые пункты, паспорта, расчёты). '
+                        'Возвращает фрагменты вокруг найденного. address — адрес дома, '
+                        'чтобы искать только по нему.',
+        'parameters': {'type': 'object', 'properties': {
+            'query': {'type': 'string', 'description': 'что ищем: «диаметр розлива», «ДУ», «манометр»'},
+            'address': {'type': 'string'}}, 'required': ['query']}}},
+    {'type': 'function', 'function': {
+        'name': 'read_doc',
+        'description': 'Читать разобранный документ кусками по 4000 знаков. '
+                        'key берётся из результатов search_docs, part — номер куска.',
+        'parameters': {'type': 'object', 'properties': {
+            'key': {'type': 'string'}, 'part': {'type': 'integer'}},
+            'required': ['key']}}},
+    {'type': 'function', 'function': {
         'name': 'get_meetings',
         'description': 'Протоколы последних планёрок: о чём говорили, что решили, '
                         'какие задачи и на ком. limit — сколько последних взять.',
@@ -184,6 +235,8 @@ TOOL_FUNCS = {
     'get_house_works': lambda a: _tool_get_house_works(a['house_id']),
     'get_open_requests': lambda a: _tool_get_open_requests(a.get('house_id')),
     'get_meetings': lambda a: _tool_get_meetings(a.get('limit', 3)),
+    'search_docs': lambda a: _tool_search_docs(a['query'], a.get('address')),
+    'read_doc': lambda a: _tool_read_doc(a['key'], a.get('part', 1)),
 }
 
 
@@ -194,7 +247,9 @@ SYSTEM_PROMPT = (
     'отвечаешь точно и по существу. Обращаешься на «ты», по имени.\n\n'
     'У тебя есть инструменты, чтобы посмотреть реальные данные: дома, '
     'паспорта домов, документы, стояки квартир, справочник и нормативы, '
-    'работы и дедлайны, заявки, протоколы планёрок. Всегда пользуйся инструментами вместо '
+    'работы и дедлайны, заявки, протоколы планёрок, а также текст проектной '
+    'документации (search_docs — по нему отвечай про диаметры, схемы, '
+    'оборудование ТП). Всегда пользуйся инструментами вместо '
     'того, чтобы гадать — сама ты этих данных не помнишь, только через '
     'инструменты. Если по инструментам ничего не нашлось — так и скажи, '
     'не выдумывай данные.\n\n'
