@@ -112,6 +112,24 @@ def _iso(day: str) -> str:
         return day
 
 
+def svodka_iz_bazy(day: str) -> str:
+    """Уже разобранный день — из хроники, без обращения к модели."""
+    iso = _iso(day)
+    fakty = db.facts_for_day(iso)
+    if not fakty:
+        return f'📆 За {day} в хронике пусто.'
+    stroki = [f'📆 Итоги дня {day}', '']
+    po_domam = {}
+    for f in fakty:
+        po_domam.setdefault(f['house_id'], []).append(f)
+    for hid, spisok in po_domam.items():
+        dom = houses.HOUSES_BY_ID.get(hid)
+        stroki.append(f"🏠 {dom['address'] if dom else '—'}")
+        for f in spisok:
+            stroki.append(f"   • {f['text']}")
+    return '\n'.join(stroki)
+
+
 def svodka(day: str, razbor: dict) -> str:
     """Короткий итог дня для руководителя."""
     stroki = [f'📆 Итоги дня {day}', '']

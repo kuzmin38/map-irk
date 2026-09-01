@@ -147,3 +147,87 @@ def test_hronika_vidna_v_pasporte():
     assert 'ХРОНИКА ДОМА' in text
     assert 'Заменён участок розлива' in text
     assert '01.09' in text
+
+
+# ---------- Разбор по команде ----------
+
+import types
+
+
+class Msg:
+    def __init__(self, text=''):
+        self.body = types.SimpleNamespace(text=text, attachments=None, mid='m', markup=None)
+        self.sender = types.SimpleNamespace(user_id=100, full_name='Андрей')
+        self.recipient = types.SimpleNamespace(user_id=100, chat_id=None, chat_type='dialog')
+        self.sent = []
+        self.link = None
+
+    async def answer(self, text=None, attachments=None):
+        self.sent.append(text or '')
+
+
+def sobytie():
+    e = types.SimpleNamespace()
+    e.message = Msg()
+    e.bot = None
+    e.callback = types.SimpleNamespace(
+        user=types.SimpleNamespace(user_id=100, full_name='Андрей'))
+    return e
+
+
+async def test_komanda_itogi_est_v_menyu():
+    import bot.handlers as H
+    payload = next((p for name, _, p in H.QUICK_COMMANDS if name == 'итоги'), None)
+    assert payload == 'itogi'
+
+
+async def test_razbor_po_komande_pishet_hroniku(monkeypatch):
+    import bot.handlers as H
+    dom = houses.detect_house('Седова 71')
+    db.upsert_user(100, 'Андрей')          # первый пользователь — админ
+    for i in range(6):
+        zapis(f'На Седова 71 заменили участок розлива, кусок {i}', 'Костя', dom['id'])
+
+    async def fake_ask(prompt, **kw):
+        return json.dumps({'дома': [{'адрес': 'Седова 71', 'факты': [
+            {'что': 'Заменён участок розлива', 'вид': 'работа'}]}]}, ensure_ascii=False)
+
+    monkeypatch.setattr(razbor.ai, 'ask', fake_ask)
+
+    msg = Msg()
+    await H.run_action('itogi', msg, 100, sobytie())
+
+    assert 'Заменён участок розлива' in msg.sent[-1]
+    assert db.house_facts(dom['id'])[0]['text'] == 'Заменён участок розлива'
+
+
+async def test_uzhe_razobrannyy_den_model_ne_dyorgaet(monkeypatch):
+    import bot.handlers as H
+    dom = houses.detect_house('Седова 71')
+    db.upsert_user(100, 'Андрей')
+    db.add_house_fact(dom['id'], razbor._iso(db.now()[:10]), 'Заменён розлив', 'работа')
+
+    zvali = []
+
+    async def fake_ask(*a, **kw):
+        zvali.append(1)
+        return '{}'
+
+    monkeypatch.setattr(razbor.ai, 'ask', fake_ask)
+
+    msg = Msg()
+    await H.run_action('itogi', msg, 100, sobytie())
+
+    assert zvali == [], 'второй раз за тот же день денег не тратим'
+    assert 'Заменён розлив' in msg.sent[-1]
+
+
+async def test_bez_roli_itogi_ne_sobirayutsya():
+    import bot.handlers as H
+    db.upsert_user(100, 'Андрей')          # админ
+    db.upsert_user(200, 'Костя')           # без роли
+
+    msg = Msg()
+    await H.run_action('itogi', msg, 200, sobytie())
+
+    assert 'для руководства' in msg.sent[-1]

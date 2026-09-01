@@ -28,7 +28,8 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import backup, banter, checks, flats, inventory, mat, passport, plan, remind, report, transcribe
+from . import backup, banter, checks, flats, inventory, mat, passport, plan
+from . import razbor, remind, report, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -1339,6 +1340,7 @@ QUICK_COMMANDS = [
     ('справка', 'Справочник и нормативы', 'dir'),
     ('паспорта', 'Паспорта домов: что заполнено', 'plist'),
     ('напоминания', 'Что Люся должна напомнить', 'rem'),
+    ('итоги', 'Разобрать день по домам', 'itogi'),
     ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
 ]
@@ -1359,6 +1361,7 @@ ALIASES = {
     'справка': ('spravka',),
     'паспорта': ('pasporta',),
     'напоминания': ('napominaniya',),
+    'итоги': ('itogi',),
     'опись': ('opis', 'inventar'),
     'копия': ('kopiya', 'backup'),
 }
@@ -3693,6 +3696,45 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action == 'itogi':
+        if _role(uid) not in ('admin', 'engineer', 'director'):
+            await send(msg, '📆 Итоги дня собираю для руководства и инженера.')
+            return
+        from datetime import datetime as dt, timedelta
+        seychas = dt.now(db.IRKUTSK_TZ)
+        vchera = len(parts) > 1 and parts[1] == 'v'
+        den = (seychas - timedelta(days=1) if vchera else seychas).strftime('%d.%m.%Y')
+        zanovo = len(parts) > 1 and parts[1] == 'z'
+        if zanovo:
+            den = parts[2] if len(parts) > 2 else den
+
+        kb = InlineKeyboardBuilder()
+        if not zanovo and db.day_already_parsed(razbor._iso(den)):
+            kb.row(CallbackButton(text='🔄 Разобрать заново', payload=f'itogi:z:{den}'))
+            kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+            await send(msg, razbor.svodka_iz_bazy(den), kb)
+            return
+
+        await send(msg, f'📆 Читаю ленту за {den}. Это до трёх минут — '
+                        'модель перечитывает день целиком.')
+        try:
+            itog = await razbor.razobrat_den(den)
+        except Exception:
+            log.exception('Разбор дня не удался')
+            await send(msg, '⚠️ Не получилось разобрать день. Смотрю, в чём дело.')
+            return
+        if not itog:
+            await send(msg, '📆 Модель не ответила. Попробуйте ещё раз.')
+            return
+        n = razbor.sohranit(den, itog)
+        kb.row(CallbackButton(text='📆 За вчера', payload='itogi:v'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        if not n:
+            await send(msg, f'📆 За {den} в ленте не нашлось ничего, что стоит '
+                            'записать в хронику домов.', kb)
+            return
+        await send(msg, razbor.svodka(den, itog), kb)
 
     elif action == 'fl':
         h = houses.HOUSES_BY_ID.get(int(parts[1]))
