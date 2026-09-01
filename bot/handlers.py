@@ -2188,14 +2188,58 @@ async def handle_reminder(event, text: str, uid: int) -> bool:
     return True
 
 
+# Обращение по имени в начале или в конце фразы: «Андрей, умница!»,
+# «Спасибо, Костя». Если названа не Люся — говорят не с ней
+_ZOVUT = re.compile(r'^\s*([А-ЯЁ][а-яё]{2,14})\s*[,!]'
+                    r'|[,!]\s*([А-ЯЁ][а-яё]{2,14})\s*[!.)]*$')
+
+# Кого ещё благодарят в рабочем чате, кроме Люси
+_LYUDI = re.compile(
+    r'(?<![а-я])(мастер\w*|сантехник\w*|электрик\w*|дворник\w*|слесар\w*|'
+    r'ребят\w*|парн\w+|пацан\w*|мужик\w+|бригад\w+|звен\w+)(?![а-я])',
+    re.IGNORECASE)
+
+_LYUSYA = ('люся', 'люсь', 'люсенька', 'люська')
+
+
+# Поводы, которые всегда кому-то адресованы. «Доброе утро, мужики» —
+# это всем сразу, а вот «спасибо» и «умница» — конкретному человеку
+_LICHNOE = ('spasibo', 'pohvala', 'gotovo')
+
+
+def banter_umestna(event, text: str, povod: str = '') -> bool:
+    """Реплика невпопад хуже молчания.
+
+    Жанна поблагодарила мастера, Андрей написал «Андрей, умница!» — и Люся
+    влезла с «Спасибо! Учусь у вас». Маша с Костей перешучивались между
+    собой — Люся вставила «Всегда рада». Благодарность и похвала всегда
+    кому-то адресованы, и чаще всего не ей.
+    """
+    link = getattr(event.message, 'link', None)
+    if link is not None:
+        # Ответ или пересылка — это разговор с кем-то другим. К ней обращаются
+        # ответом на её же сообщение, а такие сюда не доходят
+        return False
+    m = _ZOVUT.search(text or '')
+    if m and (m.group(1) or m.group(2) or '').lower() not in _LYUSYA:
+        return False
+    if povod in _LICHNOE and _LYUDI.search(text or ''):
+        return False
+    return True
+
+
 async def maybe_banter(event, text: str):
     """Живая реплика в чат — если есть повод и давно не было.
 
     Всё, что решает «когда», лежит в banter: здесь только проверка, что
-    в этом чате Люсе вообще разрешили открывать рот не по делу.
+    в этом чате Люсе вообще разрешили открывать рот не по делу и что
+    говорят действительно с ней.
     """
     chat_id = getattr(event.message.recipient, 'chat_id', None)
     if chat_id is None or not db.banter_on(chat_id):
+        return
+    povod = banter.pick(text)
+    if not povod or not banter_umestna(event, text, povod[0]):
         return
     line = banter.reply(chat_id, text)
     if line:

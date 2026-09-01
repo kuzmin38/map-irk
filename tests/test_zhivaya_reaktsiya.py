@@ -151,3 +151,67 @@ async def test_komanda_boltay_vozvraschaet():
     await H.on_text(e)
 
     assert e.message.sent
+
+
+# ---------- Реплика невпопад ----------
+
+# Жанна поблагодарила мастера, Андрей написал «Андрей, умница!» — и Люся
+# влезла с «Спасибо! Учусь у вас». Маша с Костей перешучивались между собой —
+# Люся вставила «Всегда рада». Заказчик: «отпускает реплики невпопад,
+# ничего не понятно, к чему это она»
+
+def otvet_komu_to(text):
+    """Сообщение-ответ на чужую реплику."""
+    H.BOT_ME['user_id'] = 777           # как в бою: свой id Люся знает
+    e = event(text)
+    e.message.link = types.SimpleNamespace(
+        type='reply', sender=types.SimpleNamespace(user_id=555),
+        message=types.SimpleNamespace(text='что-то было раньше'))
+    return e
+
+
+async def test_v_razgovore_dvoih_ne_vstrevaet():
+    """«Ах ты ж))) Думала за спасибо» — это Маша Косте, а не Люсе."""
+    banter.forget()
+    e = otvet_komu_to('Ах ты ж))) Думала за спасибо')
+
+    await H.on_text(e)
+
+    assert e.message.sent == []
+
+
+async def test_blagodarnost_drugomu_cheloveku_ne_eyo():
+    banter.forget()
+    e = event('Андрей, умница! Благодарят!')
+
+    await H.on_text(e)
+
+    assert e.message.sent == []
+
+
+async def test_spasibo_masteru_ne_eyo():
+    banter.forget()
+    e = event('Благодарю вас, мастер сделал оперативно')
+
+    await H.on_text(e)
+
+    assert e.message.sent == []
+
+
+async def test_privetstvie_vsem_ostayotsya():
+    """«Доброе утро, мужики» адресовано всем — тут отозваться можно."""
+    banter.forget()
+    e = event('Доброе утро, мужики')
+
+    await H.on_text(e)
+
+    assert e.message.sent, 'на общее приветствие отзывается как и раньше'
+
+
+async def test_pohvala_bez_adresata_rabotaet():
+    banter.forget()
+    e = event('Полезная штука получилась')
+
+    await H.on_text(e)
+
+    assert e.message.sent, 'хвалят её — отвечает'
