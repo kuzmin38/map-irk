@@ -141,7 +141,7 @@ async def test_pri_molchanii_osnovnoy_probuem_zapasnuyu(monkeypatch):
 
     zvali = []
 
-    async def fake_call(model, messages, tools, max_tokens, temperature):
+    async def fake_call(model, messages, tools, max_tokens, temperature, timeout=None):
         zvali.append(model)
         return None if len(zvali) == 1 else {'role': 'assistant', 'content': 'ответ'}
 

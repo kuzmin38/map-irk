@@ -18,7 +18,7 @@ import time
 from maxapi import Bot
 from maxapi.types import BotCommand
 
-from . import backup, db, handlers, status
+from . import backup, db, handlers, razbor, status
 from .handlers import dp
 from .reminders import asked_loop, reminder_loop
 
@@ -172,6 +172,7 @@ async def main():
     asyncio.create_task(heartbeat())              # видно, что опрос жив
     asyncio.create_task(asked_loop(bot))          # «напомни завтра в 9…»
     asyncio.create_task(backup.backup_loop(bot))  # ночная резервная копия
+    asyncio.create_task(razbor.razbor_loop(bot))  # вечерний разбор ленты по домам
 
     # Мини-приложение отдаём сами, GitHub Pages не нужен. Railway обычно задаёт
     # PORT, но не всегда — тогда слушаем 8080: это порт, который Railway

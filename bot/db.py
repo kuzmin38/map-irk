@@ -176,6 +176,16 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         profile TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL)''')
+    # Хроника дома: что за день произошло, разложенное по домам ночным
+    # разбором ленты. Не сообщения, а факты
+    c.execute('''CREATE TABLE IF NOT EXISTS house_facts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER NOT NULL,
+        day TEXT NOT NULL,
+        text TEXT NOT NULL,
+        kind TEXT,
+        created_at TEXT NOT NULL)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_facts ON house_facts(house_id, day)')
     # Замечания по квартирам: что уже находили за этой дверью. Подмес,
     # найденный однажды, находят там же снова — и об этом надо помнить
     c.execute('''CREATE TABLE IF NOT EXISTS flat_notes (
@@ -837,6 +847,41 @@ def house_chat_records(house_id, limit=20):
                          'ORDER BY id DESC LIMIT ?', (house_id, limit)).fetchall()
 
 
+def chat_context(chat_id, limit=12, minutes=180):
+    """Последние реплики этого чата — от старых к новым, для контекста.
+
+    Люся видела только одно сообщение и решала по нему. «Ах ты ж))) Думала
+    за спасибо» в отрыве не понять никому: нужен разговор вокруг.
+    """
+    if chat_id is None:
+        return []
+    with _conn() as c:
+        rows = c.execute(
+            'SELECT user_name, text, transcript, created_at, house_id, is_issue '
+            'FROM chat_messages WHERE chat_id = ? ORDER BY id DESC LIMIT ?',
+            (chat_id, limit)).fetchall()
+    porog = datetime.now(IRKUTSK_TZ) - timedelta(minutes=minutes)
+    svezhie = []
+    for r in rows:
+        try:
+            kogda = datetime.strptime(r['created_at'], '%d.%m.%Y %H:%M')
+        except (TypeError, ValueError):
+            svezhie.append(r)
+            continue
+        if kogda.replace(tzinfo=IRKUTSK_TZ) >= porog:
+            svezhie.append(r)
+    return list(reversed(svezhie))
+
+
+def chat_records_between(nachalo: str, konets: str, limit=400):
+    """Лента за период — для ночного разбора. Даты «ДД.ММ.ГГГГ»."""
+    with _conn() as c:
+        return c.execute(
+            'SELECT * FROM chat_messages WHERE substr(created_at, 1, 10) '
+            'BETWEEN ? AND ? ORDER BY id LIMIT ?',
+            (nachalo, konets, limit)).fetchall()
+
+
 def recent_chat_records(limit=15):
     """Последние сообщения рабочего чата по всем домам, свежие первыми."""
     with _conn() as c:
@@ -1176,3 +1221,34 @@ def houses_with_flat_notes():
         rows = c.execute('SELECT house_id, COUNT(*) n FROM flat_notes '
                          'GROUP BY house_id').fetchall()
     return {r['house_id']: r['n'] for r in rows}
+
+
+# ---------- Хроника дома ----------
+
+def add_house_fact(house_id, day, text, kind=None) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO house_facts (house_id, day, text, kind, created_at) '
+            'VALUES (?, ?, ?, ?, ?)', (house_id, day, text, kind, now()))
+        return cur.lastrowid
+
+
+def house_facts(house_id, limit=30):
+    with _conn() as c:
+        return c.execute('SELECT * FROM house_facts WHERE house_id = ? '
+                         'ORDER BY day DESC, id DESC LIMIT ?',
+                         (house_id, limit)).fetchall()
+
+
+def facts_for_day(day, limit=200):
+    with _conn() as c:
+        return c.execute('SELECT * FROM house_facts WHERE day = ? ORDER BY house_id, id '
+                         'LIMIT ?', (day, limit)).fetchall()
+
+
+def day_already_parsed(day) -> bool:
+    """Разбор за этот день уже делали — второй раз не нужно."""
+    with _conn() as c:
+        row = c.execute('SELECT 1 FROM house_facts WHERE day = ? LIMIT 1',
+                        (day,)).fetchone()
+    return row is not None

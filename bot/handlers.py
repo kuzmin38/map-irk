@@ -363,6 +363,7 @@ def passport_text(h) -> str:
             lines.append(f'▫️ {label}: —')
     lines.append('')
     lines += equipment_lines(h)
+    lines += hronika_lines(h)
     lines += flat_note_lines(h)
     lines += inventory_lines(h)
     lines += works_lines(h)
@@ -1774,6 +1775,31 @@ WORK_FACT = re.compile(
     r'устран\w+|отремонтирова\w+|починил\w*|заварил\w*|сварил\w*|'
     r'восстанов\w+|отогре\w+|заглуш\w+|сдела\w+|выполн\w+)(?![а-я])',
     re.IGNORECASE)
+
+
+def hronika_lines(h, limit: int = 8) -> list:
+    """Что происходило на доме — фактами, а не лентой сообщений.
+
+    Раскладывает день по домам вечерний разбор: код видит одно сообщение,
+    модель — весь день целиком.
+    """
+    from datetime import date
+
+    fakty = db.house_facts(h['id'], limit=limit + 1)
+    if not fakty:
+        return []
+    lines = ['📆 ХРОНИКА ДОМА:']
+    for f in fakty[:limit]:
+        den = f['day']
+        try:
+            den = date.fromisoformat(f['day']).strftime('%d.%m')
+        except ValueError:
+            pass
+        lines.append(f"   {den} — {f['text'][:110]}")
+    if len(fakty) > limit:
+        lines.append(f'   … и ещё {len(fakty) - limit}')
+    lines.append('')
+    return lines
 
 
 def flat_note_lines(h, limit: int = 8) -> list:

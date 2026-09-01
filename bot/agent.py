@@ -332,6 +332,23 @@ TOOL_FUNCS = {
 CHAT = contextvars.ContextVar('chat_id', default=None)
 
 
+def _chat_context_block(chat_id) -> str:
+    """Лента чата коротким списком: кто, когда и что сказал."""
+    if chat_id is None:
+        return ''
+    stroki = []
+    for r in db.chat_context(chat_id, limit=12):
+        chto = (r['transcript'] or r['text'] or '').strip()
+        if not chto:
+            continue
+        dom = houses.HOUSES_BY_ID.get(r['house_id']) if r['house_id'] else None
+        adres = f" [{dom['address']}]" if dom else ''
+        znak = ' 🚨' if r['is_issue'] else ''
+        stroki.append(f"{r['created_at'][-5:]} {r['user_name'] or '—'}{adres}{znak}: "
+                      f'{chto[:200]}')
+    return '\n'.join(stroki)
+
+
 def _houses_block() -> str:
     """Все адреса списком — меньше двух килобайт на 86 домов.
 
@@ -423,6 +440,10 @@ def _build_prompt() -> str:
     'если человек просит напомнить, а срок назвал невнятно, попроси сказать '
     'когда именно. Просьбу без слова «напомни» ты не поймаешь: так и скажи, '
     'что нужно написать «напомни …».\n'
+    'НЕ УГАДЫВАЙ. Не понимаешь, о каком доме, квартире или приборе речь — '
+    'спроси одной короткой фразой. Молчание и вопрос всегда лучше догадки: '
+    'по догадке поедет бригада. Это же касается разговора в чате — если не '
+    'ясно, обращаются ли к тебе, лучше промолчи.\n'
     'Если тебя о чём-то просят, а ты так не умеешь — скажи прямо и посоветуй '
     'сказать Андрею Кузьмину: он тебя дорабатывает.\n\n'
     'Отвечай ровно на заданный вопрос. Никогда не пересказывай то, о чём '
@@ -469,6 +490,14 @@ async def answer(user_id: int, user_name: str, user_text: str,
     system = SYSTEM_PROMPT
     if profile:
         system += f'\n\nЧто ты знаешь про этого пользователя ({user_name}): {profile}'
+
+    # Разговор вокруг: без него Люся судит по одной реплике и промахивается.
+    # «Ах ты ж))) Думала за спасибо» в отрыве не понять и человеку
+    lenta = _chat_context_block(chat_id)
+    if lenta:
+        system += ('\n\nЧТО СЕЙЧАС В ЧАТЕ (свежие сообщения, старые сверху). '
+                   'Это фон разговора, а не вопрос к тебе: отвечай на то, о чём '
+                   'спросили, но понимай, кто с кем говорит и о чём речь.\n' + lenta)
 
     messages = [{'role': 'system', 'content': system}]
     messages += db.recent_chat_history(user_id, limit=6, chat_id=chat_id)

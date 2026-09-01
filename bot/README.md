@@ -133,8 +133,20 @@ python3 scripts/extract_houses.py
 
 ```bash
 export OPENROUTER_API_KEY='ключ'
-export OPENROUTER_MODEL='moonshotai/kimi-k2:free'   # можно не задавать — это значение по умолчанию
+export OPENROUTER_MODEL='google/gemini-2.5-flash'   # можно не задавать — это значение по умолчанию
 ```
+
+Моделей три, и все идут через один ключ и один счёт:
+
+| Переменная | По умолчанию | Зачем |
+|---|---|---|
+| `OPENROUTER_MODEL` | `google/gemini-2.5-flash` | разговор и разбор на лету |
+| `OPENROUTER_FALLBACK` | `moonshotai/kimi-k2` | запасная, когда основная молчит |
+| `OPENROUTER_AUDIO_MODEL` | `google/gemini-2.5-flash` | расшифровка голосовых и видео |
+| `OPENROUTER_SLOW_MODEL` | `google/gemini-2.5-pro` | вечерний разбор ленты по домам |
+
+Медленная модель работает раз в сутки на всей ленте за день, поэтому там
+можно ставить самую толковую: вызовов единицы, а не тысячи.
 
 Без ключа всё остальное работает как обычно, кнопка «🧠 Сводка от Люси»
 просто подскажет, что ИИ не подключён.

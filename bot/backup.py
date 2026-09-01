@@ -61,6 +61,10 @@ def _safe(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', '-', name).strip() or 'дом'
 
 
+def _fmt_day(iso: str | None) -> str:
+    return _fmt_date(iso)
+
+
 def _fmt_date(iso: str | None) -> str:
     if not iso:
         return '—'
@@ -145,6 +149,15 @@ def house_markdown(house) -> str:
             lines.append(f"- {it['name']}{skolko}{mesto}")
     else:
         lines.append('_Ничего не записано._')
+    lines.append('')
+
+    fakty = db.house_facts(hid, limit=60)
+    lines.append('## Хроника')
+    if fakty:
+        for f in fakty:
+            lines.append(f"- **{_fmt_day(f['day'])}** — {f['text']}")
+    else:
+        lines.append('_Пусто._')
     lines.append('')
 
     zametki = db.flat_notes(hid, limit=100)
