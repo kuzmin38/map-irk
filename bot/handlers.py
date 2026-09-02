@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import backup, banter, checks, flats, inventory, mat, passport, plan
+from . import announce, backup, banter, checks, flats, inventory, mat, passport, plan
 from . import razbor, remind, report, stoyak as stoyak_mod, transcribe
 
 log = logging.getLogger(__name__)
@@ -2150,6 +2150,68 @@ def _minut_s(kogda: str) -> int:
     return max(0, int((dt.now(db.IRKUTSK_TZ) - bylo).total_seconds() // 60))
 
 
+async def _rasshifrovat_lichnoe(event, url: str) -> str:
+    """Расшифровывает голосовое из лички и показывает, что услышала.
+
+    Показывает обязательно: распознавание ошибается на адресах и цифрах,
+    и человек должен видеть, с чем Люся дальше работает.
+    """
+    await send(event.message, '🎙 Слушаю…')
+    try:
+        text = await transcribe.transcribe_url(url)
+    except Exception:
+        log.exception('Не удалось расшифровать голосовое из лички')
+        text = None
+    if not text:
+        await send(event.message, '🎙 Не разобрала запись. Попробуйте ещё раз '
+                                  'или напишите текстом.')
+        return ''
+    text = mat.mask(text)
+    log.info('Расшифровано голосовое в личке: %.80s', text)
+    await send(event.message, f'🎙 Услышала: {text}')
+    return text
+
+
+async def handle_announcement(event, text: str, uid: int) -> bool:
+    """«Сделай объявление жильцам» — переписывает наговоренное деловым языком.
+
+    Заказчик наговаривает как думает, а в домовой чат нужно как положено.
+    Цифры, адреса и сроки при этом остаются его: модель переписывает тон,
+    а не содержание.
+    """
+    if not announce.wants_announcement(text):
+        return False
+    await send(event.message, '✍️ Составляю объявление…')
+    try:
+        gotovo = await announce.sostavit(text)
+    except Exception:
+        log.exception('Не удалось составить объявление')
+        gotovo = None
+    if not gotovo:
+        await send(event.message,
+                   '🤔 Не поняла, что объявить. Наговорите или напишите суть: '
+                   'что, где и когда — а я переложу деловым языком.')
+        return True
+
+    dom = houses.detect_house(text)
+    kb = InlineKeyboardBuilder()
+    chat_id = db.house_chat(dom['id']) if dom else None
+    if chat_id:
+        STATE[uid] = {'mode': 'obyava', 'text': gotovo, 'chat_id': chat_id,
+                      'house_id': dom['id']}
+        kb.row(CallbackButton(text=f"🏠 Отправить в чат {dom['address']}",
+                              payload='obsend'))
+        kb.row(CallbackButton(text='✖️ Не отправлять', payload='obdrop'))
+        hvost = ''
+    else:
+        adres = f" по {dom['address']}" if dom else ''
+        hvost = (f'\n\n———\nЧат дома{adres} мне не привязан, отправить сама не могу — '
+                 'скопируйте текст. Чтобы отправляла я: наберите в том чате '
+                 '«/дом Седова 65а/3».')
+    await send(event.message, gotovo + hvost, kb if chat_id else None)
+    return True
+
+
 async def handle_inventory(event, text: str, uid: int) -> bool:
     """«В инвентарь: мотопомпа, подвал, Седова 71» — вещь встаёт на учёт.
 
@@ -2673,8 +2735,17 @@ async def on_text(event: MessageCreated):
         return
 
     if not text:
-        log.info('Молчу: сообщение без текста (вложение или стикер)')
-        return
+        # Голосовое в личку — тот же текст, просто сказанный вслух. Раньше
+        # Люся молча пропускала такие сообщения: расшифровка была заведена
+        # только для рабочего чата, а заказчик диктует ей за рулём
+        url = speech_url(event.message.body)
+        if url:
+            text = await _rasshifrovat_lichnoe(event, url)
+            if not text:
+                return
+        else:
+            log.info('Молчу: сообщение без текста (вложение или стикер)')
+            return
     if text.startswith('/'):
         # Известные команды разобраны фильтрами выше — сюда падают только чужие.
         # Молчать на них можно, но в логе это должно быть видно: иначе «бот не
@@ -2965,6 +3036,9 @@ async def on_text(event: MessageCreated):
                        f'🤔 По адресу {addr} есть таблица стояков, но квартиры {flat_q} в ней нет.\n'
                        f'Здесь квартиры с {min(allf)} по {max(allf)}.')
             return
+
+    if await handle_announcement(event, text, uid):
+        return
 
     if await handle_passport_note(event, text, uid):
         return
@@ -3828,6 +3902,25 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action in ('obsend', 'obdrop'):
+        state = STATE.pop(uid, None)
+        if not state or state.get('mode') != 'obyava':
+            await send(msg, '🤔 Текст уже неактуален, составьте заново.')
+            return
+        if action == 'obdrop':
+            await send(msg, '✖️ Не отправила.', main_menu_kb())
+            return
+        try:
+            await event.bot.send_message(chat_id=state['chat_id'], text=state['text'])
+        except Exception:
+            log.exception('Не удалось отправить объявление жильцам')
+            await send(msg, '⚠️ Не получилось отправить. Скопируйте текст и '
+                            'выложите сами.')
+            return
+        dom = houses.HOUSES_BY_ID.get(state['house_id'])
+        kuda = f" — {dom['address']}" if dom else ''
+        await send(msg, f'🏠 Отправила жильцам{kuda}.', main_menu_kb())
 
     elif action in ('stsend', 'stdrop', 'stdom'):
         sid = int(parts[1])
