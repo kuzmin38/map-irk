@@ -176,6 +176,14 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         profile TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL)''')
+    # Какой чат относится к какому дому. MAX имени чата не присылает,
+    # поэтому привязку делает человек командой изнутри этого чата
+    c.execute('''CREATE TABLE IF NOT EXISTS house_chats (
+        chat_id INTEGER PRIMARY KEY,
+        house_id INTEGER NOT NULL,
+        title TEXT,
+        bound_by TEXT,
+        bound_at TEXT NOT NULL)''')
     # Перекрытые стояки: кто, когда, по какой квартире и кого это оставило
     # без воды. Открыть забывают чаще, чем перекрыть
     c.execute('''CREATE TABLE IF NOT EXISTS riser_shutoffs (
@@ -189,6 +197,7 @@ def _create_all(c):
         by_name TEXT,
         closed_at TEXT NOT NULL,
         opened_at TEXT,
+        res TEXT,
         announced INTEGER NOT NULL DEFAULT 0,
         reminded INTEGER NOT NULL DEFAULT 0)''')
     # Хроника дома: что за день произошло, разложенное по домам ночным
@@ -1271,13 +1280,14 @@ def day_already_parsed(day) -> bool:
 
 # ---------- Перекрытые стояки ----------
 
-def add_shutoff(house_id, flat, riser, floor, flats, by_id=None, by_name=None) -> int:
+def add_shutoff(house_id, flat, riser, floor, flats, by_id=None, by_name=None,
+                res=None) -> int:
     with _conn() as c:
         cur = c.execute(
             'INSERT INTO riser_shutoffs (house_id, flat, riser, floor, flats, '
-            'by_id, by_name, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            'by_id, by_name, res, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (house_id, flat, riser, floor,
-             ','.join(str(f) for f in (flats or [])), by_id, by_name, now()))
+             ','.join(str(f) for f in (flats or [])), by_id, by_name, res, now()))
         return cur.lastrowid
 
 
@@ -1345,3 +1355,40 @@ def main_chat():
             'SELECT chat_id, COUNT(*) n FROM chat_messages GROUP BY chat_id '
             'ORDER BY n DESC LIMIT 5').fetchall()
     return rows[0]['chat_id'] if rows else None
+
+
+# ---------- Домовые чаты ----------
+
+def bind_house_chat(chat_id, house_id, title=None, by_name=None):
+    with _conn() as c:
+        c.execute('INSERT INTO house_chats (chat_id, house_id, title, bound_by, '
+                  'bound_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(chat_id) DO UPDATE '
+                  'SET house_id = excluded.house_id, title = excluded.title, '
+                  'bound_by = excluded.bound_by, bound_at = excluded.bound_at',
+                  (chat_id, house_id, title, by_name, now()))
+
+
+def unbind_house_chat(chat_id):
+    with _conn() as c:
+        c.execute('DELETE FROM house_chats WHERE chat_id = ?', (chat_id,))
+
+
+def house_chat(house_id):
+    """Чат этого дома или None."""
+    with _conn() as c:
+        row = c.execute('SELECT chat_id FROM house_chats WHERE house_id = ? '
+                        'ORDER BY bound_at DESC LIMIT 1', (house_id,)).fetchone()
+    return row['chat_id'] if row else None
+
+
+def chat_house(chat_id):
+    """Дом, к которому привязан этот чат, или None."""
+    with _conn() as c:
+        row = c.execute('SELECT house_id FROM house_chats WHERE chat_id = ?',
+                        (chat_id,)).fetchone()
+    return row['house_id'] if row else None
+
+
+def all_house_chats():
+    with _conn() as c:
+        return c.execute('SELECT * FROM house_chats ORDER BY house_id').fetchall()

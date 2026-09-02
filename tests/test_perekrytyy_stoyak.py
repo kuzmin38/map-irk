@@ -56,7 +56,7 @@ def event(text='', bot=None):
     ('перекрыл стояк на Седова 71/1, 105', 105),
 ])
 def test_prosba_uznayotsya(fraza, kv):
-    chto, dom, kvartira = stoyak.parse(fraza)
+    chto, dom, kvartira, _ = stoyak.parse(fraza)
     assert chto == 'zakryl'
     assert kvartira == kv
     assert dom is not None
@@ -210,3 +210,93 @@ async def test_napominaem_odin_raz():
     await reminders._check_shutoffs(bot)
 
     assert len(bot.sent) == 1
+
+
+# ---------- Что именно перекрыто ----------
+
+@pytest.mark.parametrize('fraza,res', [
+    ('перекрыл стояк гвс по 105 квартире на 65а/3', 'горячая вода'),
+    ('перекрыл стояк хвс по 105 квартире на 65а/3', 'холодная вода'),
+    ('перекрыл стояк отопления по 105 квартире на 65а/3', 'отопление'),
+    ('перекрыл стояк по 105 квартире на 65а/3', 'вода'),
+])
+def test_resurs_ne_vydumyvaetsya(fraza, res):
+    """Нельзя объявлять жильцам, что нет горячей, если перекрыли холодную."""
+    assert stoyak.parse(fraza)[3] == res
+
+
+async def test_v_rabochem_chate_ukazan_resurs():
+    text = 'перекрыл стояк гвс по 105 квартире на 65а/3'
+    e = event(text)
+
+    await H.handle_shutoff(e, text, 100)
+
+    assert 'Без горячей воды' in e.message.sent[-1]
+
+
+# ---------- Объявление жильцам ----------
+
+def test_tekst_zhiltsam_delovoy():
+    text = stoyak.zhiltsam('Седова 65а/3', [7, 14, 105], '09:15',
+                           zakryt=True, res='горячая вода')
+
+    assert text.startswith('Уважаемые жильцы!')
+    assert 'стояк горячего водоснабжения' in text
+    assert '7, 14, 105' in text
+    assert '•' in text, 'просьбы пунктами'
+    assert 'Приносим извинения' in text
+    assert 'Жемчужина' in text
+
+
+def test_zhiltsam_ne_nazyvayut_kvartiru_avarii_i_santehnika():
+    """Соседям незачем знать, у кого течёт и кто приезжал."""
+    text = stoyak.zhiltsam('Седова 65а/3', [7, 14, 105], '09:15',
+                           zakryt=True, res='вода')
+
+    assert 'Андрей' not in text
+    assert 'кв. 105' not in text, 'квартира-источник не называется'
+
+
+def test_tekst_zhiltsam_o_podache():
+    text = stoyak.zhiltsam('Седова 65а/3', [7, 14], '11:05',
+                           zakryt=False, res='горячая вода')
+
+    assert 'Подача горячей воды' in text
+    assert 'возобновлена' in text
+    assert 'Благодарим' in text
+
+
+async def test_knopka_dlya_zhiltsov_poyavlyaetsya_tolko_s_privyazkoy():
+    dom = houses.detect_house('Седова 65а/3')
+    text = 'перекрыл стояк по 105 квартире на 65а/3'
+
+    e = event(text)
+    await H.handle_shutoff(e, text, 100)
+    sid = db.open_shutoffs()[0]['id']
+    kb = H._stoyak_kb(sid, dom['id'])
+    payloads = [b.payload for row in kb.payload for b in row]
+    assert not any(p.startswith('stdom') for p in payloads), 'чат дома не привязан'
+
+    db.bind_house_chat(9, dom['id'], by_name='Андрей')
+    kb2 = H._stoyak_kb(sid, dom['id'])
+    payloads2 = [b.payload for row in kb2.payload for b in row]
+    assert any(p.startswith('stdom') for p in payloads2)
+
+
+async def test_otpravka_zhiltsam_uhodit_v_chat_doma():
+    dom = houses.detect_house('Седова 65а/3')
+    db.bind_house_chat(9, dom['id'], by_name='Андрей')
+    db.add_chat_record(chat_id=7, mid='m', user_id=100, user_name='Костя', text='привет')
+    text = 'перекрыл стояк гвс по 105 квартире на 65а/3'
+    await H.handle_shutoff(event(text), text, 100)
+    sid = db.open_shutoffs()[0]['id']
+
+    bot = Bot()
+    e = event(bot=bot)
+    await H.run_action(f'stdom:{sid}', e.message, 100, e)
+
+    assert len(bot.sent) == 1
+    chat_id, soobschenie = bot.sent[0]
+    assert chat_id == 9, 'ушло в чат дома, а не в обслуживание'
+    assert soobschenie.startswith('Уважаемые жильцы!')
+    assert 'горячего водоснабжения' in soobschenie

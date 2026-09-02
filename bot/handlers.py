@@ -1404,6 +1404,53 @@ async def on_quiet(event: MessageCreated):
                               'если позовут по имени. Вернуть — /болтай.')
 
 
+@dp.message_created(Command(['дом', 'dom']))
+async def on_bind_house(event: MessageCreated):
+    """«/дом Седова 65а/3» изнутри чата — привязывает чат к дому.
+
+    Имени чата MAX не присылает, узнать «а это чей чат» неоткуда. Поэтому
+    привязку делает человек, один раз, изнутри нужного чата.
+    """
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if not is_group(event) or chat_id is None:
+        await send(event.message, '🏠 Эту команду наберите в самом чате дома — '
+                                  'тогда я запомню, чей он.')
+        return
+    text = (event.message.body.text or '')
+    text = re.sub(r'^/\S+\s*', '', text).strip()
+    if not text:
+        dom_id = db.chat_house(chat_id)
+        dom = houses.HOUSES_BY_ID.get(dom_id) if dom_id else None
+        await send(event.message,
+                   f"🏠 Этот чат — дом {dom['address']}." if dom else
+                   '🏠 Напишите адрес: «/дом Седова 65а/3». Тогда я буду знать, '
+                   'куда отправлять объявления для жильцов.')
+        return
+    dom = houses.detect_house(text)
+    if not dom:
+        found = houses.search(text)
+        dom = found[0] if len(found) == 1 else None
+    if not dom:
+        await send(event.message, f'🤔 Не нашла такой дом. Напишите адрес как в '
+                                  f'справочнике, например «{_primer(0)}».')
+        return
+    db.bind_house_chat(chat_id, dom['id'], by_name=_uname(event))
+    await send(event.message,
+               f"🏠 Запомнила: этот чат — {dom['address']}.\n\n"
+               'Сюда буду присылать объявления для жильцов: отключения воды, '
+               'сроки работ. Только по подтверждению человека — сама ничего '
+               'не пишу. Отвязать — /дом_нет.')
+
+
+@dp.message_created(Command(['дом_нет', 'dom_net']))
+async def on_unbind_house(event: MessageCreated):
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if not is_group(event) or chat_id is None:
+        return
+    db.unbind_house_chat(chat_id)
+    await send(event.message, '🏠 Отвязала. Объявления сюда присылать не буду.')
+
+
 @dp.message_created(Command(['болтай', 'boltay']))
 async def on_banter_on(event: MessageCreated):
     """Вернуть живые реплики в этом чате."""
@@ -2036,10 +2083,10 @@ async def handle_shutoff(event, text: str, uid: int) -> bool:
     razbor_teksta = stoyak_mod.parse(text)
     if not razbor_teksta:
         return False
-    chto, dom, kvartira = razbor_teksta
+    chto, dom, kvartira, res = razbor_teksta
 
     if chto == 'otkryl':
-        return await _stoyak_otkryt(event, dom, kvartira, uid)
+        return await _stoyak_otkryt(event, dom, kvartira, uid, res)
 
     naydeno = stoyak_mod.naydi_stoyak(dom['address'], kvartira)
     if not naydeno:
@@ -2050,19 +2097,29 @@ async def handle_shutoff(event, text: str, uid: int) -> bool:
     adres, etazh, nomer, kvartiry = naydeno
 
     sid = db.add_shutoff(dom['id'], kvartira, nomer, etazh, kvartiry,
-                         by_id=uid, by_name=_uname(event))
+                         by_id=uid, by_name=_uname(event), res=res)
     text_v_chat = stoyak_mod.soobschenie(adres, kvartira, kvartiry, _uname(event),
-                                         db.now()[-5:], zakryt=True)
-    kb = InlineKeyboardBuilder()
-    kb.row(CallbackButton(text='📣 Отправить в чат', payload=f'stsend:{sid}'))
-    kb.row(CallbackButton(text='✖️ Не отправлять', payload=f'stdrop:{sid}'))
+                                         db.now()[-5:], zakryt=True, res=res)
     await send(event.message,
                f'Стояк {nomer}-й, {len(kvartiry)} квартир. Вот что напишу в чат:\n\n'
-               + text_v_chat, kb)
+               + text_v_chat, _stoyak_kb(sid, dom['id']))
     return True
 
 
-async def _stoyak_otkryt(event, dom, kvartira, uid: int) -> bool:
+def _stoyak_kb(sid: int, house_id: int, otkryt: bool = False) -> InlineKeyboardBuilder:
+    """Кнопки под черновиком: рабочий чат, домовой чат, отмена."""
+    hvost = ':o' if otkryt else ''
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='📣 В чат обслуживания', payload=f'stsend:{sid}{hvost}'))
+    if db.house_chat(house_id):
+        kb.row(CallbackButton(text='🏠 И жильцам в чат дома',
+                              payload=f'stdom:{sid}{hvost}'))
+    kb.row(CallbackButton(text='✖️ Не отправлять',
+                          payload=f'stdrop:{sid}' if not otkryt else 'menu'))
+    return kb
+
+
+async def _stoyak_otkryt(event, dom, kvartira, uid: int, res: str = 'вода') -> bool:
     """«Открыл стояк» — закрывает запись и сообщает в чат, что вода есть."""
     zapis = db.find_shutoff(dom['id'], kvartira)
     if not zapis:
@@ -2073,14 +2130,12 @@ async def _stoyak_otkryt(event, dom, kvartira, uid: int) -> bool:
     kvartiry = [int(x) for x in (zapis['flats'] or '').split(',') if x.strip().isdigit()]
     db.close_shutoff(zapis['id'])
     skolko = stoyak_mod.dlitelnost(_minut_s(zapis['closed_at']))
+    res = zapis['res'] or res
     text_v_chat = stoyak_mod.soobschenie(dom['address'], zapis['flat'], kvartiry,
                                          _uname(event), db.now()[-5:],
-                                         zakryt=False, skolko=skolko)
-    kb = InlineKeyboardBuilder()
-    kb.row(CallbackButton(text='📣 Отправить в чат', payload=f'stsend:{zapis["id"]}:o'))
-    kb.row(CallbackButton(text='✖️ Не отправлять', payload='menu'))
+                                         zakryt=False, skolko=skolko, res=res)
     await send(event.message, f'Стояк был перекрыт {skolko}. Вот что напишу:\n\n'
-               + text_v_chat, kb)
+               + text_v_chat, _stoyak_kb(zapis['id'], dom['id'], otkryt=True))
     return True
 
 
@@ -3774,7 +3829,7 @@ async def run_action(payload: str, msg, uid: int, event):
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
 
-    elif action in ('stsend', 'stdrop'):
+    elif action in ('stsend', 'stdrop', 'stdom'):
         sid = int(parts[1])
         zapis = db.get_shutoff(sid)
         if not zapis:
@@ -3788,28 +3843,44 @@ async def run_action(payload: str, msg, uid: int, event):
         dom = houses.HOUSES_BY_ID.get(zapis['house_id'])
         kvartiry = [int(x) for x in (zapis['flats'] or '').split(',')
                     if x.strip().isdigit()]
-        chat_id = db.main_chat()
+        res = zapis['res'] or 'вода'
+        zhiltsam = action == 'stdom'
+        chat_id = (db.house_chat(zapis['house_id']) if zhiltsam else db.main_chat())
         if not chat_id:
-            await send(msg, '🤔 Я пока не знаю рабочего чата — напишите там '
-                            'что-нибудь, и я его запомню.')
+            await send(msg, '🤔 Чат дома ещё не привязан. Наберите в нём '
+                            '«/дом Седова 65а/3» — и я запомню, чей он.'
+                       if zhiltsam else
+                       '🤔 Я пока не знаю рабочего чата — напишите там '
+                       'что-нибудь, и я его запомню.')
             return
         skolko = (stoyak_mod.dlitelnost(_minut_s(zapis['closed_at']))
                   if otkryt else '')
-        text_v_chat = stoyak_mod.soobschenie(
-            dom['address'] if dom else '—', zapis['flat'], kvartiry,
-            zapis['by_name'] or _uname_cb(event), db.now()[-5:],
-            zakryt=not otkryt, skolko=skolko)
+        adres = dom['address'] if dom else '—'
+        if zhiltsam:
+            # Жильцам — деловым языком, без имён сантехников и без номера
+            # квартиры, из-за которой перекрывали
+            text_v_chat = stoyak_mod.zhiltsam(adres, kvartiry, db.now()[-5:],
+                                              zakryt=not otkryt, res=res)
+        else:
+            text_v_chat = stoyak_mod.soobschenie(
+                adres, zapis['flat'], kvartiry,
+                zapis['by_name'] or _uname_cb(event), db.now()[-5:],
+                zakryt=not otkryt, skolko=skolko, res=res)
         try:
             await event.bot.send_message(chat_id=chat_id, text=text_v_chat)
         except Exception:
-            log.exception('Не удалось отправить в чат объявление о стояке')
-            await send(msg, '⚠️ Не получилось отправить в чат. Напишите сами.')
+            log.exception('Не удалось отправить объявление о стояке')
+            await send(msg, '⚠️ Не получилось отправить. Напишите сами.')
             return
         db.mark_shutoff_announced(sid)
         kb = InlineKeyboardBuilder()
+        if not zhiltsam and db.house_chat(zapis['house_id']):
+            kb.row(CallbackButton(text='🏠 И жильцам в чат дома',
+                                  payload=f'stdom:{sid}' + (':o' if otkryt else '')))
         kb.row(CallbackButton(text='🚫 Перекрытые стояки', payload='stl'),
                CallbackButton(text='🏠 Меню', payload='menu'))
-        await send(msg, '📣 Отправила в чат.', kb)
+        await send(msg, '🏠 Отправила жильцам в чат дома.' if zhiltsam
+                   else '📣 Отправила в чат обслуживания.', kb)
 
     elif action == 'stl':
         zapisi = db.open_shutoffs()
