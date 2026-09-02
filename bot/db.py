@@ -176,6 +176,11 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         profile TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL)''')
+    # Личные ссылки на страницу записи: адрес и есть пропуск
+    c.execute('''CREATE TABLE IF NOT EXISTS web_tokens (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL)''')
     # Личные диалоги: их chat_id нужен, чтобы забрать сообщение, которого
     # MAX не отдал в уведомлении. В списке чатов бота диалогов нет
     c.execute('''CREATE TABLE IF NOT EXISTS dialogs (
@@ -1426,3 +1431,29 @@ def delete_user(user_id):
     """Убирает запись о пользователе. Нужно, когда бот записал сам себя."""
     with _conn() as c:
         c.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
+
+
+# ---------- Личные ссылки на страницу голоса ----------
+
+def issue_token(user_id) -> str:
+    """Личная ссылка на страницу записи. У человека она одна и та же."""
+    import secrets
+
+    with _conn() as c:
+        row = c.execute('SELECT token FROM web_tokens WHERE user_id = ?',
+                        (user_id,)).fetchone()
+        if row:
+            return row['token']
+        token = secrets.token_urlsafe(24)
+        c.execute('INSERT INTO web_tokens (token, user_id, created_at) '
+                  'VALUES (?, ?, ?)', (token, user_id, now()))
+        return token
+
+
+def token_user(token: str):
+    if not token:
+        return None
+    with _conn() as c:
+        row = c.execute('SELECT user_id FROM web_tokens WHERE token = ?',
+                        (token,)).fetchone()
+    return row['user_id'] if row else None

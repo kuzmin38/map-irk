@@ -28,7 +28,7 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import announce, backup, banter, checks, flats, inventory, mat
+from . import announce, backup, banter, checks, flats, golos as golos_mod, inventory, mat
 from . import maxfix, passport, plan
 from . import razbor, remind, report, stoyak as stoyak_mod, transcribe
 
@@ -1343,6 +1343,7 @@ QUICK_COMMANDS = [
     ('справка', 'Справочник и нормативы', 'dir'),
     ('паспорта', 'Паспорта домов: что заполнено', 'plist'),
     ('напоминания', 'Что Люся должна напомнить', 'rem'),
+    ('голос', 'Страница записи: наговорить Люсе', 'golos'),
     ('итоги', 'Разобрать день по домам', 'itogi'),
     ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
@@ -1364,6 +1365,7 @@ ALIASES = {
     'справка': ('spravka',),
     'паспорта': ('pasporta',),
     'напоминания': ('napominaniya',),
+    'голос': ('golos',),
     'итоги': ('itogi',),
     'опись': ('opis', 'inventar'),
     'копия': ('kopiya', 'backup'),
@@ -4158,6 +4160,28 @@ async def run_action(payload: str, msg, uid: int, event):
             lines.append(f"• {dom['address'] if dom else '—'}, кв. {z['flat']} — "
                          f"{skolko} назад, {z['by_name'] or '—'}")
         await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'golos':
+        if is_group(event):
+            await send(msg, '🎙 Страница записи личная — напишите мне «голос» '
+                            'в личку, пришлю вашу ссылку.')
+            return
+        ssylka = golos_mod.ssylka(uid)
+        if not ssylka:
+            await send(msg, '🎙 Публичный адрес приложения не настроен — '
+                            'страницу записи отдать не могу.')
+            return
+        kb = InlineKeyboardBuilder()
+        kb.row(LinkButton(text='🎙 Открыть страницу записи', url=ssylka))
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg,
+                   '🎙 Ваша страница записи:\n' + ssylka + '\n\n'
+                   'MAX не отдаёт ботам голосовые, поэтому голос идёт мимо него. '
+                   'Откройте страницу, нажмите «Говорить», наговорите и нажмите '
+                   'ещё раз — я расшифрую и сделаю то же, что сделала бы по '
+                   'тексту. Ответ придёт и на странице, и сюда.\n\n'
+                   '💡 Добавьте её на домашний экран телефона — тогда до кнопки '
+                   'одно касание. Ссылка личная, никому не давайте.', kb)
 
     elif action == 'itogi':
         if _role(uid) not in ('admin', 'engineer', 'director'):

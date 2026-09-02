@@ -285,6 +285,47 @@ async def _health(request):
         return web.Response(text='ok')
 
 
+# Бот нужен странице голоса: ответ дублируется в MAX
+BOT = {'ptr': None}
+
+
+async def _golos_page(request):
+    """Страница записи. Адрес личный, он же пропуск."""
+    from . import golos
+
+    user_id = db.token_user(request.match_info.get('token'))
+    if not user_id:
+        return web.Response(status=404, text='404')
+    polzovatel = db.get_user(user_id)
+    imya = (polzovatel['name'] if polzovatel else None) or 'сотрудник'
+    return web.Response(text=golos.stranitsa(imya), content_type='text/html')
+
+
+async def _golos_upload(request):
+    """Принимает запись, расшифровывает и обрабатывает как обычное сообщение."""
+    from . import golos
+
+    user_id = db.token_user(request.match_info.get('token'))
+    if not user_id:
+        return web.json_response({'error': 'Ссылка недействительна.'}, status=404)
+    data = await request.read()
+    if not data:
+        return web.json_response({'error': 'Запись пустая.'})
+    if len(data) > golos.MAX_BYTES:
+        return web.json_response({'error': 'Запись слишком длинная.'})
+    log.info('Голос со страницы: %s, %.1f КБ', user_id, len(data) / 1024)
+    try:
+        text = await golos.rasshifrovat(data, request.headers.get('Content-Type', ''))
+    except Exception:
+        log.exception('Расшифровка записи со страницы не удалась')
+        return web.json_response({'error': 'Не удалось расшифровать. Попробуйте ещё раз.'})
+    if not text:
+        return web.json_response({'error': 'Не разобрала речь. Попробуйте ещё раз, '
+                                           'ближе к телефону.'})
+    otvet = await golos.obrabotat(user_id, text, BOT['ptr'])
+    return web.json_response({'text': text, 'reply': otvet})
+
+
 async def _not_found(request):
     # без подсказок о том, что здесь вообще что-то есть
     return web.Response(status=404, text='404')
@@ -303,12 +344,15 @@ def create_app() -> web.Application:
     app.router.add_get(f'/{path}/', _page)
     app.router.add_get(f'/{path}/api/house/{{house_id}}', _house_api)
     app.router.add_get(f'/{path}/status', _status)
+    app.router.add_get(f'/{path}/golos/{{token}}/', _golos_page)
+    app.router.add_post(f'/{path}/golos/{{token}}/golos', _golos_upload)
     app.router.add_route('*', '/{tail:.*}', _not_found)
     return app
 
 
-async def start(port: int, host: str = '0.0.0.0') -> web.AppRunner:
+async def start(port: int, host: str = '0.0.0.0', bot=None) -> web.AppRunner:
     """Поднимает сервер рядом с ботом и возвращает runner (для остановки в тестах)."""
+    BOT['ptr'] = bot
     runner = web.AppRunner(create_app(), access_log=None)
     await runner.setup()
     await web.TCPSite(runner, host, port).start()

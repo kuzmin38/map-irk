@@ -187,7 +187,7 @@ async def main():
         from .webapp import start as start_webapp
         port = int(os.environ.get('PORT') or 8080)
         try:
-            await start_webapp(port)
+            await start_webapp(port, bot=bot)
         except Exception:
             log.exception('Не удалось поднять сервер мини-приложения — бот работает без него')
     else:
