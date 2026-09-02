@@ -59,9 +59,17 @@ def strip_trigger(text: str) -> str:
     return out.strip(' ,.;:—-')
 
 
-async def sostavit(text: str) -> str | None:
-    """Готовое объявление или None, если модель не ответила."""
+async def sostavit(text: str, kvartiry: list | None = None) -> str | None:
+    """Готовое объявление или None, если модель не ответила.
+
+    kvartiry — список отключённых квартир из шахматки. Его модель не
+    выдумывает, а получает готовым: перепутать номера здесь нельзя.
+    """
     sut = strip_trigger(text)
+    if kvartiry:
+        spisok = ', '.join(str(k) for k in kvartiry)
+        sut += (f'\n\n(Отключены квартиры: {spisok}. Перечисли их в объявлении '
+                'полностью и без изменений.)')
     if len(sut) < 15:
         return None
     return await ai.ask(ZADANIE.format(text=sut), max_tokens=700, temperature=0.2)

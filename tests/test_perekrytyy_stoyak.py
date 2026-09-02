@@ -93,11 +93,14 @@ async def test_perekryl_pokazyvaet_chernovik_a_ne_shlyot_srazu():
     vzyala = await H.handle_shutoff(e, text, 100)
 
     assert vzyala is True
-    chernovik = e.message.sent[-1]
-    assert 'Перекрыт стояк' in chernovik
-    assert 'Седова 65а/3' in chernovik
-    assert '105' in chernovik and '35' in chernovik, 'весь стояк перечислен'
-    assert 'Андрей' in chernovik
+    shapka, rabochiy, zhiltsam = e.message.sent[-3:]
+    assert 'Ниже два готовых текста' in shapka
+    assert rabochiy.startswith('🚫 Перекрыт стояк'), 'пересылается как есть'
+    assert 'Седова 65а/3' in rabochiy
+    assert '105' in rabochiy and '35' in rabochiy, 'весь стояк перечислен'
+    assert 'Андрей' in rabochiy
+    assert zhiltsam.startswith('Уважаемые жильцы!'), 'второй текст — для жильцов'
+    assert 'Ниже' not in rabochiy and 'Ниже' not in zhiltsam, 'ничего служебного'
     assert e.bot.sent == [], 'в чат ничего не ушло без подтверждения'
     assert len(db.open_shutoffs()) == 1
 
@@ -139,8 +142,10 @@ async def test_otkryl_zakryvaet_zapis_i_soobschaet():
     e = event(text2)
     await H.handle_shutoff(e, text2, 100)
 
-    assert 'Стояк открыт' in e.message.sent[-1]
-    assert 'Вода подана' in e.message.sent[-1]
+    teksty = e.message.sent[-2:]
+    assert teksty[0].startswith('✅ Стояк открыт')
+    assert 'Вода подана' in teksty[0]
+    assert teksty[1].startswith('Уважаемые жильцы!')
     assert db.open_shutoffs() == [], 'запись закрыта'
 
 
@@ -231,7 +236,8 @@ async def test_v_rabochem_chate_ukazan_resurs():
 
     await H.handle_shutoff(e, text, 100)
 
-    assert 'Без горячей воды' in e.message.sent[-1]
+    assert any('Без горячей воды' in t for t in e.message.sent)
+    assert any('горячего водоснабжения' in t for t in e.message.sent)
 
 
 # ---------- Объявление жильцам ----------
@@ -300,3 +306,47 @@ async def test_otpravka_zhiltsam_uhodit_v_chat_doma():
     assert chat_id == 9, 'ушло в чат дома, а не в обслуживание'
     assert soobschenie.startswith('Уважаемые жильцы!')
     assert 'горячего водоснабжения' in soobschenie
+
+
+# ---------- Пересылка руками ----------
+
+async def test_teksty_prihodyat_otdelnymi_soobscheniyami():
+    """Пока чаты не привязаны, заказчик пересылает сообщение целиком.
+
+    Значит, в нём не должно быть ни строчки служебного: «вот что напишу»
+    уедет в домовой чат вместе с объявлением.
+    """
+    text = 'перекрыл стояк по 105 квартире на 65а/3'
+    e = event(text)
+
+    await H.handle_shutoff(e, text, 100)
+
+    assert len(e.message.sent) >= 3, 'шапка и два текста — разными сообщениями'
+    zhiltsam = e.message.sent[-1]
+    assert zhiltsam.startswith('Уважаемые жильцы!')
+    assert zhiltsam.endswith('Управляющая компания «Жемчужина»')
+    assert 'Андрей' not in zhiltsam and 'кв. 105' not in zhiltsam
+
+
+async def test_moimi_slovami_perekladyvaet_prichinu(monkeypatch):
+    """«Топит офисное помещение» должно попасть в объявление жильцам."""
+    text = ('топит офисное помещение, перекрыл стояк по 105 квартире на 65а/3 '
+            'до вечера')
+    await H.handle_shutoff(event(text), text, 100)
+    sid = db.open_shutoffs()[0]['id']
+
+    vidno = {}
+
+    async def fake_ask(prompt, **kw):
+        vidno['prompt'] = prompt
+        return 'Уважаемые жильцы!\n\nПодтопление в нежилом помещении.'
+
+    from bot import announce
+    monkeypatch.setattr(announce.ai, 'ask', fake_ask)
+
+    msg = Msg()
+    await H.run_action(f'stwords:{sid}', msg, 100, event())
+
+    assert 'офисное помещение' in vidno['prompt'], 'слова человека уходят модели'
+    assert '105' in vidno['prompt'] and '35' in vidno['prompt'], 'и список квартир'
+    assert msg.sent[-1].startswith('Уважаемые жильцы!')

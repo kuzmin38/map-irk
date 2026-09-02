@@ -198,6 +198,7 @@ def _create_all(c):
         closed_at TEXT NOT NULL,
         opened_at TEXT,
         res TEXT,
+        original TEXT,
         announced INTEGER NOT NULL DEFAULT 0,
         reminded INTEGER NOT NULL DEFAULT 0)''')
     # Хроника дома: что за день произошло, разложенное по домам ночным
@@ -1281,13 +1282,15 @@ def day_already_parsed(day) -> bool:
 # ---------- Перекрытые стояки ----------
 
 def add_shutoff(house_id, flat, riser, floor, flats, by_id=None, by_name=None,
-                res=None) -> int:
+                res=None, original=None) -> int:
     with _conn() as c:
         cur = c.execute(
             'INSERT INTO riser_shutoffs (house_id, flat, riser, floor, flats, '
-            'by_id, by_name, res, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'by_id, by_name, res, original, closed_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (house_id, flat, riser, floor,
-             ','.join(str(f) for f in (flats or [])), by_id, by_name, res, now()))
+             ','.join(str(f) for f in (flats or [])), by_id, by_name, res,
+             original, now()))
         return cur.lastrowid
 
 

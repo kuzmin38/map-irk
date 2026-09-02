@@ -2097,13 +2097,30 @@ async def handle_shutoff(event, text: str, uid: int) -> bool:
     adres, etazh, nomer, kvartiry = naydeno
 
     sid = db.add_shutoff(dom['id'], kvartira, nomer, etazh, kvartiry,
-                         by_id=uid, by_name=_uname(event), res=res)
-    text_v_chat = stoyak_mod.soobschenie(adres, kvartira, kvartiry, _uname(event),
-                                         db.now()[-5:], zakryt=True, res=res)
-    await send(event.message,
-               f'Стояк {nomer}-й, {len(kvartiry)} квартир. Вот что напишу в чат:\n\n'
-               + text_v_chat, _stoyak_kb(sid, dom['id']))
+                         by_id=uid, by_name=_uname(event), res=res, original=text)
+    await _vydat_teksty(event, sid, adres, kvartira, kvartiry, _uname(event),
+                        res, dom['id'], nomer, zakryt=True)
     return True
+
+
+async def _vydat_teksty(event, sid, adres, kvartira, kvartiry, kto, res,
+                        house_id, nomer=None, zakryt=True, skolko=''):
+    """Шапка с кнопками, потом два чистых текста — их пересылают как есть.
+
+    Заказчик пересылает готовое сообщение руками, пока домовые чаты не
+    привязаны. Значит, в пересылаемом сообщении не должно быть ни одного
+    служебного слова: «вот что напишу» уедет вместе с текстом.
+    """
+    shapka = (f'Стояк {nomer}-й, {len(kvartiry)} квартир. Ниже два готовых текста — '
+              'для обслуживания и для жильцов. Перешлите нужный или отправьте кнопкой.'
+              if zakryt else
+              f'Стояк был перекрыт {skolko}. Ниже два готовых текста.')
+    await send(event.message, shapka, _stoyak_kb(sid, house_id, otkryt=not zakryt))
+    await send(event.message, stoyak_mod.soobschenie(
+        adres, kvartira, kvartiry, kto, db.now()[-5:], zakryt=zakryt,
+        skolko=skolko, res=res))
+    await send(event.message, stoyak_mod.zhiltsam(
+        adres, kvartiry, db.now()[-5:], zakryt=zakryt, res=res))
 
 
 def _stoyak_kb(sid: int, house_id: int, otkryt: bool = False) -> InlineKeyboardBuilder:
@@ -2114,6 +2131,9 @@ def _stoyak_kb(sid: int, house_id: int, otkryt: bool = False) -> InlineKeyboardB
     if db.house_chat(house_id):
         kb.row(CallbackButton(text='🏠 И жильцам в чат дома',
                               payload=f'stdom:{sid}{hvost}'))
+    if not otkryt:
+        kb.row(CallbackButton(text='✍️ Жильцам — с моими словами',
+                              payload=f'stwords:{sid}'))
     kb.row(CallbackButton(text='✖️ Не отправлять',
                           payload=f'stdrop:{sid}' if not otkryt else 'menu'))
     return kb
@@ -2131,11 +2151,8 @@ async def _stoyak_otkryt(event, dom, kvartira, uid: int, res: str = 'вода') 
     db.close_shutoff(zapis['id'])
     skolko = stoyak_mod.dlitelnost(_minut_s(zapis['closed_at']))
     res = zapis['res'] or res
-    text_v_chat = stoyak_mod.soobschenie(dom['address'], zapis['flat'], kvartiry,
-                                         _uname(event), db.now()[-5:],
-                                         zakryt=False, skolko=skolko, res=res)
-    await send(event.message, f'Стояк был перекрыт {skolko}. Вот что напишу:\n\n'
-               + text_v_chat, _stoyak_kb(zapis['id'], dom['id'], otkryt=True))
+    await _vydat_teksty(event, zapis['id'], dom['address'], zapis['flat'], kvartiry,
+                        _uname(event), res, dom['id'], zakryt=False, skolko=skolko)
     return True
 
 
@@ -3902,6 +3919,34 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action == 'stwords':
+        zapis = db.get_shutoff(int(parts[1]))
+        if not zapis or not zapis['original']:
+            await send(msg, '🤔 Исходных слов у меня не осталось. Наговорите '
+                            'объявление отдельно: «сделай объявление жильцам…».')
+            return
+        await send(msg, '✍️ Перекладываю вашими словами…')
+        kvartiry = [int(x) for x in (zapis['flats'] or '').split(',')
+                    if x.strip().isdigit()]
+        try:
+            gotovo = await announce.sostavit(zapis['original'], kvartiry)
+        except Exception:
+            log.exception('Не удалось составить объявление по стояку')
+            gotovo = None
+        if not gotovo:
+            await send(msg, '🤔 Не получилось. Текст выше можно переслать как есть.')
+            return
+        dom = houses.HOUSES_BY_ID.get(zapis['house_id'])
+        chat_id = db.house_chat(zapis['house_id'])
+        kb = InlineKeyboardBuilder()
+        if chat_id:
+            STATE[uid] = {'mode': 'obyava', 'text': gotovo, 'chat_id': chat_id,
+                          'house_id': zapis['house_id']}
+            kb.row(CallbackButton(text=f"🏠 Отправить в чат {dom['address']}"
+                                  if dom else '🏠 Отправить жильцам', payload='obsend'))
+            kb.row(CallbackButton(text='✖️ Не отправлять', payload='obdrop'))
+        await send(msg, gotovo, kb if chat_id else None)
 
     elif action in ('obsend', 'obdrop'):
         state = STATE.pop(uid, None)
