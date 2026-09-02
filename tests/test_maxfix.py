@@ -344,3 +344,52 @@ async def test_dialog_zapominaetsya_dazhe_kogda_sobytie_ne_razobralos(monkeypatc
     await maxfix.get_update_model(slomannoe, bot=None)
 
     assert 470264057 in db.dialog_chats()
+
+
+# ---------- Своё сообщение подбирать нельзя ----------
+
+# Люся подобрала собственную реплику «Привет, Андрей! Чем могу помочь?»,
+# записала себя в новые сотрудники и поздоровалась сама с собой
+
+def bot_s_id(uid=363742352):
+    return types_ns(me=types_ns(user_id=uid))
+
+
+def soobschenie_ot(mid, ts, text, uid, is_bot=False):
+    m = soobschenie(mid, ts, text)
+    m.sender = types_ns(user_id=uid, is_bot=is_bot)
+    return m
+
+
+def test_svoyo_soobschenie_uznayotsya():
+    bot = bot_s_id()
+    svoyo = soobschenie_ot('m1', 1, 'Чем могу помочь?', 363742352)
+    chuzhoe = soobschenie_ot('m2', 1, 'Перекрыл стояк', 162131049)
+
+    assert maxfix.svoyo(svoyo, bot) is True
+    assert maxfix.svoyo(chuzhoe, bot) is False
+
+
+def test_lyuboy_bot_ne_schitaetsya():
+    assert maxfix.svoyo(soobschenie_ot('m3', 1, 'привет', 999, is_bot=True),
+                        bot_s_id()) is True
+
+
+async def test_podbiraem_chuzhoe_a_ne_svoyo(monkeypatch):
+    ts = PUSTOE['timestamp']
+    bot = FakeBot({470264057: [
+        soobschenie_ot('m1', ts, 'Привет, Андрей! Чем могу помочь?', 363742352),
+        soobschenie_ot('m2', ts, 'Перекрыл стояк на 65а/3', 162131049),
+    ]})
+    bot.me = types_ns(user_id=363742352)
+    db.remember_dialog(470264057)
+    poluchennoe = []
+
+    async def lovlyu(event):
+        poluchennoe.append(event.message.body.text)
+
+    monkeypatch.setattr(maxfix, 'ON_RECOVERED', lovlyu)
+
+    await maxfix.podobrat(bot, ts)
+
+    assert poluchennoe == ['Перекрыл стояк на 65а/3'], 'своё пропускаем'

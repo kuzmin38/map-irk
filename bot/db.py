@@ -1420,3 +1420,9 @@ def dialog_chats(limit=50):
         rows = c.execute('SELECT chat_id FROM dialogs ORDER BY seen_at DESC '
                          'LIMIT ?', (limit,)).fetchall()
     return [r['chat_id'] for r in rows]
+
+
+def delete_user(user_id):
+    """Убирает запись о пользователе. Нужно, когда бот записал сам себя."""
+    with _conn() as c:
+        c.execute('DELETE FROM users WHERE user_id = ?', (user_id,))

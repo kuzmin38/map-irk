@@ -159,6 +159,11 @@ async def main():
         handlers.BOT_ME.update(username=me.username, user_id=me.user_id)
         status.note_me(me.username, me.user_id)
         log.info('Бот: %s (id %s)', me.username, me.user_id)
+        # Однажды Люся подобрала собственное сообщение и записала себя
+        # в сотрудники. Записи о себе в списке людей быть не должно
+        if db.get_user(me.user_id):
+            db.delete_user(me.user_id)
+            log.info('Убрала запись о себе из списка людей')
         if not me.username:
             log.warning('У бота нет username — кнопка мини-приложения показана не будет')
     except Exception as e:

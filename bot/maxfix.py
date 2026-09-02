@@ -219,6 +219,22 @@ def _v_ms(ts) -> int:
     return ts * 1000 if 0 < ts < 1_000_000_000_000 else ts
 
 
+def svoyo(m, bot) -> bool:
+    """Сообщение самой Люси.
+
+    В чате её реплики лежат вперемешку с чужими, и самой свежей часто
+    оказывается именно её. Подобрав своё, она записала себя в новые
+    сотрудники и поздоровалась сама с собой.
+    """
+    sender = getattr(m, 'sender', None)
+    if sender is None:
+        return False
+    if getattr(sender, 'is_bot', False):
+        return True
+    moy_id = getattr(getattr(bot, 'me', None), 'user_id', None)
+    return bool(moy_id) and getattr(sender, 'user_id', None) == moy_id
+
+
 def _pomnim(mid: str) -> bool:
     if not mid or mid in VZYATO or mid in RAW:
         return True
@@ -257,6 +273,9 @@ async def podobrat(bot, ts_ms: int):
             body = getattr(m, 'body', None)
             mid = getattr(body, 'mid', None)
             if _v_ms(getattr(m, 'timestamp', 0)) < porog:
+                continue
+            if svoyo(m, bot):
+                _pomnim(mid)     # своё запоминаем, чтобы не смотреть снова
                 continue
             if _pomnim(mid):
                 continue
