@@ -1,0 +1,126 @@
+"""Библиотека теряла события, которые не сумела разобрать.
+
+Пересланное голосовое до Люси не доходило вовсе: maxapi писала в лог
+«неизвестный тип обновления: message_created» и выбрасывала событие
+целиком. Обновиться было некуда — стояла самая свежая версия.
+"""
+import pytest
+
+from bot import maxfix
+
+
+@pytest.fixture(autouse=True)
+def chisto():
+    maxfix.RAW.clear()
+
+
+def sobytie(attachments=None, link_attachments=None, text=None, mid='m1'):
+    ev = {
+        'update_type': 'message_created',
+        'timestamp': 1,
+        'message': {
+            'sender': {'user_id': 100, 'first_name': 'Андрей', 'name': 'Андрей',
+                       'is_bot': False, 'last_activity_time': 1},
+            'recipient': {'chat_type': 'dialog', 'user_id': 100},
+            'timestamp': 1,
+            'body': {'mid': mid, 'seq': 1, 'text': text,
+                     'attachments': attachments or []},
+        },
+    }
+    if link_attachments is not None:
+        ev['message']['link'] = {
+            'type': 'forward',
+            'message': {'mid': 'm0', 'seq': 0, 'text': None,
+                        'attachments': link_attachments},
+        }
+    return ev
+
+
+GOLOS = {'type': 'audio', 'transcription': 'Перекрыл стояк на 65а/3',
+         'payload': {'url': 'https://x/a.ogg'}}
+
+
+# ---------- Чтение вложений в обход библиотеки ----------
+
+def test_rech_chitaetsya_iz_syrogo_sobytiya():
+    maxfix._zapomnit(sobytie([GOLOS]))
+
+    gotovo, url = maxfix.speech_from_raw('m1')
+
+    assert gotovo == 'Перекрыл стояк на 65а/3'
+    assert url == 'https://x/a.ogg'
+
+
+def test_peresylannoe_golosovoe_tozhe_vidno():
+    maxfix._zapomnit(sobytie([], link_attachments=[GOLOS]))
+
+    gotovo, url = maxfix.speech_from_raw('m1')
+
+    assert gotovo == 'Перекрыл стояк на 65а/3'
+
+
+def test_video_ssylka_iz_urls():
+    video = {'type': 'video', 'urls': {'mp4_480': 'https://x/v.mp4'}}
+    maxfix._zapomnit(sobytie([video]))
+
+    assert maxfix.speech_from_raw('m1')[1] == 'https://x/v.mp4'
+
+
+def test_kartinka_ne_rech():
+    maxfix._zapomnit(sobytie([{'type': 'image', 'payload': {'url': 'https://x/p.jpg'}}]))
+
+    assert maxfix.speech_from_raw('m1') == (None, None)
+
+
+def test_zapas_ne_rastyot_beskonechno():
+    for i in range(maxfix.RAW_LIMIT + 20):
+        maxfix._zapomnit(sobytie([], mid=f'm{i}'))
+
+    assert len(maxfix.RAW) == maxfix.RAW_LIMIT
+    assert 'm0' not in maxfix.RAW, 'старые вытесняются'
+
+
+# ---------- Починка события ----------
+
+async def test_nerazobrannoe_sobytie_vsyo_ravno_dohodit(monkeypatch, caplog):
+    """Раньше такое событие просто исчезало."""
+    async def fake_enrich(event_object=None, bot=None):
+        return event_object
+
+    monkeypatch.setattr(maxfix, 'enrich_event', fake_enrich)
+    slomannoe = sobytie([{'type': 'audio', 'payload': {'кривое': 'поле'}}],
+                        text='привет')
+    slomannoe['message']['link'] = {'type': 'непонятно', 'message': {}}
+
+    with caplog.at_level('INFO'):
+        obj = await maxfix.get_update_model(slomannoe, bot=None)
+
+    assert obj is not None, 'сообщение доехало'
+    assert obj.message.body.text == 'привет'
+    assert any('Сырое событие' in r.message for r in caplog.records), \
+        'и причина записана в лог'
+
+
+async def test_rech_sohranyaetsya_dazhe_iz_slomannogo(monkeypatch):
+    async def fake_enrich(event_object=None, bot=None):
+        return event_object
+
+    monkeypatch.setattr(maxfix, 'enrich_event', fake_enrich)
+    slomannoe = sobytie([GOLOS])
+    slomannoe['message']['link'] = {'type': 'непонятно', 'message': {}}
+
+    await maxfix.get_update_model(slomannoe, bot=None)
+
+    assert maxfix.speech_from_raw('m1')[0] == 'Перекрыл стояк на 65а/3'
+
+
+async def test_normalnoe_sobytie_prohodit_kak_i_ranshe(monkeypatch):
+    async def fake_enrich(event_object=None, bot=None):
+        return event_object
+
+    monkeypatch.setattr(maxfix, 'enrich_event', fake_enrich)
+
+    obj = await maxfix.get_update_model(sobytie(text='привет'), bot=None)
+
+    assert obj.message.body.text == 'привет'
+    assert maxfix.raw_message('m1'), 'сырое запомнено в любом случае'

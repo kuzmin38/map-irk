@@ -28,7 +28,8 @@ from . import agent, ai, db, feminine, houses
 from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
-from . import announce, backup, banter, checks, flats, inventory, mat, passport, plan
+from . import announce, backup, banter, checks, flats, inventory, mat
+from . import maxfix, passport, plan
 from . import razbor, remind, report, stoyak as stoyak_mod, transcribe
 
 log = logging.getLogger(__name__)
@@ -1842,6 +1843,8 @@ def record_chat_message(event, text: str):
         # Голосовые и видеоотчёты расшифровываем фоном, чтобы не тормозить чат
         url = speech_url(body)
         gotovo = speech_ready(body)
+        if not url and not gotovo:
+            gotovo, url = maxfix.speech_from_raw(getattr(body, 'mid', None))
         if url or gotovo:
             asyncio.create_task(transcribe_later(
                 record_id, url, bot=getattr(event, 'bot', None),
@@ -2846,6 +2849,9 @@ async def on_text(event: MessageCreated):
         vnutri = peresylka(event.message)
         gotovo = speech_ready(body) or (speech_ready(vnutri) if vnutri else None)
         url = speech_url(body) or (speech_url(vnutri) if vnutri else None)
+        # Библиотека вложение могла и не разобрать — тогда читаем сырое
+        if not gotovo and not url:
+            gotovo, url = maxfix.speech_from_raw(getattr(body, 'mid', None))
         if gotovo or url:
             text = await _rasshifrovat_lichnoe(event, url, gotovo)
             if not text:

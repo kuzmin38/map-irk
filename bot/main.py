@@ -18,7 +18,7 @@ import time
 from maxapi import Bot
 from maxapi.types import BotCommand
 
-from . import backup, db, handlers, razbor, status
+from . import backup, db, handlers, maxfix, razbor, status
 from .handlers import dp
 from .reminders import asked_loop, reminder_loop
 
@@ -149,6 +149,7 @@ async def main():
 
     log.info('Версия сборки: %s', handlers.build_version())
 
+    maxfix.install()      # библиотека теряет события, которые не разобрала
     db.init()
     bot = Bot(token)
 
