@@ -1531,6 +1531,18 @@ def _uname_cb(event) -> str:
     return getattr(event.callback.user, 'full_name', None) or ''
 
 
+def zapomnit_dialog(event):
+    """Запоминает chat_id личной переписки: из уведомления его не узнать.
+
+    MAX про голосовое в личке присылает пустое уведомление, а забрать
+    сообщение можно только зная чат. В списке чатов бота диалогов нет.
+    """
+    r = getattr(event.message, 'recipient', None)
+    tip = getattr(getattr(r, 'chat_type', None), 'value', getattr(r, 'chat_type', None))
+    if r is not None and tip == 'dialog' and getattr(r, 'chat_id', None):
+        db.remember_dialog(r.chat_id, getattr(r, 'user_id', None))
+
+
 def _chat_id(event):
     """Где идёт разговор. В личке — None: своей памятью личка и чат не делятся."""
     return getattr(getattr(event.message, 'recipient', None), 'chat_id', None) \
@@ -2715,6 +2727,8 @@ async def on_text(event: MessageCreated):
     text = (event.message.body.text or '').strip()
     uid = _uid(event)
     group = is_group(event)
+    if not group:
+        zapomnit_dialog(event)
     bot_status.note_update('чат' if group else 'личка')
     if not group:
         log.info('Личка от %s: %.60s', uid, text or '<без текста>')

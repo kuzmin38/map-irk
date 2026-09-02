@@ -146,21 +146,33 @@ def pustoe(event: dict) -> bool:
 
 
 async def _dialogi(bot) -> list:
-    """Чаты бота, с кэшем: список меняется редко, а дёргать API на каждое
-    уведомление незачем."""
+    """Где искать потерянное сообщение: личные диалоги и чаты бота.
+
+    Личных диалогов в get_chats нет вовсе — MAX их туда не кладёт. Их
+    chat_id мы знаем только из входящих сообщений, поэтому запоминаем.
+    """
     import time
 
+    from . import db
+
+    svoi = db.dialog_chats()
     if _CHATY['spisok'] and time.monotonic() - _CHATY['kogda'] < CHAT_TTL:
-        return _CHATY['spisok']
+        return _bez_povtorov(svoi + _CHATY['spisok'])
     chats = await bot.get_chats(count=100)
     spisok = [c.chat_id for c in (getattr(chats, 'chats', None) or [])
               if getattr(c, 'chat_id', None)]
     _CHATY.update(kogda=time.monotonic(), spisok=spisok)
-    log.info('Чатов у бота: %d — %s', len(spisok),
-             ', '.join(f"{getattr(c, 'chat_id', '?')}:"
-                       f"{getattr(getattr(c, 'type', None), 'value', getattr(c, 'type', '?'))}"
-                       for c in (getattr(chats, 'chats', None) or [])))
-    return spisok
+    log.info('Чатов у бота: %d, личных диалогов известно: %d', len(spisok), len(svoi))
+    return _bez_povtorov(svoi + spisok)
+
+
+def _bez_povtorov(spisok: list) -> list:
+    vidno, out = set(), []
+    for x in spisok:
+        if x and x not in vidno:
+            vidno.add(x)
+            out.append(x)
+    return out
 
 
 def _v_ms(ts) -> int:

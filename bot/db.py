@@ -176,6 +176,12 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         profile TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL)''')
+    # Личные диалоги: их chat_id нужен, чтобы забрать сообщение, которого
+    # MAX не отдал в уведомлении. В списке чатов бота диалогов нет
+    c.execute('''CREATE TABLE IF NOT EXISTS dialogs (
+        chat_id INTEGER PRIMARY KEY,
+        user_id INTEGER,
+        seen_at TEXT NOT NULL)''')
     # Какой чат относится к какому дому. MAX имени чата не присылает,
     # поэтому привязку делает человек командой изнутри этого чата
     c.execute('''CREATE TABLE IF NOT EXISTS house_chats (
@@ -1395,3 +1401,22 @@ def chat_house(chat_id):
 def all_house_chats():
     with _conn() as c:
         return c.execute('SELECT * FROM house_chats ORDER BY house_id').fetchall()
+
+
+# ---------- Личные диалоги ----------
+
+def remember_dialog(chat_id, user_id=None):
+    """Запоминает chat_id личной переписки — его неоткуда больше взять."""
+    if not chat_id:
+        return
+    with _conn() as c:
+        c.execute('INSERT INTO dialogs (chat_id, user_id, seen_at) VALUES (?, ?, ?) '
+                  'ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, '
+                  'seen_at = excluded.seen_at', (chat_id, user_id, now()))
+
+
+def dialog_chats(limit=50):
+    with _conn() as c:
+        rows = c.execute('SELECT chat_id FROM dialogs ORDER BY seen_at DESC '
+                         'LIMIT ?', (limit,)).fetchall()
+    return [r['chat_id'] for r in rows]

@@ -6,7 +6,14 @@
 """
 import pytest
 
-from bot import maxfix
+from bot import db, maxfix
+
+
+@pytest.fixture(autouse=True)
+def baza(tmp_path, monkeypatch):
+    """Подбор смотрит в известные диалоги — им нужна база."""
+    monkeypatch.setattr(db, 'DB_PATH', str(tmp_path / 'test.db'))
+    db.init()
 
 
 @pytest.fixture(autouse=True)
@@ -246,3 +253,59 @@ async def test_podbiraem_i_kogda_metka_v_sekundah(monkeypatch):
     await maxfix.podobrat(bot, ts)
 
     assert poluchennoe == ['Перекрыл стояк'], 'секунды не должны мешать'
+
+
+# ---------- Личный диалог ----------
+
+# В списке чатов бота диалогов нет вовсе: MAX вернул два групповых чата
+# с отрицательными id. Chat_id лички известен только из входящих сообщений
+
+async def test_lichnyy_dialog_ischetsya_tozhe(monkeypatch):
+    ts = PUSTOE['timestamp']
+    db.remember_dialog(470264057, user_id=162131049)
+    bot = FakeBot({470264057: [soobschenie('m9', ts, 'Перекрыл стояк')]})
+    poluchennoe = []
+
+    async def lovlyu(event):
+        poluchennoe.append(event.message.body.text)
+
+    monkeypatch.setattr(maxfix, 'ON_RECOVERED', lovlyu)
+
+    await maxfix.podobrat(bot, ts)
+
+    assert poluchennoe == ['Перекрыл стояк']
+    assert 470264057 in bot.zaprosy, 'в личку заглянули'
+
+
+async def test_dialog_ischetsya_pervym(monkeypatch):
+    """Голосовое шлют в личку — туда и смотреть в первую очередь."""
+    db.remember_dialog(470264057)
+    bot = FakeBot({})
+
+    spisok = await maxfix._dialogi(bot)
+
+    assert spisok[0] == 470264057
+
+
+def test_chat_id_lichki_zapominaetsya():
+    import types as t
+    import bot.handlers as H
+
+    event = t.SimpleNamespace(message=t.SimpleNamespace(
+        recipient=t.SimpleNamespace(chat_type='dialog', chat_id=470264057,
+                                    user_id=363742352)))
+    H.zapomnit_dialog(event)
+
+    assert 470264057 in db.dialog_chats()
+
+
+def test_gruppovoy_chat_ne_schitaem_dialogom():
+    import types as t
+    import bot.handlers as H
+
+    event = t.SimpleNamespace(message=t.SimpleNamespace(
+        recipient=t.SimpleNamespace(chat_type='chat', chat_id=-69324053039792,
+                                    user_id=None)))
+    H.zapomnit_dialog(event)
+
+    assert db.dialog_chats() == []
