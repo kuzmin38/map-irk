@@ -309,3 +309,38 @@ def test_gruppovoy_chat_ne_schitaem_dialogom():
     H.zapomnit_dialog(event)
 
     assert db.dialog_chats() == []
+
+
+def test_dialog_zapominaetsya_iz_syrogo_sobytiya():
+    """Иначе замкнутый круг: голосовые не доезжают, а номер лички — только
+    из доехавшего сообщения."""
+    maxfix._zapomnit({'update_type': 'message_created', 'message': {
+        'recipient': {'user_id': 363742352, 'chat_id': 470264057,
+                      'chat_type': 'dialog'},
+        'body': {'mid': 'm1', 'text': '', 'attachments': []}}})
+
+    assert 470264057 in db.dialog_chats()
+
+
+def test_gruppovoy_chat_iz_syrogo_ne_zapominaem():
+    maxfix._zapomnit({'update_type': 'message_created', 'message': {
+        'recipient': {'chat_id': -69324053039792, 'chat_type': 'chat'},
+        'body': {'mid': 'm2', 'text': 'привет', 'attachments': []}}})
+
+    assert db.dialog_chats() == []
+
+
+async def test_dialog_zapominaetsya_dazhe_kogda_sobytie_ne_razobralos(monkeypatch):
+    async def fake_enrich(event_object=None, bot=None):
+        return event_object
+
+    monkeypatch.setattr(maxfix, 'enrich_event', fake_enrich)
+    slomannoe = sobytie(text='привет')
+    slomannoe['message']['recipient'] = {'user_id': 363742352,
+                                         'chat_id': 470264057,
+                                         'chat_type': 'dialog'}
+    slomannoe['message']['link'] = {'type': 'непонятно', 'message': {}}
+
+    await maxfix.get_update_model(slomannoe, bot=None)
+
+    assert 470264057 in db.dialog_chats()

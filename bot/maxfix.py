@@ -30,15 +30,44 @@ SPEECH_TYPES = ('audio', 'video')
 
 
 def _zapomnit(event: dict):
-    """Кладёт тело сообщения в запас — из него потом читаем вложения."""
-    body = ((event.get('message') or {}).get('body') or {})
+    """Кладёт тело сообщения в запас и запоминает личный диалог.
+
+    Диалог запоминаем прямо здесь, из сырого события: если ждать, пока
+    сообщение доедет до обработчика, получится замкнутый круг — голосовые
+    не доезжают, а без них номер лички неоткуда узнать.
+    """
+    message = event.get('message') or {}
+    _zapomnit_dialog(message)
+    body = message.get('body') or {}
     mid = body.get('mid')
     if not mid:
         return
-    RAW[mid] = event.get('message') or {}
+    RAW[mid] = message
     RAW.move_to_end(mid)
     while len(RAW) > RAW_LIMIT:
         RAW.popitem(last=False)
+
+
+def _zapomnit_dialog(message: dict):
+    """Chat_id личной переписки — из любого события, где он есть."""
+    for kusok in (message, message.get('link') or {}):
+        r = kusok.get('recipient') or {}
+        if r.get('chat_type') == 'dialog' and r.get('chat_id'):
+            try:
+                from . import db
+                db.remember_dialog(r['chat_id'], r.get('user_id'))
+            except Exception:
+                log.warning('Не удалось запомнить диалог', exc_info=True)
+            return
+        # у пересылки получателя нет, зато есть chat_id рядом с сообщением
+        if kusok.get('chat_id') and (message.get('recipient') or {}).get(
+                'chat_type') == 'dialog':
+            try:
+                from . import db
+                db.remember_dialog(kusok['chat_id'])
+            except Exception:
+                log.warning('Не удалось запомнить диалог', exc_info=True)
+            return
 
 
 def raw_message(mid: str) -> dict:
@@ -113,6 +142,7 @@ async def get_update_model(event: dict, bot):
             syroe = repr(event)[:1500]
         log.warning('Библиотека не разобрала событие: %s', str(e)[:400])
         log.info('Сырое событие: %s', syroe)
+        _zapomnit(event)
         if pustoe(event):
             # Тела в уведомлении нет вовсе — чинить нечего, идём за ним сами
             import asyncio
