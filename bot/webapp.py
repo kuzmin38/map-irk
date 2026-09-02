@@ -331,9 +331,30 @@ async def _not_found(request):
     return web.Response(status=404, text='404')
 
 
-def create_app() -> web.Application:
+def hook_url() -> str | None:
+    """Полный адрес для подписки MAX на обновления."""
+    host = (os.environ.get('MINIAPP_HOST')
+            or os.environ.get('RAILWAY_PUBLIC_DOMAIN'))
+    return f'https://{host}{hook_path()}' if host else None
+
+
+def hook_path() -> str:
+    """Адрес, по которому MAX стучится с обновлениями. Секретный, как и приложение."""
+    return f'/{miniapp_path()}/hook'
+
+
+def create_app(webhook=None) -> web.Application:
+    """Сервер мини-приложения. С webhook — он же принимает обновления MAX.
+
+    Вебхук вешаем на то же приложение, а не на отдельный порт: Railway даёт
+    один порт, и выбирать между приложением и обновлениями не хочется.
+    """
     path = miniapp_path()
     app = web.Application()
+    if webhook is not None:
+        app.on_startup.append(webhook.on_startup)
+        webhook.setup(app, path=hook_path())
+        log.info('Вебхук принимает обновления на %s', hook_path())
     app.router.add_get('/healthz', _health)
     # без завершающего слэша — переводим на слэш, иначе относительные запросы
     # приложения (api/house/...) ушли бы мимо секретного пути
@@ -350,10 +371,11 @@ def create_app() -> web.Application:
     return app
 
 
-async def start(port: int, host: str = '0.0.0.0', bot=None) -> web.AppRunner:
+async def start(port: int, host: str = '0.0.0.0', bot=None,
+                webhook=None) -> web.AppRunner:
     """Поднимает сервер рядом с ботом и возвращает runner (для остановки в тестах)."""
     BOT['ptr'] = bot
-    runner = web.AppRunner(create_app(), access_log=None)
+    runner = web.AppRunner(create_app(webhook), access_log=None)
     await runner.setup()
     await web.TCPSite(runner, host, port).start()
 
