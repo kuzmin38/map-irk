@@ -171,3 +171,69 @@ async def test_bez_privyazki_otdayot_tekst_dlya_kopirovaniya(monkeypatch):
     otvet = e.message.sent[-1]
     assert 'Уважаемые жильцы' in otvet, 'текст всё равно отдан'
     assert '/дом' in otvet, 'и сказано, как привязать чат'
+
+
+# ---------- Откуда берётся расшифровка ----------
+
+class Vlozhenie:
+    def __init__(self, tip='audio', url=None, transcription=None, urls=None):
+        self.type = tip
+        self.payload = types.SimpleNamespace(url=url) if url else None
+        self.transcription = transcription
+        self.urls = urls
+
+
+def telo(*vlozheniya):
+    return types.SimpleNamespace(text='', attachments=list(vlozheniya), mid='m')
+
+
+def test_beryom_rasshifrovku_ot_max():
+    """MAX расшифровывает голосовые сам — это быстрее, точнее и бесплатно."""
+    body = telo(Vlozhenie(transcription='Перекрыл стояк на 65а/3'))
+
+    assert H.speech_ready(body) == 'Перекрыл стояк на 65а/3'
+
+
+def test_ssylka_na_video_lezhit_v_urls():
+    """У видео ссылка не в payload.url, а в urls.mp4_*."""
+    body = telo(Vlozhenie('video', urls=types.SimpleNamespace(
+        mp4_1080=None, mp4_720=None, mp4_480='https://x/v.mp4',
+        mp4_360=None, mp4_240=None, mp4_144=None, hls=None)))
+
+    assert H.speech_url(body) == 'https://x/v.mp4'
+
+
+def test_ssylka_na_golosovoe_v_payload():
+    assert H.speech_url(telo(Vlozhenie(url='https://x/a.ogg'))) == 'https://x/a.ogg'
+
+
+def test_kartinka_ne_rech():
+    body = telo(Vlozhenie('image', url='https://x/p.jpg'))
+
+    assert H.speech_url(body) is None
+    assert H.speech_ready(body) is None
+
+
+def test_v_log_vidno_chto_prishlo():
+    """Иначе «не ответила на голосовое» неотличимо от «не получила его»."""
+    opis = H.opisat_vlozheniya(telo(Vlozhenie('audio', transcription='привет')))
+
+    assert 'audio' in opis and 'transcription' in opis
+    assert H.opisat_vlozheniya(telo()) == 'вложений нет'
+
+
+async def test_gotovuyu_rasshifrovku_ne_perevodim_zanovo(monkeypatch):
+    zvali = []
+
+    async def fake(url):
+        zvali.append(url)
+        return 'из модели'
+
+    monkeypatch.setattr(H.transcribe, 'transcribe_url', fake)
+
+    e = event()
+    e.message.body.attachments = [Vlozhenie(transcription='Перекрыл стояк на 65а/3')]
+    await H.on_text(e)
+
+    assert zvali == [], 'модель не дёргаем, расшифровка уже есть'
+    assert any('Услышала' in t for t in e.message.sent)

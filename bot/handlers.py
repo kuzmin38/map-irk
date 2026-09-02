@@ -1565,15 +1565,65 @@ ISSUE_WORDS = re.compile(
 SPEECH_TYPES = ('audio', 'video')
 
 
-def speech_url(body) -> str | None:
-    """Ссылка на голосовое или видео во вложениях — то, что можно расшифровать."""
+def _a_type(a) -> str:
+    return getattr(getattr(a, 'type', None), 'value', getattr(a, 'type', None)) or ''
+
+
+def speech_ready(body) -> str | None:
+    """Расшифровка, которую MAX сделал сам.
+
+    У голосовых MAX присылает поле transcription — уже готовый текст.
+    Брать его надо первым: это быстрее, точнее по именам и не стоит денег.
+    """
     for a in (getattr(body, 'attachments', None) or []):
-        a_type = getattr(getattr(a, 'type', None), 'value', getattr(a, 'type', None))
-        if a_type in SPEECH_TYPES:
-            url = getattr(a.payload, 'url', None) if a.payload else None
-            if url:
-                return url
+        if _a_type(a) not in SPEECH_TYPES:
+            continue
+        gotovo = (getattr(a, 'transcription', None) or '').strip()
+        if gotovo:
+            return gotovo
     return None
+
+
+def speech_url(body) -> str | None:
+    """Ссылка на голосовое или видео во вложениях — то, что можно расшифровать.
+
+    Ссылка лежит в разных местах: у голосового — в payload.url, у видео —
+    в urls.mp4_*. Раньше смотрели только первое, и голосовые в личке
+    молча пропадали.
+    """
+    for a in (getattr(body, 'attachments', None) or []):
+        if _a_type(a) not in SPEECH_TYPES:
+            continue
+        payload = getattr(a, 'payload', None)
+        url = getattr(payload, 'url', None) if payload else None
+        if url:
+            return url
+        urls = getattr(a, 'urls', None)
+        if urls:
+            for pole in ('mp4_480', 'mp4_360', 'mp4_720', 'mp4_240', 'mp4_144',
+                         'mp4_1080', 'hls'):
+                ssylka = getattr(urls, pole, None)
+                if ssylka:
+                    return ssylka
+    return None
+
+
+def opisat_vlozheniya(body) -> str:
+    """Что за вложения пришли — строкой в лог.
+
+    Без этого «бот не ответил на голосовое» неотличимо от «бот не получил
+    сообщение»: что именно присылает MAX, снаружи не видно.
+    """
+    opis = []
+    for a in (getattr(body, 'attachments', None) or []):
+        payload = getattr(a, 'payload', None)
+        polya = [k for k in ('url', 'token') if getattr(payload, k, None)]
+        if getattr(a, 'transcription', None):
+            polya.append('transcription')
+        if getattr(a, 'urls', None):
+            polya.append('urls')
+        opis.append(f"{_a_type(a)}({','.join(polya) or 'пусто'})")
+    return ', '.join(opis) or 'вложений нет' 
 
 
 # Задание модели на пересказ. Собрано из двух граблей сразу: сначала она
@@ -1683,13 +1733,14 @@ def queue_series(key, text, house, is_issue, bot, chat_id, mid):
         series['house_id'] = house['id']
 
 
-async def transcribe_later(record_id: int, url: str, bot=None, chat_id=None, mid=None):
+async def transcribe_later(record_id: int, url: str | None, bot=None, chat_id=None,
+                           mid=None, gotovo: str | None = None):
     """Расшифровывает голосовое/видео в фоне и дописывает текст к сообщению.
 
     Ответ в чат — только на аварийное и только один на серию роликов.
     """
     try:
-        text = await transcribe.transcribe_url(url)
+        text = gotovo or await transcribe.transcribe_url(url)
         if not text:
             return
         record = db.get_chat_record(record_id)
@@ -1763,11 +1814,14 @@ def record_chat_message(event, text: str):
                 asyncio.create_task(send(event.message, otvet))
         # Голосовые и видеоотчёты расшифровываем фоном, чтобы не тормозить чат
         url = speech_url(body)
-        if url:
+        gotovo = speech_ready(body)
+        if url or gotovo:
             asyncio.create_task(transcribe_later(
                 record_id, url, bot=getattr(event, 'bot', None),
                 chat_id=getattr(event.message.recipient, 'chat_id', None),
-                mid=getattr(body, 'mid', None)))
+                mid=getattr(body, 'mid', None), gotovo=gotovo))
+        elif getattr(body, 'attachments', None):
+            log.info('Вложение без речи: %s', opisat_vlozheniya(body))
     except Exception:
         log.exception('Не удалось записать сообщение чата')
 
@@ -2167,18 +2221,23 @@ def _minut_s(kogda: str) -> int:
     return max(0, int((dt.now(db.IRKUTSK_TZ) - bylo).total_seconds() // 60))
 
 
-async def _rasshifrovat_lichnoe(event, url: str) -> str:
+async def _rasshifrovat_lichnoe(event, url: str | None,
+                                gotovo: str | None = None) -> str:
     """Расшифровывает голосовое из лички и показывает, что услышала.
 
     Показывает обязательно: распознавание ошибается на адресах и цифрах,
     и человек должен видеть, с чем Люся дальше работает.
     """
-    await send(event.message, '🎙 Слушаю…')
-    try:
-        text = await transcribe.transcribe_url(url)
-    except Exception:
-        log.exception('Не удалось расшифровать голосовое из лички')
-        text = None
+    if gotovo:
+        log.info('Расшифровку прислал сам MAX: %.80s', gotovo)
+        text = gotovo
+    else:
+        await send(event.message, '🎙 Слушаю…')
+        try:
+            text = await transcribe.transcribe_url(url)
+        except Exception:
+            log.exception('Не удалось расшифровать голосовое из лички')
+            text = None
     if not text:
         await send(event.message, '🎙 Не разобрала запись. Попробуйте ещё раз '
                                   'или напишите текстом.')
@@ -2755,13 +2814,16 @@ async def on_text(event: MessageCreated):
         # Голосовое в личку — тот же текст, просто сказанный вслух. Раньше
         # Люся молча пропускала такие сообщения: расшифровка была заведена
         # только для рабочего чата, а заказчик диктует ей за рулём
-        url = speech_url(event.message.body)
-        if url:
-            text = await _rasshifrovat_lichnoe(event, url)
+        body = event.message.body
+        gotovo = speech_ready(body)
+        url = speech_url(body)
+        if gotovo or url:
+            text = await _rasshifrovat_lichnoe(event, url, gotovo)
             if not text:
                 return
         else:
-            log.info('Молчу: сообщение без текста (вложение или стикер)')
+            log.info('Молчу: сообщение без текста. Вложения: %s',
+                     opisat_vlozheniya(body))
             return
     if text.startswith('/'):
         # Известные команды разобраны фильтрами выше — сюда падают только чужие.
