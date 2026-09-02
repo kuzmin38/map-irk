@@ -1608,6 +1608,33 @@ def speech_url(body) -> str | None:
     return None
 
 
+def syroe_soobschenie(message) -> str:
+    """Всё сообщение как есть — в лог, когда ничего не распозналось.
+
+    MAX прислал сообщение без текста и без вложений, и что это было —
+    снаружи не видно. Дальше гадать бессмысленно: смотрим, что реально
+    пришло, а не что должно было прийти.
+    """
+    try:
+        dump = message.model_dump_json(exclude_none=True)
+    except Exception:
+        try:
+            dump = repr(message)
+        except Exception:
+            return '<не удалось прочитать>'
+    return dump[:1500]
+
+
+def peresylka(message):
+    """Тело пересланного или процитированного сообщения, если оно есть.
+
+    Пересылают голосовое — само сообщение приходит пустым, а запись лежит
+    во вложенном.
+    """
+    link = getattr(message, 'link', None)
+    return getattr(link, 'message', None) if link else None
+
+
 def opisat_vlozheniya(body) -> str:
     """Что за вложения пришли — строкой в лог.
 
@@ -2815,15 +2842,17 @@ async def on_text(event: MessageCreated):
         # Люся молча пропускала такие сообщения: расшифровка была заведена
         # только для рабочего чата, а заказчик диктует ей за рулём
         body = event.message.body
-        gotovo = speech_ready(body)
-        url = speech_url(body)
+        # Голосовое могли и переслать: тогда запись лежит во вложенном
+        vnutri = peresylka(event.message)
+        gotovo = speech_ready(body) or (speech_ready(vnutri) if vnutri else None)
+        url = speech_url(body) or (speech_url(vnutri) if vnutri else None)
         if gotovo or url:
             text = await _rasshifrovat_lichnoe(event, url, gotovo)
             if not text:
                 return
         else:
-            log.info('Молчу: сообщение без текста. Вложения: %s',
-                     opisat_vlozheniya(body))
+            log.info('Молчу: сообщение без текста. Вложения: %s | сырое: %s',
+                     opisat_vlozheniya(body), syroe_soobschenie(event.message))
             return
     if text.startswith('/'):
         # Известные команды разобраны фильтрами выше — сюда падают только чужие.
