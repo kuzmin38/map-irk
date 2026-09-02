@@ -29,7 +29,7 @@ from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
 from . import backup, banter, checks, flats, inventory, mat, passport, plan
-from . import razbor, remind, report, transcribe
+from . import razbor, remind, report, stoyak as stoyak_mod, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -218,6 +218,8 @@ def main_menu_kb() -> InlineKeyboardBuilder:
            CallbackButton(text='👥 Люди', payload='ppl'))
     kb.row(CallbackButton(text='📊 Брифинг', payload='brief'),
            CallbackButton(text='🧮 Счётчики', payload='mtpick'))
+    kb.row(CallbackButton(text='🚫 Перекрытые стояки', payload='stl'),
+           CallbackButton(text='🧰 Опись', payload='inv'))
     app = miniapp_button('🗺 Карта и таблицы')
     if app:
         kb.row(app, CallbackButton(text='📖 Справочник', payload='dir'))
@@ -2023,6 +2025,76 @@ async def save_passport_note(event, dom, svedeniya: str, uid: int):
                f"{dopisano}:\n{znachenie}", kb)
 
 
+async def handle_shutoff(event, text: str, uid: int) -> bool:
+    """«Перекрыл стояк по 105 квартире на 65а/3» — чат узнаёт, кого отключили.
+
+    Сантехник перекрывает по одной квартире, а без воды остаётся весь столб.
+    Список квартир Люся берёт из шахматки — человеку остаётся подтвердить
+    отправку: сообщение уходит бригаде, и ошибиться в нём дороже, чем нажать
+    кнопку.
+    """
+    razbor_teksta = stoyak_mod.parse(text)
+    if not razbor_teksta:
+        return False
+    chto, dom, kvartira = razbor_teksta
+
+    if chto == 'otkryl':
+        return await _stoyak_otkryt(event, dom, kvartira, uid)
+
+    naydeno = stoyak_mod.naydi_stoyak(dom['address'], kvartira)
+    if not naydeno:
+        await send(event.message,
+                   f"🤔 По {dom['address']} нет шахматки или в ней нет кв. {kvartira}. "
+                   'Стояк записать не могу — напишите в чат сами.')
+        return True
+    adres, etazh, nomer, kvartiry = naydeno
+
+    sid = db.add_shutoff(dom['id'], kvartira, nomer, etazh, kvartiry,
+                         by_id=uid, by_name=_uname(event))
+    text_v_chat = stoyak_mod.soobschenie(adres, kvartira, kvartiry, _uname(event),
+                                         db.now()[-5:], zakryt=True)
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='📣 Отправить в чат', payload=f'stsend:{sid}'))
+    kb.row(CallbackButton(text='✖️ Не отправлять', payload=f'stdrop:{sid}'))
+    await send(event.message,
+               f'Стояк {nomer}-й, {len(kvartiry)} квартир. Вот что напишу в чат:\n\n'
+               + text_v_chat, kb)
+    return True
+
+
+async def _stoyak_otkryt(event, dom, kvartira, uid: int) -> bool:
+    """«Открыл стояк» — закрывает запись и сообщает в чат, что вода есть."""
+    zapis = db.find_shutoff(dom['id'], kvartira)
+    if not zapis:
+        await send(event.message,
+                   f"🤔 По {dom['address']} перекрытых стояков у меня не записано. "
+                   'Если перекрывали не через меня — так и есть, ничего страшного.')
+        return True
+    kvartiry = [int(x) for x in (zapis['flats'] or '').split(',') if x.strip().isdigit()]
+    db.close_shutoff(zapis['id'])
+    skolko = stoyak_mod.dlitelnost(_minut_s(zapis['closed_at']))
+    text_v_chat = stoyak_mod.soobschenie(dom['address'], zapis['flat'], kvartiry,
+                                         _uname(event), db.now()[-5:],
+                                         zakryt=False, skolko=skolko)
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='📣 Отправить в чат', payload=f'stsend:{zapis["id"]}:o'))
+    kb.row(CallbackButton(text='✖️ Не отправлять', payload='menu'))
+    await send(event.message, f'Стояк был перекрыт {skolko}. Вот что напишу:\n\n'
+               + text_v_chat, kb)
+    return True
+
+
+def _minut_s(kogda: str) -> int:
+    """Сколько минут прошло с «ДД.ММ.ГГГГ ЧЧ:ММ»."""
+    from datetime import datetime as dt
+
+    try:
+        bylo = dt.strptime(kogda, '%d.%m.%Y %H:%M').replace(tzinfo=db.IRKUTSK_TZ)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, int((dt.now(db.IRKUTSK_TZ) - bylo).total_seconds() // 60))
+
+
 async def handle_inventory(event, text: str, uid: int) -> bool:
     """«В инвентарь: мотопомпа, подвал, Седова 71» — вещь встаёт на учёт.
 
@@ -2450,6 +2522,8 @@ async def on_text(event: MessageCreated):
         # по-настоящему, а не ответить что-то вежливое
         if await handle_passport_note(event, text, uid):
             return
+        if await handle_shutoff(event, text, uid):
+            return
         if await handle_inventory(event, text, uid):
             return
         # «Где мотопомпа» — если по описи нашлось, отвечаем сразу; если нет,
@@ -2838,6 +2912,9 @@ async def on_text(event: MessageCreated):
             return
 
     if await handle_passport_note(event, text, uid):
+        return
+
+    if await handle_shutoff(event, text, uid):
         return
 
     if await handle_inventory(event, text, uid):
@@ -3696,6 +3773,60 @@ async def run_action(payload: str, msg, uid: int, event):
         await send(msg, '✖️ Отменила.', InlineKeyboardBuilder().row(
             CallbackButton(text='⏰ Напоминания', payload='rem'),
             CallbackButton(text='🏠 Меню', payload='menu')))
+
+    elif action in ('stsend', 'stdrop'):
+        sid = int(parts[1])
+        zapis = db.get_shutoff(sid)
+        if not zapis:
+            await send(msg, '🤔 Эта запись уже неактуальна.')
+            return
+        if action == 'stdrop':
+            db.delete_shutoff(sid)
+            await send(msg, '✖️ Не отправила, запись убрала.', main_menu_kb())
+            return
+        otkryt = len(parts) > 2 and parts[2] == 'o'
+        dom = houses.HOUSES_BY_ID.get(zapis['house_id'])
+        kvartiry = [int(x) for x in (zapis['flats'] or '').split(',')
+                    if x.strip().isdigit()]
+        chat_id = db.main_chat()
+        if not chat_id:
+            await send(msg, '🤔 Я пока не знаю рабочего чата — напишите там '
+                            'что-нибудь, и я его запомню.')
+            return
+        skolko = (stoyak_mod.dlitelnost(_minut_s(zapis['closed_at']))
+                  if otkryt else '')
+        text_v_chat = stoyak_mod.soobschenie(
+            dom['address'] if dom else '—', zapis['flat'], kvartiry,
+            zapis['by_name'] or _uname_cb(event), db.now()[-5:],
+            zakryt=not otkryt, skolko=skolko)
+        try:
+            await event.bot.send_message(chat_id=chat_id, text=text_v_chat)
+        except Exception:
+            log.exception('Не удалось отправить в чат объявление о стояке')
+            await send(msg, '⚠️ Не получилось отправить в чат. Напишите сами.')
+            return
+        db.mark_shutoff_announced(sid)
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🚫 Перекрытые стояки', payload='stl'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '📣 Отправила в чат.', kb)
+
+    elif action == 'stl':
+        zapisi = db.open_shutoffs()
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        if not zapisi:
+            await send(msg, '✅ Перекрытых стояков нет.\n\n'
+                            'Напишите мне «перекрыл стояк по 105 квартире на 65а/3» — '
+                            'найду весь стояк и объявлю в чат.', kb)
+            return
+        lines = [f'🚫 Перекрытые стояки — {len(zapisi)}', '']
+        for z in zapisi:
+            dom = houses.HOUSES_BY_ID.get(z['house_id'])
+            skolko = stoyak_mod.dlitelnost(_minut_s(z['closed_at']))
+            lines.append(f"• {dom['address'] if dom else '—'}, кв. {z['flat']} — "
+                         f"{skolko} назад, {z['by_name'] or '—'}")
+        await send(msg, '\n'.join(lines), kb)
 
     elif action == 'itogi':
         if _role(uid) not in ('admin', 'engineer', 'director'):

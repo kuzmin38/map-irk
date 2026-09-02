@@ -123,6 +123,33 @@ async def _send_asked(bot):
         log.info('Напоминание %s отправлено: %.50s', r['id'], r['text'])
 
 
+# Через сколько напомнить про перекрытый стояк. Заказчик про это и говорил:
+# «опять забудут краны перекрытия, опять будет мешаться»
+STOYAK_CHASOV = 4
+
+
+async def _check_shutoffs(bot):
+    """Стояк перекрыт четвёртый час — напоминаем тому, кто перекрывал."""
+    from . import handlers, houses, stoyak
+
+    for z in db.open_shutoffs():
+        if z['reminded'] or not z['by_id']:
+            continue
+        minut = handlers._minut_s(z['closed_at'])
+        if minut < STOYAK_CHASOV * 60:
+            continue
+        dom = houses.HOUSES_BY_ID.get(z['house_id'])
+        try:
+            await bot.send_message(
+                user_id=z['by_id'],
+                text=f"🚫 Напоминаю: стояк на {dom['address'] if dom else '—'}, "
+                     f"кв. {z['flat']} перекрыт уже {stoyak.dlitelnost(minut)}.\n"
+                     'Если открыли — напишите «открыл стояк», я сообщу в чат.')
+        except Exception:
+            log.warning('Не доставлено напоминание о стояке %s', z['id'])
+        db.mark_shutoff_reminded(z['id'])
+
+
 async def asked_loop(bot):
     """Отдельный цикл: просьбы проверяем каждую минуту, а не раз в полчаса.
 
@@ -132,6 +159,7 @@ async def asked_loop(bot):
     while True:
         try:
             await _send_asked(bot)
+            await _check_shutoffs(bot)
         except Exception:
             log.exception('Сбой в цикле напоминаний по просьбе')
         await asyncio.sleep(60)

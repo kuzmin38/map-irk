@@ -176,6 +176,21 @@ def _create_all(c):
         user_id INTEGER PRIMARY KEY,
         profile TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL)''')
+    # Перекрытые стояки: кто, когда, по какой квартире и кого это оставило
+    # без воды. Открыть забывают чаще, чем перекрыть
+    c.execute('''CREATE TABLE IF NOT EXISTS riser_shutoffs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        house_id INTEGER NOT NULL,
+        flat INTEGER NOT NULL,
+        riser INTEGER,
+        floor INTEGER,
+        flats TEXT,
+        by_id INTEGER,
+        by_name TEXT,
+        closed_at TEXT NOT NULL,
+        opened_at TEXT,
+        announced INTEGER NOT NULL DEFAULT 0,
+        reminded INTEGER NOT NULL DEFAULT 0)''')
     # Хроника дома: что за день произошло, разложенное по домам ночным
     # разбором ленты. Не сообщения, а факты
     c.execute('''CREATE TABLE IF NOT EXISTS house_facts (
@@ -1252,3 +1267,81 @@ def day_already_parsed(day) -> bool:
         row = c.execute('SELECT 1 FROM house_facts WHERE day = ? LIMIT 1',
                         (day,)).fetchone()
     return row is not None
+
+
+# ---------- Перекрытые стояки ----------
+
+def add_shutoff(house_id, flat, riser, floor, flats, by_id=None, by_name=None) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO riser_shutoffs (house_id, flat, riser, floor, flats, '
+            'by_id, by_name, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (house_id, flat, riser, floor,
+             ','.join(str(f) for f in (flats or [])), by_id, by_name, now()))
+        return cur.lastrowid
+
+
+def open_shutoffs(house_id=None):
+    """Стояки, которые сейчас перекрыты. Старые сверху — их и открывать первыми."""
+    q = 'SELECT * FROM riser_shutoffs WHERE opened_at IS NULL'
+    args = []
+    if house_id is not None:
+        q += ' AND house_id = ?'
+        args.append(house_id)
+    q += ' ORDER BY id'
+    with _conn() as c:
+        return c.execute(q, args).fetchall()
+
+
+def find_shutoff(house_id, flat):
+    """Открытая запись по этому стояку — чтобы «открыл» нашёл своё «перекрыл».
+
+    Ищем по любой квартире стояка: перекрывали по 105-й, а открыть могли
+    сказать про 35-ю — стояк-то один.
+    """
+    for row in open_shutoffs(house_id):
+        spisok = [int(x) for x in (row['flats'] or '').split(',') if x.strip().isdigit()]
+        if flat == row['flat'] or flat in spisok:
+            return row
+    return None
+
+
+def get_shutoff(shutoff_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM riser_shutoffs WHERE id = ?',
+                         (shutoff_id,)).fetchone()
+
+
+def close_shutoff(shutoff_id):
+    with _conn() as c:
+        c.execute('UPDATE riser_shutoffs SET opened_at = ? WHERE id = ?',
+                  (now(), shutoff_id))
+
+
+def mark_shutoff_announced(shutoff_id):
+    with _conn() as c:
+        c.execute('UPDATE riser_shutoffs SET announced = 1 WHERE id = ?', (shutoff_id,))
+
+
+def mark_shutoff_reminded(shutoff_id):
+    with _conn() as c:
+        c.execute('UPDATE riser_shutoffs SET reminded = 1 WHERE id = ?', (shutoff_id,))
+
+
+def delete_shutoff(shutoff_id):
+    with _conn() as c:
+        c.execute('DELETE FROM riser_shutoffs WHERE id = ?', (shutoff_id,))
+
+
+def main_chat():
+    """Самый живой чат — туда и уходят объявления.
+
+    Люсю добавляют не в один чат, а имени чата MAX не присылает. Считаем
+    рабочим тот, где за последнюю неделю было больше всего разговора.
+    """
+    porog = (datetime.now(IRKUTSK_TZ) - timedelta(days=7)).strftime('%d.%m.%Y')
+    with _conn() as c:
+        rows = c.execute(
+            'SELECT chat_id, COUNT(*) n FROM chat_messages GROUP BY chat_id '
+            'ORDER BY n DESC LIMIT 5').fetchall()
+    return rows[0]['chat_id'] if rows else None
