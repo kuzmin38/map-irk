@@ -3194,6 +3194,17 @@ async def on_text(event: MessageCreated):
         await send(event.message, f'🔍 Нашла несколько домов по «{text}» — выберите:', kb)
 
 
+async def _obrabotat_podobrannoe(event):
+    """Сообщение, которого MAX не прислал в уведомлении, — обычным путём."""
+    try:
+        await on_text(event)
+    except Exception:
+        log.exception('Не удалось обработать подобранное сообщение')
+
+
+maxfix.ON_RECOVERED = _obrabotat_podobrannoe
+
+
 # ---------- Кнопки ----------
 
 @dp.message_callback()

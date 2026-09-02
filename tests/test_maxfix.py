@@ -124,3 +124,102 @@ async def test_normalnoe_sobytie_prohodit_kak_i_ranshe(monkeypatch):
 
     assert obj.message.body.text == 'привет'
     assert maxfix.raw_message('m1'), 'сырое запомнено в любом случае'
+
+
+# ---------- Уведомление без сообщения ----------
+
+# MAX присылает про голосовое в личке пустое уведомление: только метка
+# времени. Текстовые приходят целиком — значит, дело в аудио
+
+PUSTOE = {'timestamp': 1788328220091, 'user_locale': 'ru',
+          'update_type': 'message_created'}
+
+
+def test_pustoe_uvedomlenie_uznayotsya():
+    assert maxfix.pustoe(PUSTOE) is True
+    assert maxfix.pustoe(sobytie(text='привет')) is False
+
+
+class FakeBot:
+    def __init__(self, messages):
+        self.messages = messages
+        self.zaprosy = []
+
+    async def get_chats(self, count=None):
+        return types_ns(chats=[types_ns(chat_id=7), types_ns(chat_id=9)])
+
+    async def get_messages(self, chat_id=None, count=None, **kw):
+        self.zaprosy.append(chat_id)
+        return types_ns(messages=self.messages.get(chat_id, []))
+
+
+def types_ns(**kw):
+    import types as t
+    return t.SimpleNamespace(**kw)
+
+
+def soobschenie(mid, ts, text=None, attachments=None):
+    return types_ns(timestamp=ts, body=types_ns(
+        mid=mid, text=text, attachments=attachments or []))
+
+
+@pytest.fixture(autouse=True)
+def chisto_vzyato():
+    maxfix.VZYATO.clear()
+    maxfix._CHATY.update(kogda=0.0, spisok=[])
+
+
+async def test_poteryannoe_soobschenie_podbiraetsya(monkeypatch):
+    ts = PUSTOE['timestamp']
+    bot = FakeBot({7: [soobschenie('m9', ts, 'Перекрыл стояк')]})
+    poluchennoe = []
+
+    async def lovlyu(event):
+        poluchennoe.append(event.message.body.text)
+
+    monkeypatch.setattr(maxfix, 'ON_RECOVERED', lovlyu)
+
+    await maxfix.podobrat(bot, ts)
+
+    assert poluchennoe == ['Перекрыл стояк']
+
+
+async def test_staroe_ne_podbiraem(monkeypatch):
+    ts = PUSTOE['timestamp']
+    staroe = soobschenie('m1', ts - 10 * 60 * 1000, 'вчерашнее')
+    bot = FakeBot({7: [staroe]})
+    poluchennoe = []
+
+    async def lovlyu(event):
+        poluchennoe.append(event.message.body.text)
+
+    monkeypatch.setattr(maxfix, 'ON_RECOVERED', lovlyu)
+
+    await maxfix.podobrat(bot, ts)
+
+    assert poluchennoe == [], 'подбираем только свежее'
+
+
+async def test_odno_i_to_zhe_ne_dvoitsya(monkeypatch):
+    ts = PUSTOE['timestamp']
+    bot = FakeBot({7: [soobschenie('m9', ts, 'Перекрыл стояк')]})
+    poluchennoe = []
+
+    async def lovlyu(event):
+        poluchennoe.append(event.message.body.text)
+
+    monkeypatch.setattr(maxfix, 'ON_RECOVERED', lovlyu)
+
+    await maxfix.podobrat(bot, ts)
+    await maxfix.podobrat(bot, ts)
+
+    assert len(poluchennoe) == 1
+
+
+async def test_spisok_chatov_kesiruetsya():
+    bot = FakeBot({})
+
+    await maxfix._dialogi(bot)
+    spisok = await maxfix._dialogi(bot)
+
+    assert spisok == [7, 9]

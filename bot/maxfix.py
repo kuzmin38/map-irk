@@ -113,6 +113,11 @@ async def get_update_model(event: dict, bot):
             syroe = repr(event)[:1500]
         log.warning('Библиотека не разобрала событие: %s', str(e)[:400])
         log.info('Сырое событие: %s', syroe)
+        if pustoe(event):
+            # Тела в уведомлении нет вовсе — чинить нечего, идём за ним сами
+            import asyncio
+            asyncio.create_task(podobrat(bot, event.get('timestamp') or 0))
+            return None
         obj = _pochinit(event)
         if obj is None:
             log.warning('Починить не удалось, событие потеряно')
@@ -120,6 +125,86 @@ async def get_update_model(event: dict, bot):
         log.info('Событие починено и передано боту')
     _zapomnit(event)
     return await enrich_event(event_object=obj, bot=bot)
+
+
+# ---------- Событие без тела ----------
+
+# MAX присылает про голосовое в личке пустое уведомление: только метка
+# времени, без самого сообщения. Текстовые приходят целиком, значит дело
+# в аудио. Раз в событии его нет — забираем сообщение отдельным запросом
+ON_RECOVERED = None      # сюда handlers кладёт свой обработчик
+VZYATO: OrderedDict = OrderedDict()   # что уже подобрали, чтобы не по кругу
+OKNO_MS = 120_000        # ищем сообщения за две минуты до уведомления
+
+_CHATY: dict = {'kogda': 0.0, 'spisok': []}
+CHAT_TTL = 600           # список чатов меняется редко
+
+
+def pustoe(event: dict) -> bool:
+    return (event.get('update_type') == 'message_created'
+            and not event.get('message'))
+
+
+async def _dialogi(bot) -> list:
+    """Чаты бота, с кэшем: список меняется редко, а дёргать API на каждое
+    уведомление незачем."""
+    import time
+
+    if _CHATY['spisok'] and time.monotonic() - _CHATY['kogda'] < CHAT_TTL:
+        return _CHATY['spisok']
+    chats = await bot.get_chats(count=100)
+    spisok = [c.chat_id for c in (getattr(chats, 'chats', None) or [])
+              if getattr(c, 'chat_id', None)]
+    _CHATY.update(kogda=time.monotonic(), spisok=spisok)
+    log.info('Чатов у бота: %d', len(spisok))
+    return spisok
+
+
+def _pomnim(mid: str) -> bool:
+    if not mid or mid in VZYATO or mid in RAW:
+        return True
+    VZYATO[mid] = 1
+    while len(VZYATO) > RAW_LIMIT:
+        VZYATO.popitem(last=False)
+    return False
+
+
+async def podobrat(bot, ts_ms: int):
+    """Забирает сообщение, которого не было в уведомлении.
+
+    Ходит по чатам бота и берёт самые свежие сообщения. Дорого делать это
+    на каждое событие, но пустые уведомления приходят редко — только на
+    голосовые.
+    """
+    from types import SimpleNamespace
+
+    try:
+        chat_ids = await _dialogi(bot)
+    except Exception:
+        log.exception('Не удалось получить список чатов')
+        return
+    porog = (ts_ms or 0) - OKNO_MS
+    for chat_id in chat_ids:
+        try:
+            otvet = await bot.get_messages(chat_id=chat_id, count=3)
+        except Exception:
+            log.warning('Не удалось прочитать чат %s', chat_id, exc_info=True)
+            continue
+        for m in (getattr(otvet, 'messages', None) or []):
+            body = getattr(m, 'body', None)
+            mid = getattr(body, 'mid', None)
+            if getattr(m, 'timestamp', 0) < porog or _pomnim(mid):
+                continue
+            log.info('Подобрала сообщение %s из чата %s: текст %r, вложений %d',
+                     mid, chat_id, (getattr(body, 'text', None) or '')[:60],
+                     len(getattr(body, 'attachments', None) or []))
+            if ON_RECOVERED is None:
+                continue
+            try:
+                await ON_RECOVERED(SimpleNamespace(message=m, bot=bot))
+            except Exception:
+                log.exception('Обработчик подобранного сообщения упал')
+            return
 
 
 def install():
