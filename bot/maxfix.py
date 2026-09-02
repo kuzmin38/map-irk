@@ -156,8 +156,25 @@ async def _dialogi(bot) -> list:
     spisok = [c.chat_id for c in (getattr(chats, 'chats', None) or [])
               if getattr(c, 'chat_id', None)]
     _CHATY.update(kogda=time.monotonic(), spisok=spisok)
-    log.info('Чатов у бота: %d', len(spisok))
+    log.info('Чатов у бота: %d — %s', len(spisok),
+             ', '.join(f"{getattr(c, 'chat_id', '?')}:"
+                       f"{getattr(getattr(c, 'type', None), 'value', getattr(c, 'type', '?'))}"
+                       for c in (getattr(chats, 'chats', None) or [])))
     return spisok
+
+
+def _v_ms(ts) -> int:
+    """Метка времени в миллисекундах.
+
+    MAX присылает миллисекунды в уведомлении и, как выяснилось, не всегда
+    их же в ответе на запрос сообщений. Секунды меньше триллиона —
+    по этому и различаем.
+    """
+    try:
+        ts = int(ts or 0)
+    except (TypeError, ValueError):
+        return 0
+    return ts * 1000 if 0 < ts < 1_000_000_000_000 else ts
 
 
 def _pomnim(mid: str) -> bool:
@@ -183,17 +200,23 @@ async def podobrat(bot, ts_ms: int):
     except Exception:
         log.exception('Не удалось получить список чатов')
         return
-    porog = (ts_ms or 0) - OKNO_MS
+    porog = _v_ms(ts_ms) - OKNO_MS
     for chat_id in chat_ids:
         try:
-            otvet = await bot.get_messages(chat_id=chat_id, count=3)
+            otvet = await bot.get_messages(chat_id=chat_id, count=5)
         except Exception:
             log.warning('Не удалось прочитать чат %s', chat_id, exc_info=True)
             continue
-        for m in (getattr(otvet, 'messages', None) or []):
+        soobscheniya = list(getattr(otvet, 'messages', None) or [])
+        log.info('Чат %s: сообщений получено %d, метки %s (порог %s)',
+                 chat_id, len(soobscheniya),
+                 [_v_ms(getattr(m, 'timestamp', 0)) for m in soobscheniya], porog)
+        for m in soobscheniya:
             body = getattr(m, 'body', None)
             mid = getattr(body, 'mid', None)
-            if getattr(m, 'timestamp', 0) < porog or _pomnim(mid):
+            if _v_ms(getattr(m, 'timestamp', 0)) < porog:
+                continue
+            if _pomnim(mid):
                 continue
             log.info('Подобрала сообщение %s из чата %s: текст %r, вложений %d',
                      mid, chat_id, (getattr(body, 'text', None) or '')[:60],

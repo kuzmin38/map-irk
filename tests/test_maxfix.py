@@ -223,3 +223,26 @@ async def test_spisok_chatov_kesiruetsya():
     spisok = await maxfix._dialogi(bot)
 
     assert spisok == [7, 9]
+
+
+def test_metka_v_sekundah_tozhe_ponimaetsya():
+    """MAX присылает миллисекунды не везде — секунды меньше триллиона."""
+    assert maxfix._v_ms(1788328828928) == 1788328828928
+    assert maxfix._v_ms(1788328828) == 1788328828000
+    assert maxfix._v_ms(None) == 0
+
+
+async def test_podbiraem_i_kogda_metka_v_sekundah(monkeypatch):
+    ts = PUSTOE['timestamp']
+    v_sekundah = soobschenie('m9', ts // 1000, 'Перекрыл стояк')
+    bot = FakeBot({7: [v_sekundah]})
+    poluchennoe = []
+
+    async def lovlyu(event):
+        poluchennoe.append(event.message.body.text)
+
+    monkeypatch.setattr(maxfix, 'ON_RECOVERED', lovlyu)
+
+    await maxfix.podobrat(bot, ts)
+
+    assert poluchennoe == ['Перекрыл стояк'], 'секунды не должны мешать'
