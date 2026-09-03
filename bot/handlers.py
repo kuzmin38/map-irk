@@ -2267,16 +2267,17 @@ def _minut_s(kogda: str) -> int:
 
 async def _rasshifrovat_lichnoe(event, url: str | None,
                                 gotovo: str | None = None) -> str:
-    """Расшифровывает голосовое из лички и показывает, что услышала.
+    """Расшифровывает голосовое из лички.
 
-    Показывает обязательно: распознавание ошибается на адресах и цифрах,
-    и человек должен видеть, с чем Люся дальше работает.
+    Услышанное вслух не повторяем: человек и так знает, что наговорил, а
+    лишние два сообщения засоряют ленту. Расшифровка остаётся в логе — там
+    её видно, если Люся вдруг ответит не о том.
     """
     if gotovo:
         log.info('Расшифровку прислал сам MAX: %.80s', gotovo)
         text = gotovo
     else:
-        await send(event.message, '🎙 Слушаю…')
+        await pechataet(event)
         try:
             text = await transcribe.transcribe_url(url)
         except Exception:
@@ -2288,8 +2289,25 @@ async def _rasshifrovat_lichnoe(event, url: str | None,
         return ''
     text = mat.mask(text)
     log.info('Расшифровано голосовое в личке: %.80s', text)
-    await send(event.message, f'🎙 Услышала: {text}')
     return text
+
+
+async def pechataet(event):
+    """Показывает «печатает» вместо сообщения-заглушки.
+
+    Расшифровка занимает несколько секунд, и молчать всё это время не
+    стоит. Но и писать «слушаю» — значит оставить в переписке строчку,
+    которую потом никто не перечитает.
+    """
+    bot = getattr(event, 'bot', None)
+    r = getattr(event.message, 'recipient', None)
+    chat_id = getattr(r, 'chat_id', None) if r is not None else None
+    if bot is None or not chat_id:
+        return
+    try:
+        await bot.send_action(chat_id=chat_id)
+    except Exception:
+        log.debug('Не удалось показать «печатает»', exc_info=True)
 
 
 async def handle_announcement(event, text: str, uid: int) -> bool:

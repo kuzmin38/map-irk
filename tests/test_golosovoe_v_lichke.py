@@ -65,8 +65,9 @@ async def test_golosovoe_v_lichke_rasshifrovyvaetsya(monkeypatch):
     e = event(golos=True)
     await H.on_text(e)
 
-    assert any('Услышала' in t for t in e.message.sent), 'показала, что разобрала'
-    assert db.open_shutoffs(), 'и дальше работает как с обычным текстом'
+    assert db.open_shutoffs(), 'работает как с обычным текстом'
+    assert not any('Услышала' in t for t in e.message.sent), \
+        'услышанное вслух не повторяем — человек и так знает, что сказал'
 
 
 async def test_neponyatnuyu_zapis_ne_pridumyvaet(monkeypatch):
@@ -189,9 +190,9 @@ def telo(*vlozheniya):
 
 def test_beryom_rasshifrovku_ot_max():
     """MAX расшифровывает голосовые сам — это быстрее, точнее и бесплатно."""
-    body = telo(Vlozhenie(transcription='Перекрыл стояк на 65а/3'))
+    body = telo(Vlozhenie(transcription='Перекрыл стояк по 105 квартире на 65а/3'))
 
-    assert H.speech_ready(body) == 'Перекрыл стояк на 65а/3'
+    assert H.speech_ready(body) == 'Перекрыл стояк по 105 квартире на 65а/3'
 
 
 def test_ssylka_na_video_lezhit_v_urls():
@@ -232,8 +233,49 @@ async def test_gotovuyu_rasshifrovku_ne_perevodim_zanovo(monkeypatch):
     monkeypatch.setattr(H.transcribe, 'transcribe_url', fake)
 
     e = event()
-    e.message.body.attachments = [Vlozhenie(transcription='Перекрыл стояк на 65а/3')]
+    e.message.body.attachments = [Vlozhenie(transcription='Перекрыл стояк по 105 квартире на 65а/3')]
     await H.on_text(e)
 
     assert zvali == [], 'модель не дёргаем, расшифровка уже есть'
-    assert any('Услышала' in t for t in e.message.sent)
+    assert db.open_shutoffs(), 'и сказанное сделано'
+
+
+
+async def test_lenta_ne_zasoryaetsya(monkeypatch):
+    """Заказчик: «я знаю, что наговорил, мне важно, как она ответила»."""
+    async def fake(url):
+        return 'Перекрыл стояк по 105 квартире на 65а/3'
+
+    monkeypatch.setattr(H.transcribe, 'transcribe_url', fake)
+    monkeypatch.setattr(H, 'speech_url', lambda body: 'https://x/a.ogg')
+
+    e = event(golos=True)
+    await H.on_text(e)
+
+    sluzhebnye = [t for t in e.message.sent
+                  if 'Услышала' in t or 'Слушаю' in t]
+    assert sluzhebnye == [], 'ни эха, ни заглушки'
+    assert any('Перекрыт стояк' in t for t in e.message.sent), 'только ответ по делу'
+
+
+async def test_pechataet_vmesto_zaglushki(monkeypatch):
+    deystviya = []
+
+    class Bot:
+        async def send_action(self, chat_id=None, action=None):
+            deystviya.append(chat_id)
+
+    e = event()
+    e.bot = Bot()
+    e.message.recipient.chat_id = 470264057
+
+    await H.pechataet(e)
+
+    assert deystviya == [470264057]
+
+
+async def test_pechataet_ne_padaet_bez_bota():
+    e = event()
+    e.bot = None
+
+    await H.pechataet(e)   # молча ничего не делает
