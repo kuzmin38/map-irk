@@ -2757,6 +2757,17 @@ def banter_umestna(event, text: str, povod: str = '') -> bool:
     return True
 
 
+def v_letopisi(text: str) -> bool:
+    """Легло ли это сообщение в ленту дома — то же условие, что у znachimo.
+
+    Нужно, чтобы «Записала в летопись» было правдой, а не вежливостью:
+    без дома запись остаётся в архиве и в летописи её никто не увидит.
+    """
+    if not text or not WORK_FACT.search(text):
+        return False
+    return houses.detect_house(text) is not None
+
+
 async def maybe_banter(event, text: str):
     """Живая реплика в чат — если есть повод и давно не было.
 
@@ -2770,7 +2781,7 @@ async def maybe_banter(event, text: str):
     povod = banter.pick(text)
     if not povod or not banter_umestna(event, text, povod[0]):
         return
-    line = banter.reply(chat_id, text)
+    line = banter.reply(chat_id, text, v_letopisi=v_letopisi(text))
     if line:
         log.info('Реплика в чат %s: %s', chat_id, line)
         await send(event.message, line)
