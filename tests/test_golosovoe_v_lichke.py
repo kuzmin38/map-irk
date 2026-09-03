@@ -414,3 +414,27 @@ async def test_v_gotovom_zadanii_est_nomer(monkeypatch):
     await announce.sostavit('сделай объявление жильцам: на 65а/3 отключение воды')
 
     assert '48-78-05' in vidno['prompt'], 'настоящий номер уходит модели'
+
+
+async def test_v_zadanii_skazano_pro_avarii_i_zayavki(monkeypatch):
+    """Один номер и на аварию, и на заявку — так и написано жильцам."""
+    vidno = {}
+
+    async def fake_ask(prompt, **kw):
+        vidno['prompt'] = prompt
+        return 'Уважаемые жильцы!'
+
+    monkeypatch.setattr(announce.ai, 'ask', fake_ask)
+
+    await announce.sostavit('сделай объявление жильцам: на 65а/3 отключение воды')
+
+    assert 'По авариям и заявкам' in vidno['prompt']
+
+
+def test_bez_spravochnika_ne_padaet(monkeypatch):
+    """Справочник может не прочитаться — телефона просто не будет."""
+    from bot import houses
+
+    monkeypatch.setattr(houses, 'DATA_DIR', '/нет/такой/папки')
+
+    assert announce.telefon_dispetcherskoy() == ''
