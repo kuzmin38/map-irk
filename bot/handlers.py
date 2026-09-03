@@ -2261,6 +2261,13 @@ async def handle_shutoff(event, text: str, uid: int) -> bool:
     if chto == 'otkryl':
         return await _stoyak_otkryt(event, dom, kvartira, uid, res)
 
+    if not dom or kvartira is None:
+        # «перекрыл стояк» без адреса — без него шахматку не поднять
+        STATE[uid] = {'mode': 'stoyak_zakryt', 'res': res}
+        await send(event.message, '🚫 По какому дому и квартире перекрыли? '
+                                  'Напишите, например «65а/3, кв. 105».')
+        return True
+
     naydeno = stoyak_mod.naydi_stoyak(dom['address'], kvartira)
     if not naydeno:
         await send(event.message,
@@ -2313,12 +2320,38 @@ def _stoyak_kb(sid: int, house_id: int, otkryt: bool = False) -> InlineKeyboardB
 
 
 async def _stoyak_otkryt(event, dom, kvartira, uid: int, res: str = 'вода') -> bool:
-    """«Открыл стояк» — закрывает запись и сообщает в чат, что вода есть."""
-    zapis = db.find_shutoff(dom['id'], kvartira)
+    """«Открыл стояк» — закрывает запись и сообщает в чат, что вода есть.
+
+    Адрес называть не обязательно: «открыл стояк ещё вчера, забыл сказать» —
+    законная фраза. Люся сама напоминала, о каком стояке речь, и если
+    перекрытый один, гадать не о чем.
+    """
+    if dom is None or kvartira is None:
+        otkrytye = db.open_shutoffs()
+        if not otkrytye:
+            await send(event.message, '✅ Перекрытых стояков у меня не записано — '
+                                      'значит, всё уже открыто.')
+            return True
+        if len(otkrytye) == 1:
+            zapis = otkrytye[0]
+            dom = houses.HOUSES_BY_ID.get(zapis['house_id'])
+            kvartira = zapis['flat']
+        else:
+            STATE[uid] = {'mode': 'stoyak_otkryt',
+                          'ids': [z['id'] for z in otkrytye]}
+            lines = ['🚫 Перекрытых стояков несколько. Какой открыли?', '']
+            for z in otkrytye:
+                lines.append(f"• {_adres(z['house_id'])}, кв. {z['flat']}")
+            lines.append('')
+            lines.append('Напишите адрес и квартиру — например «71 - 1».')
+            await send(event.message, '\n'.join(lines))
+            return True
+    zapis = db.find_shutoff(dom['id'], kvartira) if dom else None
     if not zapis:
         await send(event.message,
-                   f"🤔 По {dom['address']} перекрытых стояков у меня не записано. "
-                   'Если перекрывали не через меня — так и есть, ничего страшного.')
+                   f"🤔 По {dom['address'] if dom else 'этому дому'} перекрытых "
+                   'стояков у меня не записано. Если перекрывали не через меня — '
+                   'так и есть, ничего страшного.')
         return True
     kvartiry = [int(x) for x in (zapis['flats'] or '').split(',') if x.strip().isdigit()]
     db.close_shutoff(zapis['id'])
@@ -2470,6 +2503,22 @@ async def handle_pravka_obyavy(event, text: str, uid: int) -> bool:
     dom = houses.HOUSES_BY_ID.get(state['house_id']) if state.get('house_id') else None
     await pokazat_obyavu(event, uid, novoe, dom)
     return True
+
+
+async def resume_stoyak(event, text: str, uid: int, state) -> bool:
+    """Ответ на вопрос «какой стояк» — коротким «71 - 1» или адресом."""
+    dom, kvartira = stoyak_mod.dom_i_kvartira(text)
+    if dom is None or kvartira is None:
+        await send(event.message, '🚫 Не поняла адрес. Напишите дом и квартиру — '
+                                  'например «65а/3, кв. 105».')
+        return True
+    rezhim = state['mode']
+    STATE.pop(uid, None)
+    if rezhim == 'stoyak_otkryt':
+        return await _stoyak_otkryt(event, dom, kvartira, uid)
+    return await handle_shutoff(
+        event, f"перекрыл стояк {state.get('res', '')} "
+               f"по {kvartira} квартире на {dom['address']}", uid)
 
 
 async def handle_inventory(event, text: str, uid: int) -> bool:
@@ -3047,6 +3096,10 @@ async def on_text(event: MessageCreated):
 
     if await resume_passport_house(event, text, uid):
         return
+
+    if state and state['mode'] in ('stoyak_otkryt', 'stoyak_zakryt'):
+        if await resume_stoyak(event, text, uid, state):
+            return
 
     if state and state['mode'] in ('inv_add', 'inv_move'):
         if await resume_inventory(event, text, uid, state):

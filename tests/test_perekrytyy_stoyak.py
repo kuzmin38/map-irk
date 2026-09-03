@@ -350,3 +350,82 @@ async def test_moimi_slovami_perekladyvaet_prichinu(monkeypatch):
     assert 'офисное помещение' in vidno['prompt'], 'слова человека уходят модели'
     assert '105' in vidno['prompt'] and '35' in vidno['prompt'], 'и список квартир'
     assert msg.sent[-1].startswith('Уважаемые жильцы!')
+
+
+# ---------- «Открыл стояк» без адреса ----------
+
+# Люся сама напомнила: «стояк на Седова 71, кв. 1 перекрыт уже 4 ч. Если
+# открыли — напишите "открыл стояк"». Андрей написал ровно это — а она
+# потребовала уточнить адрес, хотя перекрытый стояк был один
+
+async def test_otkryl_bez_adresa_kogda_stoyak_odin():
+    text = 'перекрыл стояк по 105 квартире на 65а/3'
+    await H.handle_shutoff(event(text), text, 100)
+
+    otvet = 'Открыл стояк ещё вчера. Забыл сказать'
+    e = event(otvet)
+    vzyala = await H.handle_shutoff(e, otvet, 100)
+
+    assert vzyala is True
+    assert db.open_shutoffs() == [], 'запись закрыта без переспросов'
+    assert any('Стояк открыт' in t for t in e.message.sent)
+
+
+async def test_otkryl_bez_adresa_kogda_stoyakov_neskolko():
+    for text in ('перекрыл стояк по 105 квартире на 65а/3',
+                 'перекрыл стояк по 4 квартире на Трилиссера 8/1'):
+        await H.handle_shutoff(event(text), text, 100)
+
+    otvet = 'Открыл стояк'
+    e = event(otvet)
+    await H.handle_shutoff(e, otvet, 100)
+
+    assert 'Какой открыли' in e.message.sent[-1]
+    assert 'Седова 65а/3' in e.message.sent[-1]
+    assert H.STATE[100]['mode'] == 'stoyak_otkryt'
+    assert len(db.open_shutoffs()) == 2, 'наугад ничего не закрыли'
+
+
+async def test_korotkiy_otvet_zakryvaet_nuzhnyy_stoyak():
+    """«71 - 1» — так отвечают на вопрос, а не рассказывают."""
+    for text in ('перекрыл стояк по 105 квартире на 65а/3',
+                 'перекрыл стояк по 1 квартире на Седова 71'):
+        await H.handle_shutoff(event(text), text, 100)
+    await H.handle_shutoff(event('Открыл стояк'), 'Открыл стояк', 100)
+
+    e = event('71 - 1')
+    await H.resume_stoyak(e, '71 - 1', 100, H.STATE[100])
+
+    ostalis = db.open_shutoffs()
+    assert len(ostalis) == 1
+    assert houses.HOUSES_BY_ID[ostalis[0]['house_id']]['address'] == 'Седова 65а/3'
+    assert 100 not in H.STATE
+
+
+async def test_otkryl_kogda_nichego_ne_perekryto():
+    e = event('открыл стояк')
+
+    await H.handle_shutoff(e, 'открыл стояк', 100)
+
+    assert 'не записано' in e.message.sent[-1]
+
+
+async def test_perekryl_bez_adresa_sprashivaet():
+    e = event('перекрыл стояк')
+
+    await H.handle_shutoff(e, 'перекрыл стояк', 100)
+
+    assert 'По какому дому' in e.message.sent[-1]
+    assert H.STATE[100]['mode'] == 'stoyak_zakryt'
+
+
+async def test_otvet_na_vopros_perekrytiya_zavershaet_zapis():
+    await H.handle_shutoff(event('перекрыл стояк гвс'), 'перекрыл стояк гвс', 100)
+
+    e = event('65а/3, кв. 105')
+    await H.resume_stoyak(e, '65а/3, кв. 105', 100, H.STATE[100])
+
+    zapisi = db.open_shutoffs()
+    assert len(zapisi) == 1
+    assert zapisi[0]['flat'] == 105
+    assert zapisi[0]['res'] == 'горячая вода', 'ресурс из первой фразы не потерян'

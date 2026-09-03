@@ -78,13 +78,15 @@ _PODACHA_CHEGO = {
 
 
 def parse(text: str):
-    """(«zakryl»|«otkryl», дом, квартира) или None.
+    """(«zakryl»|«otkryl», дом, квартира, ресурс) или None.
 
     Слово «стояк» обязательно: «перекрыл кран в 105» — это не про стояк,
     и поднимать из-за такого весь чат нельзя.
-    """
-    from . import flats, houses, inventory
 
+    Дом и квартира могут прийти пустыми: «открыл стояк ещё вчера, забыл
+    сказать» — законная фраза, и Люся сама только что напоминала, о каком
+    стояке речь. Что с этим делать, решает вызывающий.
+    """
     if not text or not STOYAK.search(text):
         return None
     if ZAKRYL.search(text):
@@ -94,19 +96,33 @@ def parse(text: str):
     else:
         return None
 
+    dom, kvartira = dom_i_kvartira(text)
+    return chto, dom, kvartira, resurs(text)
+
+
+def dom_i_kvartira(text: str):
+    """(дом, квартира) из фразы. Любая часть может быть None.
+
+    Понимает и короткий ответ на вопрос — «71 - 1», «65а/3 105»: так
+    отвечают, когда Люся сама спросила адрес.
+    """
+    from . import flats, houses, inventory, risers
+
     dom = houses.detect_house(text)
-    if not dom:
-        return None
-    kvartira = flats.parse_flat(text, dom)
-    if kvartira is None:
+    kvartira = flats.parse_flat(text, dom) if dom else None
+    if dom and kvartira is None:
         # «перекрыл стояк на 65а/3, 105» — номер без слова «квартира»
         ostatok = inventory.ubrat_adres(text, dom)
         ostatok = STOYAK.sub(' ', ostatok)
         chisla = re.findall(r'(?<![\w/])(\d{1,4})(?![\w/])', ostatok)
-        if len(chisla) != 1:
-            return None
-        kvartira = int(chisla[0])
-    return chto, dom, kvartira, resurs(text)
+        if len(chisla) == 1:
+            kvartira = int(chisla[0])
+    if kvartira is None:
+        # «71 - 1» — так отвечают на вопрос, а не рассказывают
+        _, kv = risers.parse_query(text)
+        if kv:
+            kvartira = kv
+    return dom, kvartira
 
 
 def naydi_stoyak(address: str, flat: int):

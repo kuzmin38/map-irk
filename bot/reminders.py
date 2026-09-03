@@ -144,7 +144,8 @@ async def _check_shutoffs(bot):
                 user_id=z['by_id'],
                 text=f"🚫 Напоминаю: стояк на {dom['address'] if dom else '—'}, "
                      f"кв. {z['flat']} перекрыт уже {stoyak.dlitelnost(minut)}.\n"
-                     'Если открыли — напишите «открыл стояк», я сообщу в чат.')
+                     'Если открыли — так и напишите: «открыл стояк». Адрес '
+                     'называть не нужно, я помню.')
         except Exception:
             log.warning('Не доставлено напоминание о стояке %s', z['id'])
         db.mark_shutoff_reminded(z['id'])
