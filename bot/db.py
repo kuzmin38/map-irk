@@ -1502,3 +1502,15 @@ def day_journal(day: str) -> dict:
             'SELECT COUNT(*) n FROM chat_messages WHERE created_at LIKE ?',
             (like,)).fetchone()['n']
     return out
+
+
+def all_chat_records(limit=1000):
+    """Вся лента чата — для проверки записей на чужие адреса."""
+    with _conn() as c:
+        return c.execute('SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?',
+                         (limit,)).fetchall()
+
+
+def delete_chat_record(record_id):
+    with _conn() as c:
+        c.execute('DELETE FROM chat_messages WHERE id = ?', (record_id,))

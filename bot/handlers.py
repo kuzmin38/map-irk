@@ -30,7 +30,7 @@ from . import risers as risers_mod
 from . import status as bot_status
 from . import announce, backup, banter, checks, flats, golos as golos_mod, inventory, mat
 from . import maxfix, passport, plan
-from . import razbor, remind, report, stoyak as stoyak_mod, transcribe
+from . import proverka, razbor, remind, report, stoyak as stoyak_mod, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -1345,6 +1345,7 @@ QUICK_COMMANDS = [
     ('напоминания', 'Что Люся должна напомнить', 'rem'),
     ('голос', 'Страница записи: наговорить Люсе', 'golos'),
     ('журнал', 'Что записано за день', 'jrnl'),
+    ('проверка', 'Записи с чужими адресами', 'chk'),
     ('итоги', 'Разобрать день по домам', 'itogi'),
     ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
@@ -1368,6 +1369,7 @@ ALIASES = {
     'напоминания': ('napominaniya',),
     'голос': ('golos',),
     'журнал': ('jrnl', 'zhurnal'),
+    'проверка': ('chk', 'proverka'),
     'итоги': ('itogi',),
     'опись': ('opis', 'inventar'),
     'копия': ('kopiya', 'backup'),
@@ -4356,6 +4358,53 @@ async def run_action(payload: str, msg, uid: int, event):
             lines.append(f"• {dom['address'] if dom else '—'}, кв. {z['flat']} — "
                          f"{skolko} назад, {z['by_name'] or '—'}")
         await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'chk':
+        if _role(uid) not in ('admin', 'engineer', 'director'):
+            await send(msg, '🔍 Проверка записей — для руководства и инженера.')
+            return
+        nayden = proverka.podozritelnye(db.all_chat_records(limit=1000))
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+        if not nayden:
+            await send(msg, '✅ Записей с чужими адресами не нашла.\n\n'
+                            'Проверяю всё, что похоже на «улица номер», и '
+                            'оставляю то, чего нет в справочнике домов.', kb)
+            return
+        lines = [f'🔍 Записи с чужими адресами — {len(nayden)}', '',
+                 '❗ «нет в справочнике» — скорее всего, модель дописала сама.',
+                 '⚠️ «не в работе» — дом есть, но участок не наш.', '']
+        kb = InlineKeyboardBuilder()
+        for r, adresa in nayden[:10]:
+            chto = (r['transcript'] or r['text'] or '').strip()
+            lines.append(f"▪️ {r['created_at']} · {r['user_name'] or '—'}")
+            for adres, vid in adresa:
+                znak = '❗' if vid == proverka.VYDUMKA else '⚠️'
+                lines.append(f'   {znak} {adres} — {vid}')
+            lines.append(f"   {chto[:160]}")
+            lines.append('')
+            imena = ', '.join(a for a, _ in adresa)
+            kb.row(CallbackButton(text=f"🗑 {r['created_at'][:10]} · {imena[:24]}",
+                                  payload=f"chkdel:{r['id']}"))
+        if len(nayden) > 10:
+            lines.append(f'… и ещё {len(nayden) - 10}.')
+        kb.row(CallbackButton(text='🔍 Проверить заново', payload='chk'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'chkdel':
+        if _role(uid) not in ('admin', 'engineer', 'director'):
+            return
+        rec = db.get_chat_record(int(parts[1]))
+        if not rec:
+            await send(msg, '🤔 Эта запись уже удалена.')
+            return
+        db.delete_chat_record(rec['id'])
+        log.info('Удалена запись ленты %s по проверке адресов', rec['id'])
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='🔍 Остальные', payload='chk'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, f"🗑 Удалила запись от {rec['created_at']}.", kb)
 
     elif action == 'jrnl':
         from datetime import datetime as dt, timedelta
