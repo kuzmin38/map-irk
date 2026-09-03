@@ -1457,3 +1457,48 @@ def token_user(token: str):
         row = c.execute('SELECT user_id FROM web_tokens WHERE token = ?',
                         (token,)).fetchone()
     return row['user_id'] if row else None
+
+
+# ---------- Что записано за день ----------
+
+def day_journal(day: str) -> dict:
+    """Всё, что появилось в базе за этот день. day — «ДД.ММ.ГГГГ».
+
+    Каждая запись лежит в своей таблице, и посмотреть «что Люся насохраняла»
+    было негде: приходилось обходить пять экранов. Здесь всё сразу.
+    """
+    like = day + '%'
+    out = {}
+    with _conn() as c:
+        out['readings'] = c.execute(
+            'SELECT r.*, m.label, m.house_id FROM readings r '
+            'JOIN meters m ON m.id = r.meter_id '
+            'WHERE r.submitted_at LIKE ? ORDER BY r.id', (like,)).fetchall()
+        out['requests'] = c.execute(
+            'SELECT * FROM requests WHERE created_at LIKE ? ORDER BY id',
+            (like,)).fetchall()
+        out['works'] = c.execute(
+            'SELECT * FROM works WHERE created_at LIKE ? ORDER BY id',
+            (like,)).fetchall()
+        out['flat_notes'] = c.execute(
+            'SELECT * FROM flat_notes WHERE created_at LIKE ? ORDER BY id',
+            (like,)).fetchall()
+        out['inventory'] = c.execute(
+            'SELECT * FROM inventory WHERE created_at LIKE ? ORDER BY id',
+            (like,)).fetchall()
+        out['passports'] = c.execute(
+            'SELECT * FROM passports WHERE updated_at LIKE ? ORDER BY house_id',
+            (like,)).fetchall()
+        out['shutoffs'] = c.execute(
+            'SELECT * FROM riser_shutoffs WHERE closed_at LIKE ? ORDER BY id',
+            (like,)).fetchall()
+        out['meters'] = c.execute(
+            'SELECT * FROM meters WHERE created_at LIKE ? ORDER BY id',
+            (like,)).fetchall()
+        out['reminders'] = c.execute(
+            'SELECT * FROM reminders WHERE created_at LIKE ? ORDER BY id',
+            (like,)).fetchall()
+        out['chat'] = c.execute(
+            'SELECT COUNT(*) n FROM chat_messages WHERE created_at LIKE ?',
+            (like,)).fetchone()['n']
+    return out

@@ -1344,6 +1344,7 @@ QUICK_COMMANDS = [
     ('паспорта', 'Паспорта домов: что заполнено', 'plist'),
     ('напоминания', 'Что Люся должна напомнить', 'rem'),
     ('голос', 'Страница записи: наговорить Люсе', 'golos'),
+    ('журнал', 'Что записано за день', 'jrnl'),
     ('итоги', 'Разобрать день по домам', 'itogi'),
     ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
@@ -1366,6 +1367,7 @@ ALIASES = {
     'паспорта': ('pasporta',),
     'напоминания': ('napominaniya',),
     'голос': ('golos',),
+    'журнал': ('jrnl', 'zhurnal'),
     'итоги': ('itogi',),
     'опись': ('opis', 'inventar'),
     'копия': ('kopiya', 'backup'),
@@ -1949,6 +1951,79 @@ def hronika_lines(h, limit: int = 8) -> list:
     if len(fakty) > limit:
         lines.append(f'   … и ещё {len(fakty) - limit}')
     lines.append('')
+    return lines
+
+
+def _adres(house_id) -> str:
+    dom = houses.HOUSES_BY_ID.get(house_id) if house_id else None
+    return dom['address'] if dom else '—'
+
+
+def journal_lines(den: str) -> list:
+    """Что записано за день — одним экраном, по разделам.
+
+    Каждая запись живёт в своей таблице, и «что Люся насохраняла за вчера»
+    приходилось собирать по пяти экранам.
+    """
+    j = db.day_journal(den)
+    lines = [f'📅 ЧТО ЗАПИСАНО ЗА {den}', '']
+
+    if j['readings']:
+        lines.append(f"🧮 Показания ({len(j['readings'])}):")
+        for r in j['readings'][:12]:
+            lines.append(f"   {_adres(r['house_id'])} — {r['label']}: "
+                         f"{fmt_value(r['value'])} ({r['submitted_by_name'] or '—'})")
+        lines.append('')
+    if j['requests']:
+        lines.append(f"📋 Заявки ({len(j['requests'])}):")
+        for r in j['requests'][:10]:
+            lines.append(f"   {r['address']} — {r['description'][:60]}")
+        lines.append('')
+    if j['works']:
+        lines.append(f"📅 Работы ({len(j['works'])}):")
+        for w in j['works'][:10]:
+            lines.append(f"   {_adres(w['house_id'])} — {w['title'][:60]}")
+        lines.append('')
+    if j['flat_notes']:
+        lines.append(f"🚪 Находки по квартирам ({len(j['flat_notes'])}):")
+        for z in j['flat_notes'][:10]:
+            lines.append(f"   {_adres(z['house_id'])}, кв. {z['flat']} — {z['text'][:60]}")
+        lines.append('')
+    if j['shutoffs']:
+        lines.append(f"🚫 Перекрытия стояков ({len(j['shutoffs'])}):")
+        for z in j['shutoffs']:
+            kogda = 'открыт' if z['opened_at'] else 'ещё перекрыт'
+            lines.append(f"   {_adres(z['house_id'])}, кв. {z['flat']} — {kogda}")
+        lines.append('')
+    if j['inventory']:
+        lines.append(f"🧰 В опись ({len(j['inventory'])}):")
+        for it in j['inventory'][:10]:
+            lines.append('   ' + item_line(it)[2:])
+        lines.append('')
+    if j['passports']:
+        lines.append(f"🗂 Паспорта домов ({len(j['passports'])} записей):")
+        for p in j['passports'][:10]:
+            lines.append(f"   {_adres(p['house_id'])} — "
+                         f"{PASSPORT_LABELS.get(p['field'], p['field'])}")
+        lines.append('')
+    if j['meters']:
+        lines.append(f"🧮 Заведены счётчики ({len(j['meters'])}):")
+        for m in j['meters'][:8]:
+            lines.append(f"   {_adres(m['house_id'])} — {m['label']}")
+        lines.append('')
+    if j['reminders']:
+        lines.append(f"⏰ Напоминания ({len(j['reminders'])}):")
+        for r in j['reminders'][:8]:
+            lines.append(f"   {r['due_at']} — {r['text'][:50]}")
+        lines.append('')
+
+    if len(lines) == 2:
+        lines.append('За этот день ничего не записано.')
+        if j['chat']:
+            lines.append(f'В ленте чата — {j["chat"]} сообщений, но записей из '
+                         'них не вышло.')
+        return lines
+    lines.append(f'💬 Сообщений в ленте чата: {j["chat"]}')
     return lines
 
 
@@ -4227,6 +4302,19 @@ async def run_action(payload: str, msg, uid: int, event):
             skolko = stoyak_mod.dlitelnost(_minut_s(z['closed_at']))
             lines.append(f"• {dom['address'] if dom else '—'}, кв. {z['flat']} — "
                          f"{skolko} назад, {z['by_name'] or '—'}")
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'jrnl':
+        from datetime import datetime as dt, timedelta
+        seychas = dt.now(db.IRKUTSK_TZ)
+        vchera = len(parts) > 1 and parts[1] == 'v'
+        den = (seychas - timedelta(days=1) if vchera else seychas).strftime('%d.%m.%Y')
+        lines = journal_lines(den)
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📅 За сегодня', payload='jrnl'),
+               CallbackButton(text='📅 За вчера', payload='jrnl:v'))
+        kb.row(CallbackButton(text='📆 Итоги по домам', payload='itogi' + (':v' if vchera else '')),
+               CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
 
     elif action == 'golos':
