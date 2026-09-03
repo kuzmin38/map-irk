@@ -383,9 +383,34 @@ def test_zadanie_zapreschaet_vydumki_i_proshedshee_vremya():
     assert 'канцелярит' in z
 
 
-def test_zadanie_ne_pozvolyaet_pridumat_telefon():
-    """Телефон диспетчерской в справочнике не заполнен — выдумывать нельзя."""
-    z = announce.ZADANIE
+def test_telefon_beryotsya_iz_spravochnika():
+    """Выдуманный телефон в объявлении жильцам хуже отсутствующего."""
+    assert announce.telefon_dispetcherskoy() == '48-78-05, доб. 1'
 
-    assert 'телефон' in z.lower()
-    assert 'Не назвал — блока нет' in z
+    z = announce.ZADANIE.format(text='X', telefon=announce.telefon_dispetcherskoy())
+    assert '48-78-05' in z
+    assert 'не меняй ни цифры' in z
+    assert 'другого не придумывай' in z
+
+
+def test_bez_telefona_bloka_prosto_net():
+    """Справочник может быть не заполнен — тогда о телефоне ни слова."""
+    z = announce.BEZ_TELEFONA
+
+    assert 'Куда обращаться' not in z
+    assert '{telefon}' not in z
+    assert 'телефоны не указывай вовсе' in z
+
+
+async def test_v_gotovom_zadanii_est_nomer(monkeypatch):
+    vidno = {}
+
+    async def fake_ask(prompt, **kw):
+        vidno['prompt'] = prompt
+        return 'Уважаемые жильцы!'
+
+    monkeypatch.setattr(announce.ai, 'ask', fake_ask)
+
+    await announce.sostavit('сделай объявление жильцам: на 65а/3 отключение воды')
+
+    assert '48-78-05' in vidno['prompt'], 'настоящий номер уходит модели'

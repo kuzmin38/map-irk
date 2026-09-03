@@ -35,14 +35,15 @@ ZADANIE = (
     'Если квартиры не названы — пропусти этот блок целиком.\n'
     '4. «Просим вас:» и просьбы списком, каждая с новой строки и с «• ». '
     'Только то, что жильцу нужно сделать. Если просьб нет — пропусти блок.\n'
-    '5. Куда обращаться — только если сантехник назвал телефон или способ '
-    'связи. Не назвал — блока нет.\n'
+    '5. Куда обращаться: «По вопросам — диспетчерская: {telefon}.» Телефон '
+    'бери отсюда дословно и не меняй ни цифры. Телефона нет — блока нет.\n'
     '6. «О возобновлении подачи сообщим в этом чате.» — если речь об '
     'отключении.\n'
     '7. С новой строки: «Управляющая компания «Жемчужина»».\n\n'
     'ЗАПРЕЩЕНО:\n'
     '— выдумывать то, чего нет в словах сантехника: даты, часы, сроки, '
-    'причины, телефоны, номера квартир. Нет — значит, об этом молчим;\n'
+    'причины, номера квартир. Нет — значит, об этом молчим. Телефон бери '
+    'только тот, что дан выше, другого не придумывай;\n'
     '— писать в прошедшем времени о том, что ещё предстоит: не «отключены '
     'квартиры», а «без воды будут квартиры»;\n'
     '— переносить указания, адресованные рабочим, а не жильцам: «начать '
@@ -56,6 +57,36 @@ ZADANIE = (
     'Всё объявление — не длиннее 1200 знаков.\n'
     'Верни только текст объявления, без пояснений и без кавычек вокруг него.'
 )
+
+
+def telefon_dispetcherskoy() -> str:
+    """Телефон диспетчерской из справочника. Пусто — если не заполнен.
+
+    Берём из справочника, а не из головы модели: выдуманный телефон в
+    объявлении жильцам хуже отсутствующего.
+    """
+    import json
+    import os
+    import re as _re
+
+    from . import houses
+
+    try:
+        put = os.path.join(houses.DATA_DIR, 'directory.json')
+        with open(put, encoding='utf-8') as f:
+            sections = json.load(f)['sections']
+    except Exception:
+        log.warning('Не удалось прочитать справочник', exc_info=True)
+        return ''
+    for s in sections:
+        if s.get('id') != 'phones':
+            continue
+        m = _re.search(r'Диспетчерская:\s*([^\n]+)', s.get('text') or '')
+        if not m:
+            return ''
+        nomer = m.group(1).strip()
+        return '' if nomer.startswith('—') else nomer
+    return ''
 
 
 def wants_announcement(text: str) -> bool:
@@ -89,7 +120,10 @@ async def sostavit(text: str, kvartiry: list | None = None) -> str | None:
                 'полностью и без изменений.)')
     if len(sut) < 15:
         return None
-    return await ai.ask(ZADANIE.format(text=sut), max_tokens=700, temperature=0.2)
+    telefon = telefon_dispetcherskoy()
+    zadanie = ZADANIE.format(text=sut, telefon=telefon) if telefon else \
+        BEZ_TELEFONA.format(text=sut)
+    return await ai.ask(zadanie, max_tokens=700, temperature=0.2)
 
 
 # ---------- Правка готового объявления ----------
@@ -126,3 +160,12 @@ async def popravit(text: str, pravka: str) -> str | None:
         return None
     return await ai.ask(ZADANIE_PRAVKI.format(text=text, pravka=pravka.strip()),
                         max_tokens=900, temperature=0.2)
+
+
+# То же задание, но без блока про телефон: справочник может быть не заполнен
+BEZ_TELEFONA = (ZADANIE
+                .replace('5. Куда обращаться: «По вопросам — диспетчерская: '
+                         '{telefon}.» Телефон бери отсюда дословно и не меняй '
+                         'ни цифры. Телефона нет — блока нет.\n', '')
+                .replace('Телефон бери только тот, что дан выше, другого не '
+                         'придумывай', 'телефоны не указывай вовсе'))
