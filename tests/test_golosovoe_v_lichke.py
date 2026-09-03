@@ -279,3 +279,79 @@ async def test_pechataet_ne_padaet_bez_bota():
     e.bot = None
 
     await H.pechataet(e)   # молча ничего не делает
+
+
+# ---------- Правка готового объявления ----------
+
+# Люся составила объявление, Андрей попросил «убери: проверить запорную
+# арматуру в шахте» — а она ответила, что не умеет редактировать списки:
+# приняла правку объявления за правку плана работ
+
+@pytest.fixture
+def obyava(monkeypatch):
+    """Люся составила объявление и ждёт, что с ним делать."""
+    async def fake_ask(prompt, **kw):
+        return ('Уважаемые жильцы!\n\n'
+                '• Просьба проверить запорную арматуру в квартирах.\n'
+                '• Проверить запорную арматуру в шахте.\n\n'
+                'Управляющая компания «Жемчужина»')
+
+    monkeypatch.setattr(announce.ai, 'ask', fake_ask)
+    return fake_ask
+
+
+async def test_pravka_menyaet_obyavlenie(obyava, monkeypatch):
+    text = 'сделай объявление жильцам: на 65а/3 проверка арматуры'
+    e = event(text)
+    await H.handle_announcement(e, text, 100)
+
+    async def fake_pravka(prompt, **kw):
+        assert 'шахте' in prompt, 'правка ушла модели'
+        assert 'Уважаемые жильцы' in prompt, 'вместе с прежним текстом'
+        return 'Уважаемые жильцы!\n\n• Просьба проверить арматуру в квартирах.'
+
+    monkeypatch.setattr(announce.ai, 'ask', fake_pravka)
+    pravka = 'Убери : проверить запорную арматуру в шахте'
+    e2 = event(pravka)
+
+    vzyala = await H.handle_pravka_obyavy(e2, pravka, 100)
+
+    assert vzyala is True
+    assert 'шахте' not in e2.message.sent[-1]
+    assert 'Уважаемые жильцы' in e2.message.sent[-1]
+
+
+async def test_popravlennoe_mozhno_pravit_snova(obyava, monkeypatch):
+    text = 'сделай объявление жильцам: на 65а/3 проверка арматуры'
+    await H.handle_announcement(event(text), text, 100)
+
+    async def fake_pravka(prompt, **kw):
+        return 'Уважаемые жильцы!\n\nВторая правка.'
+
+    monkeypatch.setattr(announce.ai, 'ask', fake_pravka)
+    await H.handle_pravka_obyavy(event('убери шахту'), 'убери шахту', 100)
+
+    assert H.STATE[100]['text'] == 'Уважаемые жильцы!\n\nВторая правка.'
+
+
+async def test_bez_obyavy_pravku_ne_lovim():
+    H.STATE.clear()
+
+    assert await H.handle_pravka_obyavy(event('убери шахту'), 'убери шахту', 100) is False
+
+
+async def test_staraya_obyava_ne_pravitsya(obyava):
+    text = 'сделай объявление жильцам: на 65а/3 проверка арматуры'
+    await H.handle_announcement(event(text), text, 100)
+    H.STATE[100]['kogda'] -= H.PRAVKA_OKNO + 1
+
+    vzyalas = await H.handle_pravka_obyavy(event('убери шахту'), 'убери шахту', 100)
+
+    assert vzyalas is False, 'через полчаса «убери» уже про другое'
+
+
+async def test_obychnaya_replika_ne_pravka(obyava):
+    text = 'сделай объявление жильцам: на 65а/3 проверка арматуры'
+    await H.handle_announcement(event(text), text, 100)
+
+    assert await H.handle_pravka_obyavy(event('спасибо'), 'спасибо', 100) is False

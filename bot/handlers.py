@@ -2332,11 +2332,23 @@ async def handle_announcement(event, text: str, uid: int) -> bool:
         return True
 
     dom = houses.detect_house(text)
-    kb = InlineKeyboardBuilder()
+    await pokazat_obyavu(event, uid, gotovo, dom)
+    return True
+
+
+async def pokazat_obyavu(event, uid: int, gotovo: str, dom):
+    """Показывает объявление и запоминает его — чтобы можно было поправить.
+
+    Запоминаем всегда, даже когда чат дома не привязан: «убери пункт про
+    шахту» человек говорит независимо от того, кто будет отправлять.
+    """
+    import time as _t
+
     chat_id = db.house_chat(dom['id']) if dom else None
+    STATE[uid] = {'mode': 'obyava', 'text': gotovo, 'chat_id': chat_id,
+                  'house_id': dom['id'] if dom else None, 'kogda': _t.monotonic()}
+    kb = InlineKeyboardBuilder()
     if chat_id:
-        STATE[uid] = {'mode': 'obyava', 'text': gotovo, 'chat_id': chat_id,
-                      'house_id': dom['id']}
         kb.row(CallbackButton(text=f"🏠 Отправить в чат {dom['address']}",
                               payload='obsend'))
         kb.row(CallbackButton(text='✖️ Не отправлять', payload='obdrop'))
@@ -2347,6 +2359,41 @@ async def handle_announcement(event, text: str, uid: int) -> bool:
                  'скопируйте текст. Чтобы отправляла я: наберите в том чате '
                  '«/дом Седова 65а/3».')
     await send(event.message, gotovo + hvost, kb if chat_id else None)
+
+
+PRAVKA_OKNO = 30 * 60      # сколько объявление ещё можно поправить словами
+
+
+async def handle_pravka_obyavy(event, text: str, uid: int) -> bool:
+    """«Убери пункт про шахту» — правит последнее объявление.
+
+    Раньше Люся отвечала, что не умеет редактировать списки: правку
+    объявления она принимала за правку плана работ. Текст она составила
+    сама — значит, и поправить его должна сама.
+    """
+    import time as _t
+
+    state = STATE.get(uid)
+    if not state or state.get('mode') != 'obyava':
+        return False
+    if not announce.wants_pravka(text):
+        return False
+    # Через полчаса «убери» относится уже к чему-то другому
+    if _t.monotonic() - state.get('kogda', 0) > PRAVKA_OKNO:
+        STATE.pop(uid, None)
+        return False
+    await send(event.message, '✍️ Правлю…')
+    try:
+        novoe = await announce.popravit(state['text'], text)
+    except Exception:
+        log.exception('Не удалось поправить объявление')
+        novoe = None
+    if not novoe:
+        await send(event.message, '🤔 Не получилось поправить. Скажите иначе — '
+                                  'например «убери пункт про шахту».')
+        return True
+    dom = houses.HOUSES_BY_ID.get(state['house_id']) if state.get('house_id') else None
+    await pokazat_obyavu(event, uid, novoe, dom)
     return True
 
 
@@ -3184,6 +3231,9 @@ async def on_text(event: MessageCreated):
                        f'🤔 По адресу {addr} есть таблица стояков, но квартиры {flat_q} в ней нет.\n'
                        f'Здесь квартиры с {min(allf)} по {max(allf)}.')
             return
+
+    if await handle_pravka_obyavy(event, text, uid):
+        return
 
     if await handle_announcement(event, text, uid):
         return

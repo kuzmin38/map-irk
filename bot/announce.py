@@ -73,3 +73,39 @@ async def sostavit(text: str, kvartiry: list | None = None) -> str | None:
     if len(sut) < 15:
         return None
     return await ai.ask(ZADANIE.format(text=sut), max_tokens=700, temperature=0.2)
+
+
+# ---------- Правка готового объявления ----------
+
+# «Убери пункт про шахту», «добавь про подъезд», «перепиши короче»
+PRAVKA = re.compile(
+    r'(?<![а-я])(убер\w+|удал\w+|выкин\w+|исключ\w+|добав\w+|допиш\w+|'
+    r'замен\w+|помен\w+|исправ\w+|перепиш\w+|переделай|сократ\w+|'
+    r'покороче|подробнее|вместо)(?![а-я])', re.IGNORECASE)
+
+ZADANIE_PRAVKI = (
+    'Ниже объявление для жильцов дома и просьба его поправить. Внеси правку '
+    'и верни исправленный текст целиком.\n\n'
+    'Объявление:\n«{text}»\n\n'
+    'Правка: «{pravka}»\n\n'
+    'Правила:\n'
+    '— меняй только то, о чём просят. Остальное оставь дословно, включая '
+    'номера квартир, адреса, даты и часы;\n'
+    '— ничего не добавляй от себя: ни сроков, ни причин, ни обещаний;\n'
+    '— сохрани строй: обращение, суть, просьбы списком, подпись компании;\n'
+    '— если правка непонятна или относится не к этому тексту, верни текст '
+    'без изменений;\n'
+    'Верни только текст объявления, без пояснений и без кавычек вокруг него.'
+)
+
+
+def wants_pravka(text: str) -> bool:
+    return bool(text) and bool(PRAVKA.search(text))
+
+
+async def popravit(text: str, pravka: str) -> str | None:
+    """Объявление с внесённой правкой. None — если модель не ответила."""
+    if not text or not pravka:
+        return None
+    return await ai.ask(ZADANIE_PRAVKI.format(text=text, pravka=pravka.strip()),
+                        max_tokens=900, temperature=0.2)
