@@ -355,3 +355,37 @@ async def test_obychnaya_replika_ne_pravka(obyava):
     await H.handle_announcement(event(text), text, 100)
 
     assert await H.handle_pravka_obyavy(event('спасибо'), 'спасибо', 100) is False
+
+
+# ---------- Строй объявления ----------
+
+# Первое живое объявление вышло с перепутанным порядком: сначала просьбы,
+# потом причина; «отключены квартиры» в прошедшем времени о том, что ещё
+# предстоит; и указание сантехнику «начать проверку с первых этажей»
+
+def test_zadanie_zadayot_poryadok():
+    z = announce.ZADANIE
+
+    assert 'ПОРЯДОК' in z
+    for kusok in ('Уважаемые жильцы', 'Без воды будут квартиры',
+                  'Просим вас', 'Управляющая компания'):
+        assert kusok in z, f'в задании нет блока: {kusok}'
+    assert z.index('Что будет и когда') < z.index('Без воды будут квартиры'), \
+        'причина раньше списка квартир'
+
+
+def test_zadanie_zapreschaet_vydumki_i_proshedshee_vremya():
+    z = announce.ZADANIE
+
+    assert 'выдумывать' in z
+    assert 'не «отключены квартиры»' in z, 'о предстоящем — в будущем времени'
+    assert 'не для жильцов' in z, 'указания рабочим выбрасываются'
+    assert 'канцелярит' in z
+
+
+def test_zadanie_ne_pozvolyaet_pridumat_telefon():
+    """Телефон диспетчерской в справочнике не заполнен — выдумывать нельзя."""
+    z = announce.ZADANIE
+
+    assert 'телефон' in z.lower()
+    assert 'Не назвал — блока нет' in z
