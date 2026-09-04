@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import date, datetime, timedelta
 
-from . import db, houses, remind
+from . import db, houses, remind, sezon
 
 log = logging.getLogger('reminders')
 
@@ -151,6 +151,62 @@ async def _check_shutoffs(bot):
         db.mark_shutoff_reminded(z['id'])
 
 
+async def _check_seasonal(bot, today: date):
+    """Сезонные работы: подошёл срок — заводим задание с работами по домам.
+
+    Работы обычные, как любые другие: сроки, ответственные, отметка
+    «сдано», прогресс «17 из 25». Сезонная запись только заводит их сама,
+    раз в год, и за неделю до числа — чтобы успеть распределить.
+    """
+    for zapis in db.list_seasonal(active_only=True):
+        if sezon.pora(zapis, today):
+            await zavesti_sezonnuyu(bot, zapis, today)
+
+
+async def zavesti_sezonnuyu(bot, zapis, today: date):
+    """Заводит задание по одному сезонному правилу.
+
+    Отдельно от проверки срока: то же самое делает кнопка «завести сейчас»,
+    и делать это она должна ровно так же, а не похоже.
+    """
+    if not zapis or not zapis['month']:
+        return
+    srok = sezon.v_godu(today.year, zapis['month'], zapis['day'])
+    doma = _doma_pravila(zapis)
+    if not doma:
+        log.warning('Сезонная работа %s: нет домов в охвате', zapis['id'])
+        db.update_seasonal(zapis['id'], last_year=today.year)
+        return
+    camp_id = db.add_campaign(zapis['title'], zapis['complex_id'],
+                              srok.isoformat(), zapis['created_by'],
+                              zapis['created_by_name'] or 'Люся')
+    for hid in doma:
+        db.add_work(hid, zapis['title'], srok.isoformat(),
+                    zapis['created_by_name'] or 'Люся',
+                    user_id=zapis['created_by'], campaign_id=camp_id)
+    db.update_seasonal(zapis['id'], last_year=today.year)
+    log.info('Сезонная работа «%s»: заведено %s работ на %s',
+             zapis['title'], len(doma), srok)
+    ostalos = (srok - today).days
+    kogda = ('срок сегодня' if ostalos <= 0
+             else f'срок {srok.strftime("%d.%m")}, осталось {ostalos} дн.')
+    await _send_to(bot, ITR_ROLES,
+                   f'🌱 СЕЗОННАЯ РАБОТА\n\n{zapis["title"]}\n'
+                   f'Домов: {len(doma)}, {kogda}.\n\n'
+                   'Работы уже в плане — распределите по людям '
+                   '(меню → 📋 Работы).')
+
+
+def _doma_pravila(zapis) -> list:
+    """Дома, на которые заводится сезонная работа."""
+    if zapis['complex_id'] == sezon.VSE_DOMA:
+        return [h['id'] for h in houses.HOUSES if h.get('kind') != 'nonres']
+    naznacheno = db.all_house_complexes()
+    return [h['id'] for h in houses.HOUSES
+            if naznacheno.get(h['id']) == zapis['complex_id']
+            and h.get('kind') != 'nonres']
+
+
 async def asked_loop(bot):
     """Отдельный цикл: просьбы проверяем каждую минуту, а не раз в полчаса.
 
@@ -181,6 +237,7 @@ async def reminder_loop(bot):
                         log.warning('Не доставлено напоминание по работе %s', w['id'])
                     db.update_work(w['id'], last_reminded=today_iso)
                 await _check_verifications(bot, today)
+                await _check_seasonal(bot, today)
         except Exception:
             log.exception('Сбой в цикле напоминаний')
         await asyncio.sleep(CHECK_INTERVAL)

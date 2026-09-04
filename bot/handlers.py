@@ -30,7 +30,7 @@ from . import risers as risers_mod
 from . import status as bot_status
 from . import announce, backup, banter, checks, flats, golos as golos_mod, inventory, mat
 from . import maxfix, passport, plan
-from . import proverka, razbor, remind, report, somneniya
+from . import proverka, razbor, remind, report, sezon, somneniya
 from . import stoyak as stoyak_mod, transcribe
 
 log = logging.getLogger(__name__)
@@ -47,6 +47,8 @@ with open(os.path.join(houses.DATA_DIR, 'directory.json'), encoding='utf-8') as 
 with open(os.path.join(houses.DATA_DIR, 'complexes.json'), encoding='utf-8') as f:
     COMPLEXES = json.load(f)
 COMPLEX_NAMES = {c['id']: c['name'] for c in COMPLEXES}
+# Сезонные работы обычно идут по всему участку, а не по одному ЖК
+COMPLEX_NAMES[sezon.VSE_DOMA] = 'все дома'
 
 with open(os.path.join(houses.DATA_DIR, 'team.json'), encoding='utf-8') as f:
     TEAM = json.load(f)
@@ -1349,6 +1351,7 @@ QUICK_COMMANDS = [
     ('проверка', 'Записи с чужими адресами', 'chk'),
     ('итоги', 'Разобрать день по домам', 'itogi'),
     ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
+    ('сезон', 'Сезонные работы: что и когда', 'sez'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
 ]
 
@@ -1373,6 +1376,7 @@ ALIASES = {
     'проверка': ('chk', 'proverka'),
     'итоги': ('itogi',),
     'опись': ('opis', 'inventar'),
+    'сезон': ('sezon', 'season'),
     'копия': ('kopiya', 'backup'),
 }
 
@@ -2623,6 +2627,75 @@ async def resume_stoyak(event, text: str, uid: int, state) -> bool:
                f"по {kvartira} квартире на {dom['address']}", uid)
 
 
+async def handle_seasonal(event, text: str, uid: int) -> bool:
+    """«Сезонная работа: 15 октября открыть краны на перемычке ливнёвки».
+
+    Заказчик: «нужно постоянно что-то открывать, закрывать, смотреть».
+    Записываем правило, а работы по домам заведутся сами — за неделю до
+    числа, каждый год.
+    """
+    if not sezon.TRIGGER.match(text or ''):
+        return False
+    return await _zapisat_sezonnuyu(event, text, uid)
+
+
+async def _zapisat_sezonnuyu(event, text: str, uid: int, zagotovka=None) -> bool:
+    razbor = zagotovka or sezon.parse(text)
+    if not razbor:
+        await send(event.message,
+                   '🌱 Не поняла, что делать. Напишите одной строкой:\n'
+                   '«15 октября открыть краны на перемычке ливнёвой канализации».')
+        return True
+    if not razbor['month']:
+        # Без числа напоминать не о чем — это тот случай, когда надо спросить
+        STATE[uid] = {'mode': 'sez_date', 'zapis': razbor}
+        await send(event.message,
+                   f"🌱 «{razbor['title']}» — какого числа? "
+                   'Напишите, например «15 октября».')
+        return True
+    STATE.pop(uid, None)
+    complex_id, ogovorka = _ohvat_sezonnoy(razbor['complex_name'])
+    sid = db.add_seasonal(razbor['title'], razbor['month'], razbor['day'],
+                          razbor['lead_days'], complex_id,
+                          user_id=uid, user_name=_uname(event))
+    pr = db.get_seasonal(sid)
+    kb = InlineKeyboardBuilder()
+    kb.row(CallbackButton(text='🌱 Сезонные работы', payload='sez'),
+           CallbackButton(text='🏠 Меню', payload='menu'))
+    await send(event.message,
+               f'🌱 Записала: {sezon.kogda_slovami(pr)} — {pr["title"]}.\n'
+               f'Охват: {COMPLEX_NAMES.get(complex_id, complex_id)}. '
+               f'Предупрежу за {pr["lead_days"]} дн. и заведу работы по домам.'
+               + ogovorka, kb)
+    return True
+
+
+def _ohvat_sezonnoy(nazvanie):
+    """(complex_id, оговорка). Незнакомый ЖК — не повод молча взять все дома."""
+    if not nazvanie:
+        return sezon.VSE_DOMA, ''
+    iskomoe = nazvanie.strip().lower()
+    for cid, imya in COMPLEX_NAMES.items():
+        if cid == sezon.VSE_DOMA:
+            continue
+        if iskomoe in imya.lower() or imya.lower().replace('жк ', '') == iskomoe:
+            return cid, ''
+    return sezon.VSE_DOMA, (f'\n\n⚠️ ЖК «{nazvanie}» не нашла — записала по '
+                            'всем домам. Если не так, удалите и напишите заново.')
+
+
+async def resume_seasonal_date(event, text: str, uid: int, state) -> bool:
+    """Ответ на «какого числа»."""
+    kogda = sezon.data(text)
+    if not kogda:
+        await send(event.message, '🌱 Не поняла число. Напишите, например, '
+                                  '«15 октября» или «15.10».')
+        return True
+    zapis = dict(state['zapis'])
+    zapis['day'], zapis['month'] = kogda
+    return await _zapisat_sezonnuyu(event, text, uid, zagotovka=zapis)
+
+
 async def handle_inventory(event, text: str, uid: int) -> bool:
     """«В инвентарь: мотопомпа, подвал, Седова 71» — вещь встаёт на учёт.
 
@@ -3065,6 +3138,8 @@ async def on_text(event: MessageCreated):
             return
         if await handle_shutoff(event, text, uid):
             return
+        if await handle_seasonal(event, text, uid):
+            return
         if await handle_inventory(event, text, uid):
             return
         # «Где мотопомпа» — если по описи нашлось, отвечаем сразу; если нет,
@@ -3216,6 +3291,13 @@ async def on_text(event: MessageCreated):
 
     if state and state['mode'] == 'stoyak_kvartiry':
         if await resume_stoyak_kvartiry(event, text, uid, state):
+            return
+
+    if state and state['mode'] in ('sez_add', 'sez_date'):
+        if state['mode'] == 'sez_date':
+            if await resume_seasonal_date(event, text, uid, state):
+                return
+        elif await _zapisat_sezonnuyu(event, text, uid):
             return
 
     if state and state['mode'] in ('inv_add', 'inv_move'):
@@ -3487,6 +3569,9 @@ async def on_text(event: MessageCreated):
         return
 
     if await handle_shutoff(event, text, uid):
+        return
+
+    if await handle_seasonal(event, text, uid):
         return
 
     if await handle_inventory(event, text, uid):
@@ -4622,6 +4707,94 @@ async def run_action(payload: str, msg, uid: int, event):
                 lines.append(f"   {z['created_at'][:10]} — {z['text'][:100]} "
                              f"({z['author'] or '—'})")
         await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'sez':
+        pravila = db.list_seasonal()
+        kb = InlineKeyboardBuilder()
+        if not pravila:
+            kb.row(CallbackButton(text='➕ Добавить', payload='sezadd'))
+            kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
+            await send(msg, '🌱 СЕЗОННЫЕ РАБОТЫ\n\n'
+                            'Пока ни одной. Сюда заносится то, что делается '
+                            'каждый год в одно и то же время: открыть краны '
+                            'на перемычке ливнёвки, закрыть их к лету, '
+                            'просмотреть виброставки.\n\n'
+                            'Записать можно прямо из чата одной строкой:\n'
+                            '«сезонная работа: 15 октября открыть краны на '
+                            'перемычке ливнёвой канализации».\n\n'
+                            'За неделю до числа Люся сама заведёт работы по '
+                            'домам и напомнит.', kb)
+            return
+        segodnya = datetime_today()
+        lines = [f'🌱 СЕЗОННЫЕ РАБОТЫ — {len(pravila)}', '']
+        for pr in pravila:
+            lines.append(sezon.stroka(pr, segodnya))
+            ohvat = COMPLEX_NAMES.get(pr['complex_id'], pr['complex_id'])
+            lines.append(f"      {ohvat}, предупредить за {pr['lead_days']} дн.")
+        lines.append('')
+        lines.append('Работы заводятся сами и попадают в общий план.')
+        for pr in pravila[:8]:
+            kb.row(CallbackButton(text=f"🌱 {pr['title'][:32]}",
+                                  payload=f"sezx:{pr['id']}"))
+        kb.row(CallbackButton(text='➕ Добавить', payload='sezadd'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'sezadd':
+        STATE[uid] = {'mode': 'sez_add'}
+        await send(msg, '🌱 Что и когда? Одной строкой, например:\n'
+                        '«15 октября открыть краны на перемычке ливнёвой '
+                        'канализации»\n\n'
+                        'Можно добавить «за две недели» — за сколько '
+                        'предупредить, и «по ЖК Квартал» — если работа '
+                        'не по всем домам.')
+
+    elif action.startswith('sezx:'):
+        pr = db.get_seasonal(int(action.split(':')[1]))
+        if not pr:
+            await send(msg, '🌱 Запись не найдена.', main_menu_kb())
+            return
+        ohvat = COMPLEX_NAMES.get(pr['complex_id'], pr['complex_id'])
+        lines = [f"🌱 {pr['title']}", '',
+                 f'Когда: {sezon.kogda_slovami(pr)}',
+                 f'Охват: {ohvat}',
+                 f"Предупредить за {pr['lead_days']} дн."]
+        if pr['last_year']:
+            lines.append(f"Последний раз заведено: {pr['last_year']} год")
+        if not pr['active']:
+            lines.append('⏸ Приостановлена — работы не заводятся.')
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='▶️ Завести сейчас', payload=f"sezrun:{pr['id']}"))
+        kb.row(CallbackButton(
+            text='▶️ Возобновить' if not pr['active'] else '⏸ Приостановить',
+            payload=f"sezstop:{pr['id']}"))
+        kb.row(CallbackButton(text='🗑 Удалить', payload=f"sezdel:{pr['id']}"),
+               CallbackButton(text='🌱 К списку', payload='sez'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action.startswith('sezstop:'):
+        pr = db.get_seasonal(int(action.split(':')[1]))
+        if pr:
+            db.update_seasonal(pr['id'], active=0 if pr['active'] else 1)
+        await run_action('sez', msg, uid, event)
+
+    elif action.startswith('sezdel:'):
+        db.delete_seasonal(int(action.split(':')[1]))
+        await run_action('sez', msg, uid, event)
+
+    elif action.startswith('sezrun:'):
+        pr = db.get_seasonal(int(action.split(':')[1]))
+        if not pr or not pr['month']:
+            await send(msg, '🌱 Не могу: у записи нет числа.', main_menu_kb())
+            return
+        # «Завести сейчас» — это ровно то же, что сделает Люся сама,
+        # только без ожидания срока: год сбрасываем, правило срабатывает
+        from . import reminders
+        db.update_seasonal(pr['id'], last_year=None, active=1)
+        await reminders.zavesti_sezonnuyu(getattr(event, 'bot', None),
+                                          db.get_seasonal(pr['id']),
+                                          datetime_today())
+        await run_action('sez', msg, uid, event)
 
     elif action == 'inv':
         veshchi = db.list_items()

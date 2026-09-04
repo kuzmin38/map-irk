@@ -212,6 +212,21 @@ def _create_all(c):
         original TEXT,
         announced INTEGER NOT NULL DEFAULT 0,
         reminded INTEGER NOT NULL DEFAULT 0)''')
+    # Сезонные работы: правило, по которому раз в год само собой заводится
+    # задание с работами по домам. Хранится только повторяемость — что,
+    # какого числа и за сколько дней предупредить
+    c.execute('''CREATE TABLE IF NOT EXISTS seasonal (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        month INTEGER,
+        day INTEGER,
+        lead_days INTEGER NOT NULL DEFAULT 7,
+        complex_id TEXT NOT NULL DEFAULT 'all',
+        active INTEGER NOT NULL DEFAULT 1,
+        last_year INTEGER,
+        created_by INTEGER,
+        created_by_name TEXT,
+        created_at TEXT NOT NULL)''')
     # Хроника дома: что за день произошло, разложенное по домам ночным
     # разбором ленты. Не сообщения, а факты
     c.execute('''CREATE TABLE IF NOT EXISTS house_facts (
@@ -436,6 +451,48 @@ def campaign_progress(campaign_id):
             "SELECT COUNT(*) AS total, SUM(status = 'done') AS done "
             'FROM works WHERE campaign_id = ?', (campaign_id,)).fetchone()
     return (row['done'] or 0), (row['total'] or 0)
+
+
+# --- Сезонные работы (правила повторения) ---
+
+def add_seasonal(title, month, day, lead_days=7, complex_id='all',
+                 user_id=None, user_name=None) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            'INSERT INTO seasonal (title, month, day, lead_days, complex_id, '
+            'created_by, created_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (title, month, day, lead_days, complex_id, user_id, user_name, now()))
+        return cur.lastrowid
+
+
+def list_seasonal(active_only=False):
+    """По календарю, а не по времени добавления: так их и читают."""
+    sql = 'SELECT * FROM seasonal'
+    if active_only:
+        sql += ' WHERE active = 1'
+    sql += ' ORDER BY month IS NULL, month, day, id'
+    with _conn() as c:
+        return c.execute(sql).fetchall()
+
+
+def get_seasonal(seasonal_id):
+    with _conn() as c:
+        return c.execute('SELECT * FROM seasonal WHERE id = ?',
+                         (seasonal_id,)).fetchone()
+
+
+def update_seasonal(seasonal_id, **fields):
+    if not fields:
+        return
+    naznachenie = ', '.join(f'{k} = ?' for k in fields)
+    with _conn() as c:
+        c.execute(f'UPDATE seasonal SET {naznachenie} WHERE id = ?',
+                  (*fields.values(), seasonal_id))
+
+
+def delete_seasonal(seasonal_id):
+    with _conn() as c:
+        c.execute('DELETE FROM seasonal WHERE id = ?', (seasonal_id,))
 
 
 # --- Работы по домам (график, дедлайны) ---
