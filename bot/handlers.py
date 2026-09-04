@@ -30,7 +30,8 @@ from . import risers as risers_mod
 from . import status as bot_status
 from . import announce, backup, banter, checks, flats, golos as golos_mod, inventory, mat
 from . import maxfix, passport, plan
-from . import proverka, razbor, remind, report, stoyak as stoyak_mod, transcribe
+from . import proverka, razbor, remind, report, somneniya
+from . import stoyak as stoyak_mod, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -1690,6 +1691,8 @@ SUMMARY_RULES = (
     '— брань и просторечие передавай нейтрально, профессиональным языком. '
     'Ругательства не воспроизводи;\n'
     '— если чего-то из трёх вопросов в записи нет — просто не пиши об этом;\n'
+    '— голое число не называй ни квартирой, ни подъездом, ни этажом, если '
+    'этого слова не было в записи: «71» может оказаться номером дома;\n'
     '— без вступлений, без адреса, без обращений и без оценок.'
 )
 
@@ -1697,7 +1700,8 @@ SUMMARY_RULES = (
 VERBATIM_LIMIT = 400
 
 
-async def short_summary(parts: list[str], address: str | None) -> str:
+async def short_summary(parts: list[str], address: str | None,
+                        house=None, istochnik: str = somneniya.IZ_RECHI) -> str:
     """Короткий деловой пересказ видеоотчёта.
 
     Дословная стенограмма в чате не нужна никому: её долго читать, в ней
@@ -1709,6 +1713,8 @@ async def short_summary(parts: list[str], address: str | None) -> str:
     """
     parts = [p.strip() for p in parts if p and p.strip()]
     slova = ' '.join(parts)
+    if house is None and address:
+        house = next((h for h in houses.HOUSES if h['address'] == address), None)
     head = f'🎙 {address}' if address else '🎙 Видеоотчёт'
     if len(parts) > 1:
         head += f' · {len(parts)} видео'
@@ -1723,7 +1729,13 @@ async def short_summary(parts: list[str], address: str | None) -> str:
             korotko = korotko[:VERBATIM_LIMIT] + '…'
         return f'{head}\n{korotko}{hvost}'
 
-    return (f'{head}\n{mat.mask(feminine.fix(summary.strip()))}\n'
+    gotovo = mat.mask(feminine.fix(summary.strip()))
+    # Пересказ проверяем по справочнику: парковка с квартирой 71 в нём не
+    # сходится, и сказать об этом должна Люся, а не человек через сутки
+    voprosy = somneniya.proverit(house, gotovo, slova, istochnik)
+    if voprosy:
+        hvost = '\n\n' + '\n'.join(voprosy)
+    return (f'{head}\n{gotovo}\n'
             f'📄 Дословно — команда /chat.{hvost}')
 
 
@@ -1749,7 +1761,10 @@ async def _flush_series(key: tuple):
         series = SERIES.pop(key, None)
         if not series or not series['parts'] or not series['is_issue']:
             return
-        summary = await short_summary(series['parts'], series['address'])
+        summary = await short_summary(
+            series['parts'], series['address'],
+            house=houses.HOUSES_BY_ID.get(series['house_id']),
+            istochnik=series.get('istochnik', somneniya.IZ_RECHI))
         link = (NewMessageLink(type=MessageLinkType.REPLY, mid=series['first_mid'])
                 if series['first_mid'] else None)
         await series['bot'].send_message(chat_id=series['chat_id'], text=summary, link=link)
@@ -1760,14 +1775,15 @@ async def _flush_series(key: tuple):
         SERIES.pop(key, None)
 
 
-def queue_series(key, text, house, is_issue, bot, chat_id, mid):
+def queue_series(key, text, house, is_issue, bot, chat_id, mid,
+                 istochnik=somneniya.IZ_RECHI):
     """Копит расшифровки серии; ответ уйдёт, когда поток видео стихнет."""
     series = SERIES.get(key)
     if series is None:
         series = SERIES[key] = {
             'parts': [], 'address': None, 'house_id': None, 'is_issue': False,
             'pending': False, 'bot': bot, 'chat_id': chat_id,
-            'first_mid': mid, 'task': None,
+            'first_mid': mid, 'task': None, 'istochnik': somneniya.IZ_RECHI,
         }
         series['task'] = asyncio.create_task(_flush_series(key))
     else:
@@ -1777,6 +1793,7 @@ def queue_series(key, text, house, is_issue, bot, chat_id, mid):
     if house and not series['address']:
         series['address'] = house['address']
         series['house_id'] = house['id']
+        series['istochnik'] = istochnik
 
 
 async def transcribe_later(record_id: int, url: str | None, bot=None, chat_id=None,
@@ -1791,23 +1808,29 @@ async def transcribe_later(record_id: int, url: str | None, bot=None, chat_id=No
             return
         record = db.get_chat_record(record_id)
         key = (chat_id, record['user_id'] if record else None)
+        # Откуда взялся адрес — важно не меньше самого адреса: названный в
+        # речи Люся печатает как факт, подобранный по соседям — переспрашивает
         house = houses.detect_house(text)
+        istochnik = somneniya.IZ_RECHI
         # Адрес часто стоит в подписи к видео, а не в самой речи: «8/5 Салон
         # красоты». Он уже распознан при записи сообщения — незачем спрашивать
         # заново
         if not house and record and record['house_id']:
             house = houses.HOUSES_BY_ID.get(record['house_id'])
+            istochnik = somneniya.IZ_PODPISI
         # Продолжения серии («перекрыли стояк», «всё готово») адреса не содержат —
         # цепляем их к дому, который назвали в начале отчёта.
         if not house:
             series = SERIES.get(key)
             if series and series.get('house_id') is not None:
                 house = houses.HOUSES_BY_ID.get(series['house_id'])
+                istochnik = somneniya.IZ_SERII
         # Адрес мог уйти отдельным сообщением прямо перед роликом
         if not house and record and chat_id:
             ryadom = db.recent_house_of(chat_id, record['user_id'])
             if ryadom:
                 house = houses.HOUSES_BY_ID.get(ryadom)
+                istochnik = somneniya.IZ_SOSEDNEGO
         is_issue = bool(ISSUE_WORDS.search(text))
         # В базу — без брани: расшифровку потом читают в паспорте дома,
         # в выгрузке инженеру и в отчёте руководителю
@@ -1828,7 +1851,7 @@ async def transcribe_later(record_id: int, url: str | None, bot=None, chat_id=No
                 await bot.send_message(chat_id=chat_id, text=otvet)
 
         if bot and chat_id:
-            queue_series(key, text, house, is_issue, bot, chat_id, mid)
+            queue_series(key, text, house, is_issue, bot, chat_id, mid, istochnik)
     except Exception:
         log.exception('Не удалось расшифровать вложение')
 
@@ -2061,6 +2084,11 @@ def zapisat_nahodku(record_id, house, text: str, uid, uname) -> str | None:
     if not razbor:
         return None
     kvartira, chto = razbor
+    # Находку по квартире, которой в доме нет, записывать нельзя: она осядет
+    # в карточке дома и всплывёт через полгода как факт. Лучше переспросить
+    somnenie = somneniya.proverit(house, f'кв. {kvartira} {chto}')
+    if somnenie:
+        return somnenie[0]
     kind = flats.kind_of(chto)
     if db.flat_note_exists(house['id'], kvartira, kind):
         return None         # подпись и голосовое об одном и том же выезде
