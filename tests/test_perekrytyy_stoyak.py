@@ -162,13 +162,26 @@ async def test_otkryt_mozhno_po_lyuboy_kvartire_stoyaka():
 
 
 async def test_bez_shahmatki_chestno_govorit():
-    dom = next(h for h in houses.ALL_HOUSES if h['address'] == '4-я Советская 26')
-    text = f"перекрыл стояк на {dom['address']}, кв 999"
+    """Шахматки нет — Люся это признаёт и просит список квартир."""
+    text = 'перекрыл стояк на Байкальская 126/3, кв 40'
     e = event(text)
 
     await H.handle_shutoff(e, text, 100)
 
-    assert 'нет шахматки' in e.message.sent[-1] or 'нет кв' in e.message.sent[-1]
+    assert 'Шахматки на' in e.message.sent[-1]
+    assert db.open_shutoffs() == []
+
+
+async def test_v_nezhilom_dome_kvartir_ne_prosit():
+    """Просить у человека список квартир парковки — отдельный вид чуши."""
+    text = 'перекрыл стояк на 4-я Советская 26, кв 999'
+    e = event(text)
+
+    await H.handle_shutoff(e, text, 100)
+
+    assert 'квартир там нет' in e.message.sent[-1]
+    assert 'Перечислите' not in e.message.sent[-1]
+    assert 100 not in H.STATE
     assert db.open_shutoffs() == []
 
 

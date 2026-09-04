@@ -137,6 +137,21 @@ def naydi_stoyak(address: str, flat: int):
     return addr, floor, riser, kvartiry
 
 
+def spisok_kvartir(text: str) -> list:
+    """«12, 21, 30, 39» — квартиры стояка, названные человеком.
+
+    Нужно для семи жилых домов, на которые шахматки у нас нет: список
+    назовёт сантехник, а оформит Люся. Номера идут в том порядке, в каком
+    их назвали, — снизу вверх, как их и перечисляют.
+    """
+    out = []
+    for kusok in re.findall(r'\d{1,4}', text or ''):
+        nomer = int(kusok)
+        if 0 < nomer < 2000 and nomer not in out:
+            out.append(nomer)
+    return out
+
+
 def soobschenie(dom_addr: str, flat: int, kvartiry: list, kto: str,
                 kogda: str, zakryt: bool = True, skolko: str = '',
                 res: str = 'вода') -> str:

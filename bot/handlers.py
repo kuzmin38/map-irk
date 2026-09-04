@@ -2300,16 +2300,68 @@ async def handle_shutoff(event, text: str, uid: int) -> bool:
 
     naydeno = stoyak_mod.naydi_stoyak(dom['address'], kvartira)
     if not naydeno:
-        await send(event.message,
-                   f"🤔 По {dom['address']} нет шахматки или в ней нет кв. {kvartira}. "
-                   'Стояк записать не могу — напишите в чат сами.')
-        return True
+        return await _stoyak_bez_shahmatki(event, dom, kvartira, res, uid, text)
     adres, etazh, nomer, kvartiry = naydeno
 
     sid = db.add_shutoff(dom['id'], kvartira, nomer, etazh, kvartiry,
                          by_id=uid, by_name=_uname(event), res=res, original=text)
     await _vydat_teksty(event, sid, adres, kvartira, kvartiry, _uname(event),
                         res, dom['id'], nomer, zakryt=True)
+    return True
+
+
+async def _stoyak_bez_shahmatki(event, dom, kvartira: int, res: str,
+                                uid: int, text: str) -> bool:
+    """Шахматки нет — но текст жильцам всё равно нужен.
+
+    Раньше на оба случая был один ответ: «нет шахматки или в ней нет
+    квартиры — напишите в чат сами». Случая два, и они разные.
+
+    Квартиры нет в шахматке — почти всегда ошибка в номере, и подсказать
+    надо диапазон. А вот шахматки нет вовсе на семи жилых домах из
+    двадцати пяти, и ждать, пока их оцифруют, незачем: список квартир
+    назовёт человек, а оформит его Люся — ради этого всё и делалось.
+    """
+    if somneniya.nezhiloy(dom):
+        # Просить у человека список квартир парковки — отдельный вид чуши
+        chto = (dom.get('note') or 'нежилое здание').split('.')[0].strip()
+        await send(event.message,
+                   f"🤔 {dom['address']} — {chto}, квартир там нет. "
+                   'Это точно тот дом?')
+        return True
+    if risers_mod.find_blocks(dom['address']):
+        ran = somneniya.diapazon(dom['address'])
+        hvost = f' — там квартиры с {ran[0]} по {ran[1]}' if ran else ''
+        await send(event.message,
+                   f"🤔 В доме {dom['address']} квартиры {kvartira} нет{hvost}. "
+                   'Проверьте номер.')
+        return True
+    STATE[uid] = {'mode': 'stoyak_kvartiry', 'res': res, 'dom_id': dom['id'],
+                  'kvartira': kvartira, 'original': text}
+    await send(event.message,
+               f"🤔 Шахматки на {dom['address']} у меня нет — сама стояк не "
+               'посчитаю. Перечислите квартиры стояка через запятую, и я '
+               'соберу оба текста: «12, 21, 30, 39».')
+    return True
+
+
+async def resume_stoyak_kvartiry(event, text: str, uid: int, state) -> bool:
+    """Квартиры стояка, названные руками, — для домов без шахматки."""
+    kvartiry = stoyak_mod.spisok_kvartir(text)
+    if not kvartiry:
+        await send(event.message, '🚫 Не разобрала номера. Перечислите через '
+                                  'запятую: «12, 21, 30, 39».')
+        return True
+    STATE.pop(uid, None)
+    dom = houses.HOUSES_BY_ID.get(state['dom_id'])
+    if not dom:
+        return True
+    kvartira, res = state['kvartira'], state.get('res', 'вода')
+    sid = db.add_shutoff(dom['id'], kvartira, 0, 0, kvartiry,
+                         by_id=uid, by_name=_uname(event), res=res,
+                         original=state.get('original', ''))
+    await _vydat_teksty(event, sid, dom['address'], kvartira, kvartiry,
+                        _uname(event), res, dom['id'], zakryt=True)
     return True
 
 
@@ -2338,7 +2390,9 @@ async def _vydat_teksty(event, sid, adres, kvartira, kvartiry, kto, res,
     привязаны. Значит, в пересылаемом сообщении не должно быть ни одного
     служебного слова: «вот что напишу» уедет вместе с текстом.
     """
-    shapka = (f'Стояк {nomer}-й, {len(kvartiry)} квартир. Ниже два готовых текста — '
+    # Номера стояка нет, когда квартиры назвали руками: дом без шахматки
+    chey = f'Стояк {nomer}-й, ' if nomer else 'Стояк с ваших слов: '
+    shapka = (f'{chey}{len(kvartiry)} квартир. Ниже два готовых текста — '
               'для обслуживания и для жильцов. Перешлите нужный или отправьте кнопкой.'
               if zakryt else
               f'Стояк был перекрыт {skolko}. Ниже два готовых текста.')
@@ -3158,6 +3212,10 @@ async def on_text(event: MessageCreated):
 
     if state and state['mode'] in ('stoyak_otkryt', 'stoyak_zakryt'):
         if await resume_stoyak(event, text, uid, state):
+            return
+
+    if state and state['mode'] == 'stoyak_kvartiry':
+        if await resume_stoyak_kvartiry(event, text, uid, state):
             return
 
     if state and state['mode'] in ('inv_add', 'inv_move'):
