@@ -220,3 +220,70 @@ async def test_pachka_zhdyot_tishiny(monkeypatch, otvety):
 
     assert schyotchik['n'] == 1
     assert 'Картинок: 3' in otvety[-1]
+
+
+# ── пересылка ───────────────────────────────────────────────────────────
+
+class Vnutri:
+    """Тело пересланного сообщения: текст и вложения лежат тут."""
+    def __init__(self, text='', atts=None):
+        self.text = text
+        self.attachments = atts or []
+
+
+class PeresylkaMsg(FakeMsg):
+    def __init__(self, vnutri):
+        super().__init__()
+        self.link = type('L', (), {'type': 'forward', 'message': vnutri})()
+
+
+class PeresylkaEvent:
+    def __init__(self, vnutri):
+        self.message = PeresylkaMsg(vnutri)
+        self.bot = None
+
+
+def test_kartinki_beryotsya_iz_peresylki():
+    """Снаружи пересланное сообщение приходит пустым — так его и потеряли."""
+    vnutri = Vnutri('Сделай список', [Attach('https://max/1.jpg'),
+                                      Attach('https://max/2.jpg')])
+    event = PeresylkaEvent(vnutri)
+    assert H.image_urls(event.message.body) == [], 'снаружи пусто — это и сбивало'
+    assert H.kartinki_soobscheniya(event.message) == ['https://max/1.jpg',
+                                                      'https://max/2.jpg']
+
+
+def test_vopros_beryotsya_iz_peresylki():
+    vnutri = Vnutri('Сделай мне список квартир с номерами телефонов',
+                    [Attach('https://max/1.jpg')])
+    event = PeresylkaEvent(vnutri)
+    assert 'список квартир' in H.vopros_soobscheniya(event.message)
+
+
+def test_svoy_tekst_vazhnee_peresylannogo():
+    """Переслал чужое и спросил своё — отвечаем на своё."""
+    vnutri = Vnutri('Сделай список квартир', [Attach('https://max/1.jpg')])
+    event = PeresylkaEvent(vnutri)
+    event.message.body.text = 'а сколько тут строк'
+    assert H.vopros_soobscheniya(event.message) == 'а сколько тут строк'
+
+
+async def test_peresylannaya_pachka_otvechaet_na_svoyu_prosbu(
+        monkeypatch, otvety):
+    """Тот самый случай целиком: шесть скриншотов и просьба внутри пересылки."""
+    zapros = {}
+
+    async def fake_prochitat(urls, vopros=None):
+        zapros['urls'] = list(urls)
+        zapros['vopros'] = vopros
+        return 'Квартира 3 — 89086581211'
+
+    monkeypatch.setattr(H.kartinki_mod, 'prochitat', fake_prochitat)
+
+    vnutri = Vnutri('Сделай мне список квартир с номерами телефонов',
+                    [Attach(f'https://max/{n}.jpg') for n in range(6)])
+    ok = await H.handle_kartinki(PeresylkaEvent(vnutri), '', 7)
+
+    assert ok
+    assert len(zapros['urls']) == 6
+    assert 'список квартир' in zapros['vopros']

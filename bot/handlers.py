@@ -1770,6 +1770,36 @@ def image_urls(body) -> list:
     return out
 
 
+def kartinki_soobscheniya(message) -> list:
+    """Картинки сообщения — включая пересланное вместе с ним.
+
+    Заказчик переслал Люсе свою же переписку: шесть скриншотов и просьба
+    сделать список. Снаружи сообщение пришло пустым — и текст, и вложения
+    лежали внутри пересылки. Ровно на этом же спотыкались голосовые.
+    """
+    urls = image_urls(getattr(message, 'body', None))
+    vnutri = peresylka(message)
+    if vnutri is not None:
+        for url in image_urls(vnutri):
+            if url not in urls:
+                urls.append(url)
+    return urls
+
+
+def vopros_soobscheniya(message) -> str:
+    """Текст сообщения, а если его нет — текст пересылки.
+
+    Просьба «сделай список квартир с телефонами» уехала внутрь пересылки
+    вместе со скриншотами. Без неё Люся отвечала бы «что на картинках»
+    вместо того, о чём просили.
+    """
+    svoy = (getattr(getattr(message, 'body', None), 'text', None) or '').strip()
+    if svoy:
+        return svoy
+    vnutri = peresylka(message)
+    return (getattr(vnutri, 'text', None) or '').strip() if vnutri is not None else ''
+
+
 def zapomnit_kartinki(key, urls: list) -> dict:
     pachka = KARTINKI.get(key)
     if pachka is None or time.monotonic() - pachka['at'] > KARTINKI_ZHIVUT:
@@ -1840,9 +1870,10 @@ async def kartinki_bez_voprosa(event, key):
 async def handle_kartinki(event, text: str, uid: int) -> bool:
     """Вопрос по недавно присланным картинкам."""
     key = (_chat_id(event), uid)
-    novye = image_urls(event.message.body)
+    novye = kartinki_soobscheniya(event.message)
     if novye:
         zapomnit_kartinki(key, novye)
+    text = text or vopros_soobscheniya(event.message)
     pachka = KARTINKI.get(key)
     if not pachka or not svezhie_kartinki(key):
         return False
@@ -3359,12 +3390,17 @@ async def on_text(event: MessageCreated):
             text = await _rasshifrovat_lichnoe(event, url, gotovo)
             if not text:
                 return
-        elif image_urls(body):
+        elif kartinki_soobscheniya(event.message):
             # Скриншоты приходят пачкой и часто без подписи: копим и, когда
-            # поток стихнет, говорим, что на них видно
+            # поток стихнет, говорим, что на них видно. Просьба может лежать
+            # внутри пересылки — тогда отвечаем сразу на неё
             key = (_chat_id(event), uid)
-            zapomnit_kartinki(key, image_urls(body))
-            asyncio.create_task(kartinki_bez_voprosa(event, key))
+            zapomnit_kartinki(key, kartinki_soobscheniya(event.message))
+            vopros = vopros_soobscheniya(event.message)
+            if vopros:
+                await otvetit_po_kartinkam(event, key, vopros)
+            else:
+                asyncio.create_task(kartinki_bez_voprosa(event, key))
             return
         else:
             log.info('Молчу: сообщение без текста. Вложения: %s | сырое: %s',
