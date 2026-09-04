@@ -69,22 +69,79 @@ def lichnye_dannye(text: str) -> bool:
     return ochki >= 2
 
 
-async def _skachat(url: str) -> str | None:
-    """Картинка в base64 — MAX отдаёт их по временным ссылкам."""
+# По этим байтам в начале файла видно, что за картинка на самом деле.
+# Объявить PNG как jpeg нельзя: Google отвечает «Provided image is not valid»
+SIGNATURY = (
+    (b'\x89PNG\r\n\x1a\n', 'image/png'),
+    (b'\xff\xd8\xff', 'image/jpeg'),
+    (b'GIF87a', 'image/gif'),
+    (b'GIF89a', 'image/gif'),
+)
+
+
+def opoznat(data: bytes) -> str | None:
+    """Что это за картинка. None — если байты вообще не похожи на картинку."""
+    for podpis, mime in SIGNATURY:
+        if data.startswith(podpis):
+            return mime
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'image/webp'
+    if data[4:12] in (b'ftypheic', b'ftypheix', b'ftypmif1'):
+        return 'image/heic'
+    return None
+
+
+async def _skachat(url: str):
+    """(mime, base64) картинки — или None.
+
+    Скачивать надо до конца. Первая версия брала resp.content.read(предел),
+    а он отдаёт то, что успело накопиться в буфере, — картинка приходила
+    обрезанной, и Google отвечал «Provided image is not valid». Читаем
+    кусками, как это давно делает расшифровка голосовых.
+    """
+    predel = MAX_MB * 1024 * 1024
     try:
         async with aiohttp.ClientSession() as s:
-            async with s.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+            async with s.get(url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
                 if resp.status != 200:
                     log.warning('Картинку не скачать: HTTP %s', resp.status)
                     return None
-                data = await resp.content.read(MAX_MB * 1024 * 1024 + 1)
-        if len(data) > MAX_MB * 1024 * 1024:
-            log.warning('Картинка больше %s МБ — пропускаю', MAX_MB)
-            return None
-        return base64.b64encode(data).decode()
+                kuski, vsego = [], 0
+                async for kusok in resp.content.iter_chunked(1 << 16):
+                    vsego += len(kusok)
+                    if vsego > predel:
+                        log.warning('Картинка больше %s МБ — пропускаю', MAX_MB)
+                        return None
+                    kuski.append(kusok)
+        data = b''.join(kuski)
     except Exception:
         log.exception('Ошибка загрузки картинки')
         return None
+    mime = opoznat(data)
+    if not mime:
+        # Ссылка протухла или отдали страницу вместо файла. Без этой записи
+        # в логе «не смогла разобрать» неотличимо от отказа модели
+        log.warning('Это не картинка: %s байт, начало %s', len(data), data[:16])
+        return None
+    return mime, base64.b64encode(data).decode()
+
+
+class NeSkachalos(Exception):
+    """Ни одной картинки получить не удалось — модель тут ни при чём."""
+
+
+async def sobrat(urls: list, vopros: str | None = None) -> list:
+    """Вопрос и картинки одним куском — как их ждёт модель."""
+    soderzhimoe = [{'type': 'text',
+                    'text': f"{ZADANIE}\n\nВопрос: {vopros or VOPROS_PO_UMOLCHANIYU}"}]
+    for url in urls[:MAX_KARTINOK]:
+        skachano = await _skachat(url)
+        if skachano:
+            mime, dannye = skachano
+            soderzhimoe.append({
+                'type': 'image_url',
+                'image_url': {'url': f'data:{mime};base64,{dannye}'}})
+    return soderzhimoe
 
 
 async def prochitat(urls: list, vopros: str | None = None) -> str | None:
@@ -95,16 +152,9 @@ async def prochitat(urls: list, vopros: str | None = None) -> str | None:
     """
     if not ai.enabled() or not urls:
         return None
-    soderzhimoe = [{'type': 'text',
-                    'text': f"{ZADANIE}\n\nВопрос: {vopros or VOPROS_PO_UMOLCHANIYU}"}]
-    for url in urls[:MAX_KARTINOK]:
-        dannye = await _skachat(url)
-        if dannye:
-            soderzhimoe.append({
-                'type': 'image_url',
-                'image_url': {'url': f'data:image/jpeg;base64,{dannye}'}})
+    soderzhimoe = await sobrat(urls, vopros)
     if len(soderzhimoe) == 1:
-        return None
+        raise NeSkachalos(f'ни одной из {len(urls)} картинок')
     payload = {
         'model': MODEL,
         'messages': [{'role': 'user', 'content': soderzhimoe}],

@@ -287,3 +287,57 @@ async def test_peresylannaya_pachka_otvechaet_na_svoyu_prosbu(
     assert ok
     assert len(zapros['urls']) == 6
     assert 'список квартир' in zapros['vopros']
+
+
+# ── скачивание ──────────────────────────────────────────────────────────
+
+PNG = b'\x89PNG\r\n\x1a\n' + b'0' * 40
+JPEG = b'\xff\xd8\xff\xe0' + b'0' * 40
+WEBP = b'RIFF' + b'\x00' * 4 + b'WEBP' + b'0' * 40
+
+
+def test_opoznayot_format_po_baytam():
+    """Объявить PNG как jpeg нельзя: Google отвечает «image is not valid»."""
+    assert kartinki.opoznat(PNG) == 'image/png'
+    assert kartinki.opoznat(JPEG) == 'image/jpeg'
+    assert kartinki.opoznat(WEBP) == 'image/webp'
+
+
+def test_stranicu_vmesto_kartinki_ne_propuskaet():
+    """Протухшая ссылка отдаёт HTML — в модель это слать незачем."""
+    assert kartinki.opoznat(b'<!DOCTYPE html><html><body>404') is None
+    assert kartinki.opoznat(b'') is None
+
+
+async def test_format_dohodit_do_modeli(monkeypatch):
+    async def fake_skachat(url):
+        return ('image/png', 'BASE64PNG')
+
+    monkeypatch.setattr(kartinki, '_skachat', fake_skachat)
+    kuski = await kartinki.sobrat(['https://max/1.jpg'], 'что тут')
+
+    assert kuski[1]['image_url']['url'].startswith('data:image/png;base64,')
+    assert 'что тут' in kuski[0]['text']
+
+
+async def test_nichego_ne_skachalos_eto_otdelnyy_sluchay(monkeypatch):
+    async def fake_skachat(url):
+        return None
+
+    monkeypatch.setattr(kartinki, '_skachat', fake_skachat)
+    monkeypatch.setattr(kartinki.ai, 'enabled', lambda: True)
+
+    with pytest.raises(kartinki.NeSkachalos):
+        await kartinki.prochitat(['https://max/1.jpg'])
+
+
+async def test_pro_neskachannye_govorit_chestno(monkeypatch, otvety):
+    async def upalo(urls, vopros=None):
+        raise H.kartinki_mod.NeSkachalos('нечего читать')
+
+    monkeypatch.setattr(H.kartinki_mod, 'prochitat', upalo)
+    H.zapomnit_kartinki(LICHKA, ['https://max/1.jpg'])
+    await H.handle_kartinki(FakeEvent(), 'что тут', 7)
+
+    assert 'Не смогла открыть' in otvety[-1]
+    assert 'покрупнее' not in otvety[-1], 'совет не по делу: картинку не открыли'

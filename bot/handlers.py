@@ -1826,7 +1826,15 @@ async def otvetit_po_kartinkam(event, key, vopros: str | None) -> bool:
     if not urls:
         return False
     await pechataet(event)
-    otvet = await kartinki_mod.prochitat(urls, vopros)
+    try:
+        otvet = await kartinki_mod.prochitat(urls, vopros)
+    except kartinki_mod.NeSkachalos:
+        # Совет «пришлите покрупнее» тут не по делу: картинку даже не открыли
+        log.warning('Картинки не скачались: %s шт.', len(urls))
+        await send(event.message,
+                   '🖼 Не смогла открыть картинки — ссылка могла протухнуть. '
+                   'Пришлите их ещё раз, пожалуйста.')
+        return True
     pachka = KARTINKI.get(key)
     if pachka:
         pachka['otvecheno'] = True
