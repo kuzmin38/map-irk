@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 
 import aiohttp
 
@@ -30,6 +31,7 @@ from . import risers as risers_mod
 from . import status as bot_status
 from . import announce, backup, banter, checks, flats, golos as golos_mod, inventory, mat
 from . import maxfix, passport, plan
+from . import kartinki as kartinki_mod
 from . import proverka, razbor, remind, report, sezon, somneniya
 from . import stoyak as stoyak_mod, transcribe
 
@@ -1743,6 +1745,112 @@ async def short_summary(parts: list[str], address: str | None,
             f'📄 Дословно — команда /chat.{hvost}')
 
 
+# Картинки копим так же, как серии видео, и по той же причине: скриншот
+# длинной таблицы приходит пачкой, а ответ по нему нужен один. Шесть кусков
+# списка для обзвона по отдельности бесполезны
+KARTINKI: dict[tuple, dict] = {}
+KARTINKI_ZHIVUT = 15 * 60     # сколько помним присланное
+KARTINKI_TISHINA = 45         # ждём, пока долетит вся пачка
+
+# «а что на скрине», «по этой таблице» — повод вернуться к уже разобранным
+PRO_KARTINKU = re.compile(
+    r'\b(картинк\w*|скрин\w*|снимк\w*|фотк\w*|фото|таблиц\w*|список\w*|'
+    r'списк\w*|там\b|на них|на нём|на нем)', re.I)
+
+
+def image_urls(body) -> list:
+    """Ссылки на картинки в сообщении."""
+    out = []
+    for a in (getattr(body, 'attachments', None) or []):
+        if _a_type(a) != 'image':
+            continue
+        url = getattr(getattr(a, 'payload', None), 'url', None)
+        if url:
+            out.append(url)
+    return out
+
+
+def zapomnit_kartinki(key, urls: list) -> dict:
+    pachka = KARTINKI.get(key)
+    if pachka is None or time.monotonic() - pachka['at'] > KARTINKI_ZHIVUT:
+        pachka = KARTINKI[key] = {'urls': [], 'at': 0.0, 'otvecheno': False}
+    for url in urls:
+        if url not in pachka['urls']:
+            pachka['urls'].append(url)
+    pachka['at'] = time.monotonic()
+    pachka['otvecheno'] = False
+    return pachka
+
+
+def svezhie_kartinki(key) -> list:
+    pachka = KARTINKI.get(key)
+    if not pachka or time.monotonic() - pachka['at'] > KARTINKI_ZHIVUT:
+        KARTINKI.pop(key, None)
+        return []
+    return list(pachka['urls'])
+
+
+async def otvetit_po_kartinkam(event, key, vopros: str | None) -> bool:
+    """Читает накопленные картинки и отвечает одним сообщением."""
+    urls = svezhie_kartinki(key)
+    if not urls:
+        return False
+    await pechataet(event)
+    otvet = await kartinki_mod.prochitat(urls, vopros)
+    pachka = KARTINKI.get(key)
+    if pachka:
+        pachka['otvecheno'] = True
+    if not otvet:
+        await send(event.message,
+                   '🖼 Не смогла разобрать, что на картинке. Пришлите '
+                   'покрупнее или скажите словами, что там.')
+        return True
+    hvost = ''
+    if kartinki_mod.lichnye_dannye(otvet):
+        # Иначе ФИО и телефоны жильцов уедут в паспорт дома, в выгрузку
+        # инженеру и в отчёт руководителю, и вычистить их будет неоткуда
+        hvost = ('\n\n🔒 В базу это не записываю — персональные данные '
+                 'жильцов. Список остаётся только в нашей переписке.')
+    await send(event.message, otvet[:3500] + hvost)
+    return True
+
+
+async def kartinki_bez_voprosa(event, key):
+    """Прислали картинки и молчат — говорим, что на них видно.
+
+    Ждём, пока долетит вся пачка: заказчик кидает скриншоты подряд, и
+    шесть ответов подряд ему не нужны.
+    """
+    try:
+        while True:
+            await asyncio.sleep(KARTINKI_TISHINA)
+            pachka = KARTINKI.get(key)
+            if not pachka or pachka['otvecheno']:
+                return
+            if time.monotonic() - pachka['at'] < KARTINKI_TISHINA * 0.9:
+                continue      # пачка ещё идёт
+            break
+        await otvetit_po_kartinkam(event, key, None)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception('Не удалось разобрать картинки')
+
+
+async def handle_kartinki(event, text: str, uid: int) -> bool:
+    """Вопрос по недавно присланным картинкам."""
+    key = (_chat_id(event), uid)
+    novye = image_urls(event.message.body)
+    if novye:
+        zapomnit_kartinki(key, novye)
+    pachka = KARTINKI.get(key)
+    if not pachka or not svezhie_kartinki(key):
+        return False
+    if not novye and pachka['otvecheno'] and not PRO_KARTINKU.search(text or ''):
+        return False
+    return await otvetit_po_kartinkam(event, key, text or None)
+
+
 # Серии видео копим по (чат, автор): первое обычно проблема, дальше — работа.
 # Ответ откладываем, пока летит серия, чтобы не отвечать на каждый ролик.
 SERIES_WINDOW = int(os.environ.get('VIDEO_SERIES_WINDOW', '420'))  # секунд
@@ -3146,6 +3254,8 @@ async def on_text(event: MessageCreated):
         # вопрос идёт дальше, к ИИ: «где Костя» описи не касается
         if await handle_where(event, text, uid):
             return
+        if await handle_kartinki(event, text, uid):
+            return
         if await handle_save_plan(event, text, uid):
             return
         if await handle_reminder(event, text, uid):
@@ -3249,6 +3359,13 @@ async def on_text(event: MessageCreated):
             text = await _rasshifrovat_lichnoe(event, url, gotovo)
             if not text:
                 return
+        elif image_urls(body):
+            # Скриншоты приходят пачкой и часто без подписи: копим и, когда
+            # поток стихнет, говорим, что на них видно
+            key = (_chat_id(event), uid)
+            zapomnit_kartinki(key, image_urls(body))
+            asyncio.create_task(kartinki_bez_voprosa(event, key))
+            return
         else:
             log.info('Молчу: сообщение без текста. Вложения: %s | сырое: %s',
                      opisat_vlozheniya(body), syroe_soobschenie(event.message))
@@ -3581,6 +3698,12 @@ async def on_text(event: MessageCreated):
         return
 
     if await handle_reminder(event, text, uid):
+        return
+
+    # «Сделай список квартир с телефонами» — по скриншотам, которые только
+    # что прислали. Раньше Люся отвечала «у меня нет доступа к номерам»,
+    # хотя номера лежали в этом же сообщении
+    if await handle_kartinki(event, text, uid):
         return
 
     # Режим по умолчанию — поиск дома по адресу
