@@ -11,7 +11,7 @@
 """
 import pytest
 
-from bot import db, houses, somneniya
+from bot import db, houses, risers, somneniya
 import bot.handlers as H
 
 
@@ -143,3 +143,26 @@ def test_nahodka_v_zhilom_dome_zapisyvaetsya():
     otvet = H.zapisat_nahodku(1, h, 'в 71 квартире нашёл подмес', 5, 'Андрей')
     assert otvet and '❓' not in otvet
     assert db.flat_notes(h['id'], 71)
+
+
+# ── общая шахматка на несколько домов ───────────────────────────────────
+
+def test_raznye_doma_odna_shahmatka():
+    """Заказчик: «Это разные дома. Но они в одном ЖК»."""
+    sosedi = risers.sosedi_po_shahmatke('Седова 71')
+    assert '4-я Советская 28' in sosedi and 'Седова 71/1' in sosedi
+
+
+def test_dom_so_svoey_shahmatkoy_sosedey_ne_imeet():
+    assert risers.sosedi_po_shahmatke('4-я Советская 30') == []
+
+
+def test_pro_obshchuyu_shahmatku_predupredit():
+    hvost = H._pro_obshchuyu_shahmatku('Седова 71')
+    assert 'Шахматка общая' in hvost
+    assert '4-я Советская 28' in hvost and 'Седова 71/1' in hvost
+
+
+def test_pro_svoyu_shahmatku_molchit():
+    """Предупреждение на каждом стояке — это шум, а не осторожность."""
+    assert H._pro_obshchuyu_shahmatku('4-я Советская 30') == ''

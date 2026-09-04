@@ -2313,6 +2313,23 @@ async def handle_shutoff(event, text: str, uid: int) -> bool:
     return True
 
 
+def _pro_obshchuyu_shahmatku(adres: str) -> str:
+    """Предупреждение, если стояк посчитан по схеме, общей на несколько домов.
+
+    Заказчик: «Это разные дома. Но они в одном ЖК». В таблице стояков схема
+    у них одна на троих, и список квартир для Седова 71 считается по ней же.
+    Пока не сверены планировки, список уходит жильцам под честную оговорку,
+    а не как проверенный факт.
+    """
+    sosedi = risers_mod.sosedi_po_shahmatke(adres)
+    if not sosedi:
+        return ''
+    return ('\n\n⚠️ Шахматка общая на несколько домов: '
+            + ', '.join([adres] + sosedi)
+            + '. Если планировки разошлись, список квартир может не совпасть — '
+              'гляньте перед отправкой.')
+
+
 async def _vydat_teksty(event, sid, adres, kvartira, kvartiry, kto, res,
                         house_id, nomer=None, zakryt=True, skolko=''):
     """Шапка с кнопками, потом два чистых текста — их пересылают как есть.
@@ -2325,6 +2342,7 @@ async def _vydat_teksty(event, sid, adres, kvartira, kvartiry, kto, res,
               'для обслуживания и для жильцов. Перешлите нужный или отправьте кнопкой.'
               if zakryt else
               f'Стояк был перекрыт {skolko}. Ниже два готовых текста.')
+    shapka += _pro_obshchuyu_shahmatku(adres)
     await send(event.message, shapka, _stoyak_kb(sid, house_id, otkryt=not zakryt))
     await send(event.message, stoyak_mod.soobschenie(
         adres, kvartira, kvartiry, kto, db.now()[-5:], zakryt=zakryt,
