@@ -2250,6 +2250,9 @@ def zapisat_nahodku(record_id, house, text: str, uid, uname) -> str | None:
     log.info('Находка: %s кв.%s — %s', house['address'], kvartira, chto)
 
     stroki = [f"📌 {house['address']}, кв. {kvartira} — записала: {chto}."]
+    kartina = kartina_po_domu(house, kvartira, kind)
+    if kartina:
+        stroki.append(kartina)
     # Ради этого всё и затевалось: сказать, что здесь такое уже находили
     povtor = [z for z in bylo if z['kind'] == kind]
     if povtor:
@@ -2259,6 +2262,58 @@ def zapisat_nahodku(record_id, house, text: str, uid, uname) -> str | None:
         stroki.append(f"Раньше по этой квартире было: {bylo[0]['text'][:80]} "
                       f"({bylo[0]['created_at'][:10]}).")
     return '\n'.join(stroki)
+
+
+SUTKI = 24 * 60      # минут: за какой срок находки считаем одним событием
+
+
+def kartina_po_domu(house, kvartira: int, kind: str) -> str:
+    """Что за сутки нашли на этом же доме — и где это по шахматке.
+
+    Люся написала подряд «Трилиссера 22, кв. 34 — записала: течь» и
+    «кв. 33 — записала: течь», как будто это два разных дома и два разных
+    дня. Заказчик: «сделай, чтобы она видела контекст и понимала картину
+    в целом». Картина тут считается, а не угадывается: соседние квартиры
+    берём из базы, стояк и этаж — из шахматки.
+    """
+    if not kind:
+        return ''
+    drugie = []
+    for z in db.flat_notes(house['id'], limit=40):
+        if z['flat'] == kvartira or z['kind'] != kind:
+            continue
+        if _minut_s(z['created_at']) > SUTKI:
+            continue
+        if z['flat'] not in drugie:
+            drugie.append(z['flat'])
+    if not drugie:
+        return ''
+    spisok = ', '.join(f'кв. {f}' for f in drugie)
+    hvost = _gde_po_shahmatke(house['address'], [kvartira] + drugie)
+    return f'📎 За сутки то же на этом доме: {spisok}.{hvost}'
+
+
+def _gde_po_shahmatke(adres: str, kvartiry: list) -> str:
+    """«Этаж 6, стояки 3 и 4» — если шахматка это знает.
+
+    Ровно это и сказал сантехник своими словами: «отключили 3, 4 стояки».
+    Люся должна приходить к тому же выводу сама, из таблицы.
+    """
+    mesta = []
+    for f in kvartiry:
+        found = risers_mod.locate(adres, f)
+        if not found:
+            return ''
+        _b, _a, etazh, stoyak, _n = found
+        mesta.append((f, etazh, stoyak))
+    etazhi = sorted({e for _f, e, _s in mesta})
+    stoyaki = sorted({st for _f, _e, st in mesta})
+    if len(stoyaki) == 1 and len(etazhi) > 1:
+        return f' Это один стояк — {stoyaki[0]}-й.'
+    if len(etazhi) == 1:
+        nomera = ' и '.join(str(st) for st in stoyaki)
+        return f' Этаж {etazhi[0]}, стояки {nomera}.'
+    return ''
 
 
 def znachimo(rec) -> bool:
