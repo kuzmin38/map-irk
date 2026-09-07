@@ -109,15 +109,75 @@ def kind_of(chto: str) -> str:
     return chto if ' ' in chto else chto[:5]
 
 
+# Это ещё не факт, а намерение, догадка или ожидание. Записывать нельзя.
+#
+# Сантехник написал: «Отключили 3,4 стояки на 22 доме. Но, вероятно, это всё
+# один счётчик виноват. Ждём 33 кв. чтобы подтвердить догадку». Люся выдала
+# «кв. 33 — записала: течь». Течи в 33-й никто не видел, туда ещё только
+# ждут доступ. Заказчик: «И в 33 нет течи. Я написал, что мы ждём доступ в
+# квартиру для осмотра».
+#
+# Формы только будущие и неуверенные: «проверим» — план, «проверил» — факт,
+# и второе трогать нельзя
+NE_FAKT = re.compile(
+    r'(?<![а-я])(жд[ёе]м|жд[ёе]т|ждут|ждать|ожида\w+|'
+    r'нет\s+доступа|не\s+пуст\w+|не\s+откр\w+|не\s+да[юё]т\s+доступ|'
+    r'надо|нужно|требуется|планиру\w+|'
+    r'провер(?:им|ю|ить|ять|ка|ки)|посмотр(?:им|ю|еть)|'
+    r'уточн(?:им|ю|ить)|подтвер(?:дим|дить|ждать|ждени\w+)|'
+    r'догадк\w*|предполаг\w+|вероятн\w*|возможно|наверн\w+|похоже|'
+    r'скорее\s+всего|под\s+вопросом|пока\s+не\s+яс\w+|если)(?![а-я])',
+    re.IGNORECASE)
+
+
+# Конец фразы — точка перед словом с большой буквы. Точка после «кв.» или
+# «д.» фразу не кончает: «В кв. 34 течь» рвалось на «В кв.» и «34 течь»,
+# и находка теряла квартиру
+_FRAZA = re.compile(r'(?<=[.!?;])\s+(?=[А-ЯЁA-Z])|\n')
+
+
+def _frazy(text: str) -> list:
+    """Текст по фразам. Запятая фразу не делит: «кв. 34, течка» — одно целое."""
+    return [k for k in _FRAZA.split(text or '') if k.strip()]
+
+
+def vse_kvartiry(text: str) -> list:
+    """Все номера квартир, названные в тексте."""
+    out = []
+    for m in FLAT.finditer(text or ''):
+        nomer = m.group('a') or m.group('b')
+        try:
+            n = int(nomer)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= 2000 and n not in out:
+            out.append(n)
+    return out
+
+
 def parse_note(text: str, house=None):
-    """(квартира, находка) или None. Нужны обе части сразу."""
-    kvartira = parse_flat(text, house)
-    if kvartira is None:
+    """(квартира, находка) или None. Нужны обе части, и в одной фразе.
+
+    Раньше квартиру и находку искали по всему сообщению независимо — так
+    номер из одной фразы склеился со словом из другой, и в квартире, куда
+    только ждут доступ, оказалась записана течь.
+    """
+    for kusok in _frazy(text):
+        if NE_FAKT.search(kusok):
+            continue
+        kvartira = parse_flat(kusok, house)
+        chto = nahodka(kusok)
+        if kvartira is not None and chto:
+            return kvartira, chto
+    # «105 квартира. Нашёл подмес» — двумя фразами, но про одно и то же.
+    # Допускаем, только если квартира в тексте одна и сомнений нигде нет
+    if NE_FAKT.search(text or ''):
+        return None
+    kvartiry = vse_kvartiry(text)
+    if len(kvartiry) != 1:
         return None
     chto = nahodka(text)
-    if not chto:
-        return None
-    return kvartira, chto
+    return (kvartiry[0], chto) if chto else None
 
 
 def summary(text: str, limit: int = 200) -> str:

@@ -310,6 +310,9 @@ def house_card_kb(h) -> InlineKeyboardBuilder:
     if block:
         row.append(CallbackButton(text='🚿 Стояки', payload=f"rsv:{block['id']}"))
     kb.row(*row)
+    if db.flat_notes(h['id'], limit=1):
+        kb.row(CallbackButton(text='🚪 Находки по квартирам',
+                              payload=f"fnl:{h['id']}"))
     app = miniapp_button('🗺 Открыть в приложении', payload=f"house:{h['id']}")
     if app:
         kb.row(app, CallbackButton(text='🏠 Меню', payload='menu'))
@@ -4929,6 +4932,38 @@ async def run_action(payload: str, msg, uid: int, event):
                 lines.append(f"   {z['created_at'][:10]} — {z['text'][:100]} "
                              f"({z['author'] or '—'})")
         await send(msg, '\n'.join(lines), kb)
+
+    elif action.startswith('fnl:'):
+        h = houses.HOUSES_BY_ID.get(int(action.split(':')[1]))
+        if not h:
+            await send(msg, '🚪 Дом не найден.', main_menu_kb())
+            return
+        zametki = db.flat_notes(h['id'], limit=20)
+        kb = InlineKeyboardBuilder()
+        if not zametki:
+            kb.row(CallbackButton(text=f"🏠 {h['address']}", payload=f"h:{h['id']}"))
+            await send(msg, f"🚪 По {h['address']} находок нет.", kb)
+            return
+        lines = [f"🚪 НАХОДКИ ПО КВАРТИРАМ — {h['address']}", '']
+        for z in zametki:
+            lines.append(f"кв. {z['flat']} — {z['text'][:110]}")
+            lines.append(f"      {z['created_at']}, {z['author'] or '—'}")
+        lines.append('')
+        lines.append('Записана ошибочно — удалите кнопкой.')
+        for z in zametki[:8]:
+            kb.row(CallbackButton(text=f"🗑 кв. {z['flat']} — {z['text'][:24]}",
+                                  payload=f"fndel:{z['id']}:{h['id']}"))
+        kb.row(CallbackButton(text=f"🏠 {h['address']}", payload=f"h:{h['id']}"),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        await send(msg, '\n'.join(lines), kb)
+
+    elif action.startswith('fndel:'):
+        # Ложная находка живёт в истории дома и потом всплывает как факт:
+        # «тут это уже находили». Убрать её должно быть чем
+        _cmd, note_id, house_id = action.split(':')[:3]
+        if _role(uid) in ('admin', 'engineer', 'master', 'director'):
+            db.delete_flat_note(int(note_id))
+        await run_action(f'fnl:{house_id}', msg, uid, event)
 
     elif action == 'sez':
         pravila = db.list_seasonal()

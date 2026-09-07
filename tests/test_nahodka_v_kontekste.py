@@ -111,3 +111,55 @@ def test_drugoy_dom_ne_pritaskivaetsya():
     H.zapisat_nahodku(1, dom('Трилиссера 22'), 'кв. 34 течка', 5, 'Андрей')
     otvet = H.zapisat_nahodku(2, dom('Трилиссера 18б'), 'кв. 33 течка', 5, 'Андрей')
     assert '📎' not in otvet
+
+
+# ── намерение — не находка ──────────────────────────────────────────────
+
+SLUCHAY = ('Отключили 3,4 стояки на 22 доме. Но, вероятно, что это всё один '
+           'счётчик виноват. Ждём 33 кв. чтобы подтвердить догадку')
+
+
+def test_tot_samyy_sluchay_nichego_ne_pishet():
+    """Заказчик: «И в 33 нет течи. Я написал, что мы ждём доступ»."""
+    assert flats.parse_note(SLUCHAY) is None
+
+
+def test_zapisat_nahodku_na_takom_soobshchenii_molchit():
+    otvet = H.zapisat_nahodku(1, dom('Трилиссера 22'), SLUCHAY, 5, 'Андрей')
+    assert otvet is None
+    assert not db.flat_notes(dom('Трилиссера 22')['id'])
+
+
+@pytest.mark.parametrize('text', [
+    'Ждём доступ в 33 квартиру для осмотра, возможно там течь',
+    'кв. 5 надо проверить, может быть течь',
+    'В 12 кв не пустили, вероятно засор',
+    'Если в кв. 7 будет течь, отключим стояк',
+    'Планируем осмотреть кв. 9, похоже на подмес',
+])
+def test_namerenie_i_dogadka_ne_zapisyvayutsya(text):
+    assert flats.parse_note(text) is None
+
+
+@pytest.mark.parametrize('text,zhdyom', [
+    ('Проверил кв. 5 - течь по резьбе', (5, 'течь')),
+    ('Был в 12 кв, засор в лежаке', (12, 'засор')),
+    ('71/1, 105 квартира, нашёл подмес', (105, 'подмес')),
+    ('105 квартира. Нашёл подмес.', (105, 'подмес')),
+    ('22 дом - 34 кв. Разгерметизация счётчика ГВС, течка', (34, 'течь')),
+])
+def test_fakt_v_proshedshem_vremeni_zapisyvaetsya(text, zhdyom):
+    """Проверять надо оба края: «проверим» — план, «проверил» — факт."""
+    assert flats.parse_note(text) == zhdyom
+
+
+def test_nomer_iz_odnoy_frazy_ne_kleitsya_so_slovom_iz_drugoy():
+    """Суть поломки: квартиру и находку искали по всему тексту врозь."""
+    text = 'В кв. 34 течь. В кв. 33 был, всё сухо.'
+    assert flats.parse_note(text) == (34, 'течь')
+
+
+def test_tochka_v_sokrashchenii_frazu_ne_konchaet():
+    """«В кв. 34 течь» рвалось на «В кв.» и «34 течь» — находка теряла квартиру."""
+    assert flats._frazy('В кв. 34 течь.') == ['В кв. 34 течь.']
+    assert flats._frazy('Был на д. 22. Всё сухо.') == ['Был на д. 22.', 'Всё сухо.']
