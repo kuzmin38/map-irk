@@ -32,6 +32,7 @@ from . import status as bot_status
 from . import announce, backup, banter, checks, flats, golos as golos_mod, inventory, mat
 from . import maxfix, passport, plan
 from . import kartinki as kartinki_mod
+from . import memory as memory_mod
 from . import proverka, razbor, remind, report, sezon, somneniya
 from . import stoyak as stoyak_mod, transcribe
 
@@ -1357,6 +1358,7 @@ QUICK_COMMANDS = [
     ('итоги', 'Разобрать день по домам', 'itogi'),
     ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
     ('сезон', 'Сезонные работы: что и когда', 'sez'),
+    ('память', 'Что Люся видит в общей памяти', 'pam'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
 ]
 
@@ -1382,6 +1384,7 @@ ALIASES = {
     'итоги': ('itogi',),
     'опись': ('opis', 'inventar'),
     'сезон': ('sezon', 'season'),
+    'память': ('pamyat', 'memory'),
     'копия': ('kopiya', 'backup'),
 }
 
@@ -4964,6 +4967,32 @@ async def run_action(payload: str, msg, uid: int, event):
         if _role(uid) in ('admin', 'engineer', 'master', 'director'):
             db.delete_flat_note(int(note_id))
         await run_action(f'fnl:{house_id}', msg, uid, event)
+
+    elif action == 'pam':
+        # Экран нужен ровно за тем, чтобы человек своими глазами видел
+        # границу: что Люся читает и чего не читает никогда
+        if _role(uid) != 'admin':
+            await send(msg, '🔒 Общая память — личная. Смотреть может только '
+                            'её хозяин.', main_menu_kb())
+            return
+        fayly = memory_mod.spisok()
+        lines = ['🧠 ОБЩАЯ ПАМЯТЬ', '',
+                 f"Папка: {memory_mod.DIR}",
+                 f"Разрешено читать: {', '.join(memory_mod.RAZRESHENO)}", '']
+        if fayly:
+            lines.append(f'Вижу файлов: {len(fayly)}')
+            lines += [f'   • {f}' for f in fayly[:20]]
+            if len(fayly) > 20:
+                lines.append(f'   … и ещё {len(fayly) - 20}')
+        else:
+            lines.append('Файлов пока нет — папка пуста или не подключена.')
+        lines += ['',
+                  'Закрыто всегда, даже если положить в разрешённую папку:',
+                  '   здоровье, финансы, долги, кредиты, семья, вера,',
+                  '   переписки, контакты, дневник, профиль.',
+                  '',
+                  'В рабочем чате в память не хожу вообще — только здесь.']
+        await send(msg, '\n'.join(lines), main_menu_kb())
 
     elif action == 'sez':
         pravila = db.list_seasonal()

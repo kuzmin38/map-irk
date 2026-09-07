@@ -10,6 +10,7 @@ import os
 import time
 
 from . import ai, db, feminine, houses
+from . import memory
 from . import risers as risers_mod
 
 log = logging.getLogger('agent')
@@ -496,6 +497,16 @@ async def answer(user_id: int, user_name: str, user_text: str,
         system += ('\n\nЧТО СЕЙЧАС В ЧАТЕ (свежие сообщения, старые сверху). '
                    'Это фон разговора, а не вопрос к тебе: отвечай на то, о чём '
                    'спросили, но понимай, кто с кем говорит и о чём речь.\n' + lenta)
+
+    # Общая память — только в личке. В рабочем чате её нет вообще: там
+    # восемнадцать человек, включая директора, и заметки заказчика туда
+    # попасть не должны ни при каком ответе
+    if chat_id is None:
+        pamyat = memory.blok_dlya_podskazki(user_text)
+        if pamyat:
+            system += ('\n\nИЗ ОБЩЕЙ ПАМЯТИ (разрешённая часть личных заметок '
+                       'Андрея). Пользуйся, если это отвечает на вопрос. '
+                       'Пересказывать это в рабочий чат нельзя.\n' + pamyat)
 
     messages = [{'role': 'system', 'content': system}]
     messages += db.recent_chat_history(user_id, limit=6, chat_id=chat_id)
