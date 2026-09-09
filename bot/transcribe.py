@@ -36,6 +36,37 @@ PROMPT = ('Это рабочий отчёт сантехника управля�
           'работ, которых в речи нет. Если речи нет — ответь пустой строкой.')
 
 
+def ulicy() -> str:
+    """Названия улиц участка — подсказка модели, что она может услышать.
+
+    Костя сказал «Трилиссера восемь дробь два». Модель улицу не узнала
+    вовсе, а её хвост склеила с восьмёркой: в расшифровке вышло «38/2
+    офис». Название улицы, которого модель не ждёт, она пытается собрать
+    из звуков — и собирает цифру.
+
+    Номеров домов здесь нет и быть не должно: услышав знакомый номер,
+    модель однажды впишет его как услышанный. Улицы без цифр такой беды
+    не создают — их всё равно проверяет справочник.
+    """
+    from . import houses
+
+    spisok = []
+    for h in houses.HOUSES:
+        ulica, _nomer = houses._split_addr(h['address'])
+        if ulica and ulica not in spisok:
+            spisok.append(ulica)
+    return ', '.join(sorted(spisok))
+
+
+def zadanie() -> str:
+    """Задание на расшифровку вместе с подсказкой по улицам."""
+    imena = ulicy()
+    if not imena:
+        return PROMPT
+    return (f'{PROMPT} В речи могут звучать названия улиц участка: {imena}. '
+            'Узнав их, пиши правильно. Не слышишь — не подставляй.')
+
+
 def ffmpeg_available() -> bool:
     return shutil.which('ffmpeg') is not None
 
@@ -84,7 +115,7 @@ async def transcribe_file(path: str) -> str | None:
         'messages': [{
             'role': 'user',
             'content': [
-                {'type': 'text', 'text': PROMPT},
+                {'type': 'text', 'text': zadanie()},
                 {'type': 'input_audio', 'input_audio': {'data': data, 'format': 'mp3'}},
             ],
         }],

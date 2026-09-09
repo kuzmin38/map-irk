@@ -41,6 +41,38 @@ def kvartiry(text: str) -> list:
     return out
 
 
+# Номер дома с дробью: 8/2, 65а/3, 126/4, 71/1. В нашем деле такая запись
+# почти всегда адрес, а не что-то ещё, — поэтому её и можно проверять
+DROBNYY = re.compile(r'(?<![\w/])(\d{1,3}[а-яё]?)\s*/\s*(\d{1,2})(?![\w/])',
+                     re.IGNORECASE)
+
+
+def _nomera_domov() -> set:
+    out = set()
+    for h in houses.ALL_HOUSES:
+        _ulica, nomer = houses._split_addr(h['address'])
+        if nomer:
+            out.add(houses._norm(nomer) if hasattr(houses, '_norm')
+                    else nomer.lower().replace('ё', 'е'))
+    return out
+
+
+def neizvestnye_nomera(text: str) -> list:
+    """Номера с дробью, которых нет ни у одного дома компании.
+
+    Костя сказал «Трилиссера 8 дробь 2», в расшифровке вышло «38/2 офис».
+    Дома 38/2 не существует, и это видно по справочнику за миллисекунду —
+    но раньше такой номер спокойно уезжал в чат как адрес.
+    """
+    izvestnye = _nomera_domov()
+    out = []
+    for m in DROBNYY.finditer(text or ''):
+        nomer = f'{m.group(1)}/{m.group(2)}'.lower().replace('ё', 'е')
+        if nomer not in izvestnye and nomer not in out:
+            out.append(nomer)
+    return out
+
+
 def nezhiloy(house) -> bool:
     return bool(house) and house.get('kind') == 'nonres'
 
@@ -93,6 +125,10 @@ def proverit(house, svodka: str, rech: str | None = None,
     уже не отвечает.
     """
     voprosy = []
+    for nomer in neizvestnye_nomera(svodka):
+        voprosy.append(f'❓ В записи прозвучало «{nomer}» — дома с таким '
+                       'номером у нас нет. Какой это адрес?')
+        break
     nomera = kvartiry(svodka)
     sami_pridumali = pripisala(svodka, rech) if rech is not None else []
 
