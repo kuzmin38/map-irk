@@ -1,6 +1,7 @@
 """SQLite-хранилище: заявки и паспорта домов."""
 import logging
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
 
@@ -1171,6 +1172,54 @@ def last_report_of(chat_id, user_id, hours=6):
         if kogda.replace(tzinfo=IRKUTSK_TZ) >= porog:
             return row
     return None
+
+
+def _slova_rasshifrovki(text: str) -> set:
+    return set(re.findall(r'\w+', (text or '').lower()))
+
+
+# Доля общих слов, начиная с которой считаем это тем же видео. Замена пары
+# слов моделью («обнаружен» ↔ «найден») почти не двигает эту долю; два
+# разных отчёта делят от силы предлоги да «ГВС»
+SOVPADENIE = 0.6
+
+
+def pohozhaya_rasshifrovka(text: str, hours: int = 48) -> bool:
+    """Есть ли уже такая же расшифровка за последние часы — в любом чате.
+
+    Заказчик: одно и то же видео фиксируется трижды — сначала в исходном
+    чате, потом когда на него отвечают, потом когда пересылают в другой
+    чат. Расшифровка при этом почти не меняется — тот же голос, тот же
+    ролик, — и по ней и ловим повтор, а не по типу события.
+
+    Сравнение — по множеству слов, не по началу текста: замена одного
+    слова в начале («обнаружен» → «найден») сдвигает весь хвост и рвёт
+    посимвольное сравнение, а множество слов от такой замены почти не
+    меняется.
+    """
+    slova = _slova_rasshifrovki(text)
+    if len(slova) < 6:
+        return False   # короткую расшифровку сравнивать бессмысленно
+    porog = datetime.now(IRKUTSK_TZ) - timedelta(hours=hours)
+    with _conn() as c:
+        rows = c.execute(
+            'SELECT created_at, transcript FROM chat_messages '
+            'WHERE transcript IS NOT NULL ORDER BY id DESC LIMIT 300').fetchall()
+    for row in rows:
+        try:
+            kogda = datetime.strptime(row['created_at'], '%d.%m.%Y %H:%M')
+        except (TypeError, ValueError):
+            continue
+        if kogda.replace(tzinfo=IRKUTSK_TZ) < porog:
+            break   # свежие сверху — дальше только старее
+        drugie = _slova_rasshifrovki(row['transcript'])
+        if len(drugie) < 6:
+            continue
+        obshchie = len(slova & drugie)
+        vsego = len(slova | drugie)
+        if vsego and obshchie / vsego >= SOVPADENIE:
+            return True
+    return False
 
 
 def set_chat_house(record_id, house_id):

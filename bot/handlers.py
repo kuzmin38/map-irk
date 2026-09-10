@@ -1960,6 +1960,13 @@ async def transcribe_later(record_id: int, url: str | None, bot=None, chat_id=No
         text = gotovo or await transcribe.transcribe_url(url)
         if not text:
             return
+        if db.pohozhaya_rasshifrovka(text):
+            # То же видео уже разобрано — прилетело ответом на него или
+            # пересылкой в другой чат. Не находка и не находка второй раз:
+            # молчим, транскрипт на эту запись не пишем, чтобы её не подхватил
+            # хроникой дома как отдельное событие
+            log.info('Повтор расшифровки — пропускаю дубль: %.60s', text)
+            return
         record = db.get_chat_record(record_id)
         key = (chat_id, record['user_id'] if record else None)
         # Откуда взялся адрес — важно не меньше самого адреса: названный в
