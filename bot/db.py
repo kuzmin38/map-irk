@@ -171,7 +171,8 @@ def _create_all(c):
     # Настройки конкретного чата: пока одна — болтает Люся там или молчит
     c.execute('''CREATE TABLE IF NOT EXISTS chat_settings (
         chat_id INTEGER PRIMARY KEY,
-        banter INTEGER NOT NULL DEFAULT 1)''')
+        banter INTEGER NOT NULL DEFAULT 1,
+        recording INTEGER NOT NULL DEFAULT 1)''')
     # Память агента: что Люся знает о человеке и о чём с ним говорила
     c.execute('''CREATE TABLE IF NOT EXISTS user_notes (
         user_id INTEGER PRIMARY KEY,
@@ -1048,6 +1049,28 @@ def banter_on(chat_id) -> bool:
         row = c.execute('SELECT banter FROM chat_settings WHERE chat_id = ?',
                         (chat_id,)).fetchone()
     return True if row is None else bool(row['banter'])
+
+
+def set_recording(chat_id, on: bool):
+    """Разрешить или запретить Люсе сохранять и разбирать сообщения этого чата.
+
+    Заказчик: «это чат сантехники, там для нашего личного пользования, не
+    надо, чтобы она что-то оттуда информацию какую-то сохраняла». В таком
+    чате она не должна ни расшифровывать видео, ни привязывать сообщения к
+    домам, ни записывать находки — только отвечать, если позовут по имени.
+    """
+    with _conn() as c:
+        c.execute('INSERT INTO chat_settings (chat_id, recording) VALUES (?, ?) '
+                  'ON CONFLICT(chat_id) DO UPDATE SET recording = excluded.recording',
+                  (chat_id, 1 if on else 0))
+
+
+def recording_on(chat_id) -> bool:
+    """По умолчанию — да: рабочие чаты она ведёт как и раньше."""
+    with _conn() as c:
+        row = c.execute('SELECT recording FROM chat_settings WHERE chat_id = ?',
+                        (chat_id,)).fetchone()
+    return True if row is None else bool(row['recording'])
 
 
 def chat_reports(chat_id, limit=8):

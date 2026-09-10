@@ -1421,6 +1421,32 @@ async def on_quiet(event: MessageCreated):
                               'если позовут по имени. Вернуть — /болтай.')
 
 
+@dp.message_created(Command(['личный', 'lichnyy']))
+async def on_private_chat(event: MessageCreated):
+    """Выключить запись в этом чате — для внутренней болтовни бригады."""
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if not is_group(event) or chat_id is None:
+        await send(event.message, '🔕 Это для рабочего чата: там я по умолчанию '
+                                  'веду записи. В личке ничего лишнего не сохраняю.')
+        return
+    db.set_recording(chat_id, False)
+    await send(event.message, '🔕 Поняла, этот чат — для своих. Видео не '
+                              'расшифровываю, к домам не привязываю, находки '
+                              'не записываю. Позовёте по имени — отвечу, а '
+                              'следа не оставлю. Вернуть запись — /рабочий.')
+
+
+@dp.message_created(Command(['рабочий', 'rabochiy']))
+async def on_working_chat(event: MessageCreated):
+    """Вернуть запись в этом чате."""
+    chat_id = getattr(event.message.recipient, 'chat_id', None)
+    if not is_group(event) or chat_id is None:
+        return
+    db.set_recording(chat_id, True)
+    await send(event.message, '📋 Поняла, снова веду записи в этом чате: '
+                              'видео, находки, привязка к домам — как обычно.')
+
+
 @dp.message_created(Command(['дом', 'dom']))
 async def on_bind_house(event: MessageCreated):
     """«/дом Седова 65а/3» изнутри чата — привязывает чат к дому.
@@ -3327,7 +3353,11 @@ async def on_text(event: MessageCreated):
     if group:
         log.info('Сообщение из чата %s: %.60s',
                  getattr(event.message.recipient, 'chat_id', '?'), text)
-        record_chat_message(event, text)
+        # «Личный» чат — например, внутренняя болтовня бригады — Люся не
+        # ведёт: не расшифровывает видео, не привязывает к домам, не пишет
+        # находки. Позовут по имени — ответит, но след не оставляет
+        if db.recording_on(_chat_id(event)):
+            record_chat_message(event, text)
         # Люся спросила адрес — ответ придёт сюда же, обычным сообщением
         if await handle_plan_choice(event, text, uid):
             return
