@@ -33,7 +33,7 @@ TIMEOUT = 15
 
 # Без него WB отвечает заметно неохотнее
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.30")
+      "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
 
 # Только эти ключи пересылаем на WB — мало ли что подсунут в запросе
 RAZRESHENO = {"query", "resultset", "limit", "dest", "curr", "lang", "spp"}
