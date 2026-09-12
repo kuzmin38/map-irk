@@ -14,6 +14,11 @@
 ручка не отвечает вообще (404, чтобы снаружи не было видно, что тут
 что-то есть — тот же приём, что в ручке для Люси).
 
+На WB шлёт браузерный набор заголовков (Referer, Accept-Language, Origin —
+не только UA): без них WB охотнее подозревает скрипт и придерживает 429
+чаще. Ограничение по частоте — на стороне Евы (src/ai/wb.py), не здесь:
+этот код просто пересылает запрос как есть.
+
 Переменные окружения:
   WB_RELAY_TOKEN  — пропуск, обязателен, без него сервис не стартует
   WB_RELAY_PORT   — порт, по умолчанию 8899
@@ -31,9 +36,17 @@ PORT = int(os.environ.get("WB_RELAY_PORT") or "8899")
 WB_URL = "https://search.wb.ru/exactmatch/ru/common/v4/search"
 TIMEOUT = 15
 
-# Без него WB отвечает заметно неохотнее
+# Голый UA без Referer/Accept-Language — тоже примета бота для антибота WB.
+# Живой браузер всегда шлёт их вместе.
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
+ZAGOLOVKI = {
+    "User-Agent": UA,
+    "Accept": "*/*",
+    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://www.wildberries.ru/",
+    "Origin": "https://www.wildberries.ru",
+}
 
 # Только эти ключи пересылаем на WB — мало ли что подсунут в запросе
 RAZRESHENO = {"query", "resultset", "limit", "dest", "curr", "lang", "spp"}
@@ -67,7 +80,7 @@ class Ruchka(BaseHTTPRequestHandler):
             return
 
         url = f"{WB_URL}?{urllib.parse.urlencode(parametry)}"
-        zapros = urllib.request.Request(url, headers={"User-Agent": UA})
+        zapros = urllib.request.Request(url, headers=ZAGOLOVKI)
         try:
             with urllib.request.urlopen(zapros, timeout=TIMEOUT) as otvet:
                 telo = otvet.read()
