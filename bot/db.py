@@ -1104,6 +1104,45 @@ def chat_stats_for_day(day_str):
             'issues': row['issues'] or 0, 'with_files': row['with_files'] or 0}
 
 
+def chat_overall_stats():
+    """Вся лента с самого начала: сколько сообщений, с какого дня, сколько
+    привязано к домам, сколько похоже на аварию.
+
+    since — created_at самой первой записи. Берём по id, а не MIN(created_at):
+    дата хранится как «ДД.ММ.ГГГГ», лексикографически она не сортируется по
+    времени, а id растёт строго по порядку поступления сообщений.
+    """
+    with _conn() as c:
+        agg = c.execute(
+            "SELECT COUNT(*) AS total, "
+            'SUM(house_id IS NOT NULL) AS with_house, '
+            'SUM(is_issue) AS issues, '
+            'SUM(has_files) AS with_files, '
+            'COUNT(DISTINCT house_id) AS houses '
+            'FROM chat_messages').fetchone()
+        first = c.execute('SELECT created_at FROM chat_messages ORDER BY id LIMIT 1').fetchone()
+    return {'total': agg['total'] or 0, 'with_house': agg['with_house'] or 0,
+            'issues': agg['issues'] or 0, 'with_files': agg['with_files'] or 0,
+            'houses': agg['houses'] or 0, 'since': first['created_at'] if first else None}
+
+
+def chat_stats_by_house(limit=10):
+    """Дома с наибольшим числом сообщений в ленте — свежие первыми по числу."""
+    with _conn() as c:
+        return c.execute(
+            "SELECT house_id, COUNT(*) AS n, SUM(is_issue) AS issues "
+            'FROM chat_messages WHERE house_id IS NOT NULL '
+            'GROUP BY house_id ORDER BY n DESC LIMIT ?', (limit,)).fetchall()
+
+
+def house_facts_count():
+    """Сколько итогов ночной разбор уже записал в паспорта домов, и по скольким домам."""
+    with _conn() as c:
+        row = c.execute('SELECT COUNT(*) AS n, COUNT(DISTINCT house_id) AS houses '
+                        'FROM house_facts').fetchone()
+    return {'n': row['n'] or 0, 'houses': row['houses'] or 0}
+
+
 def recent_issues(limit=10):
     """Последние сообщения, похожие на заявки."""
     with _conn() as c:

@@ -249,7 +249,7 @@ MAIN_TEXT = (
     'Потом достаточно спросить «где мотопомпа».\n\n'
     '⚡️ Чтобы не искать кнопки в ленте, наберите «/» — под полем ввода откроется '
     'быстрое меню: /счетчики, /дома, /сводка — показания за месяц, /опись, '
-    '/заявки, /меню — сюда.'
+    '/заявки, /отчет — статистика по рабочему чату, /меню — сюда.'
 )
 
 
@@ -1548,6 +1548,40 @@ async def on_chat_log(event: MessageCreated):
             lines.append(f"   🎙 {r['transcript'][:200]}")
         elif r['has_files']:
             lines.append('   📎 вложение, расшифровки нет')
+    await send(event.message, '\n'.join(lines))
+
+
+@dp.message_created(Command(['отчет', 'otchet']))
+async def on_chat_report(event: MessageCreated):
+    """Статистика ленты рабочего чата за всё время: сколько собрано, с какого дня."""
+    stats = db.chat_overall_stats()
+    if not stats['total']:
+        await send(event.message, '📊 В ленте пока пусто — статистику показывать не по чему.')
+        return
+
+    since = stats['since'].split()[0] if stats['since'] else '—'
+    lines = [f'📊 Отчёт по рабочему чату — с {since} по сегодня', '']
+    lines.append(f"Всего сообщений: {stats['total']}")
+    lines.append(f"Привязано к домам: {stats['with_house']} из {stats['houses']} домов")
+    lines.append(f"Похоже на аварийное: {stats['issues']}")
+    lines.append(f"С фото, видео или голосовыми: {stats['with_files']}")
+
+    top = db.chat_stats_by_house(limit=10)
+    if top:
+        lines.append('')
+        lines.append('🏠 Самые активные дома:')
+        for row in top:
+            h = houses.HOUSES_BY_ID.get(row['house_id'])
+            adres = h['address'] if h else '?'
+            avar = f", аварийных {row['issues']}" if row['issues'] else ''
+            lines.append(f"   • {adres} — {row['n']} сообщ.{avar}")
+
+    facts = db.house_facts_count()
+    if facts['n']:
+        lines.append('')
+        lines.append(f"🗂 В паспорта домов записано итогов: {facts['n']} "
+                     f"по {facts['houses']} домам (ночной разбор)")
+
     await send(event.message, '\n'.join(lines))
 
 
