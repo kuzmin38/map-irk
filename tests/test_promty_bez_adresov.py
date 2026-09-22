@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from bot import agent, announce, passport, plan, razbor, transcribe
+from bot import agent, announce, obhod, passport, plan, razbor, transcribe
 import bot.handlers as H
 
 
@@ -27,6 +27,7 @@ def zadaniya():
         'пересказ отчёта': H.SUMMARY_RULES,
         'разбор дня': razbor.ZADANIE,
         'разбор отчёта по чату': H.OTCHET_RAZBOR,
+        'поквартирный обход': obhod.ZADANIE,
     }
 
 

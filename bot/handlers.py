@@ -30,7 +30,7 @@ from . import project_docs
 from . import risers as risers_mod
 from . import status as bot_status
 from . import announce, backup, banter, checks, flats, golos as golos_mod, inventory, mat
-from . import maxfix, passport, plan
+from . import maxfix, obhod as obhod_mod, passport, plan
 from . import kartinki as kartinki_mod
 from . import proverka, razbor, remind, report, sezon, somneniya
 from . import stoyak as stoyak_mod, transcribe
@@ -2164,6 +2164,27 @@ def nahodka_bez_lenty(event, text: str):
         asyncio.create_task(send(event.message, otvet))
 
 
+async def handle_obhod(event, text: str, uid: int) -> bool:
+    """Поквартирный обход: список квартир и что с каждой.
+
+    Заказчик: «в таких-то квартирах мимо — значит, проверено, туда можно
+    не ходить, такие-то ещё нужно проверить». Работает из любого чата и
+    из лички: обход — не заявка, удваиваться ему нечем, квартира и вид
+    записи те же — значит, тот же заход.
+    """
+    if not obhod_mod.pohozh(text):
+        return False
+    house = houses.detect_house(text)
+    if not house:
+        return False
+    zapisi = await obhod_mod.razobrat(text)
+    if not zapisi:
+        return False        # модель решила, что это не обход, — ей виднее
+    itogi = obhod_mod.sohranit(house, zapisi, uid, _uname(event))
+    await send(event.message, obhod_mod.svodka(house, itogi))
+    return True
+
+
 async def handle_nahodka(event, text: str, uid: int) -> bool:
     """Находка, присланная в личку: «Такая-то улица, 105 квартира, подмес».
 
@@ -2181,8 +2202,12 @@ async def handle_nahodka(event, text: str, uid: int) -> bool:
     return True
 
 
-def record_chat_message(event, text: str):
-    """Тихо сохраняет сообщение рабочего чата и цепляет его к дому."""
+def record_chat_message(event, text: str, nahodki: bool = True):
+    """Тихо сохраняет сообщение рабочего чата и цепляет его к дому.
+
+    nahodki=False — когда находку из этого сообщения уже разбирают отдельно
+    (поквартирный обход): иначе одно и то же запишется дважды.
+    """
     try:
         body = event.message.body
         files = bool(getattr(body, 'attachments', None))
@@ -2202,7 +2227,7 @@ def record_chat_message(event, text: str):
         if text and not fix_report_house(event, record_id, text):
             if house:
                 attach_house_to_report(event, record_id, house, text)
-        if text and house:
+        if text and house and nahodki:
             otvet = zapisat_nahodku(record_id, house, text, _uid(event), _uname(event))
             if otvet:
                 asyncio.create_task(send(event.message, otvet))
@@ -3514,14 +3539,19 @@ async def on_text(event: MessageCreated):
     if group:
         log.info('Сообщение из чата %s: %.60s',
                  getattr(event.message.recipient, 'chat_id', '?'), text)
+        # Поквартирный обход — не одна находка, а список квартир: его
+        # разбирает obhod целиком, и обычный перехват находки ему мешает
+        est_obhod = obhod_mod.pohozh(text)
         # «Личный» чат — например, внутренняя болтовня бригады — Люся не
         # ведёт: сообщение в ленту не кладёт и видео не расшифровывает.
         # Находку по квартире записывает всё равно, из любого чата: её
         # там и не выключали
         if db.recording_on(_chat_id(event)):
-            record_chat_message(event, text)
-        else:
+            record_chat_message(event, text, nahodki=not est_obhod)
+        elif not est_obhod:
             nahodka_bez_lenty(event, text)
+        if est_obhod and await handle_obhod(event, text, uid):
+            return
         # Люся спросила адрес — ответ придёт сюда же, обычным сообщением
         if await handle_plan_choice(event, text, uid):
             return
@@ -3959,6 +3989,10 @@ async def on_text(event: MessageCreated):
         return
 
     if await handle_readings(event, text, uid):
+        return
+
+    # Обход идёт первым: он и есть список квартир, а не вопрос про одну
+    if await handle_obhod(event, text, uid):
         return
 
     # Находка идёт раньше запроса про стояк: «кв. 47» без находки — вопрос
