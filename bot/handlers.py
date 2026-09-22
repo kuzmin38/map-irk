@@ -1521,10 +1521,13 @@ async def on_private_chat(event: MessageCreated):
                                   'веду записи. В личке ничего лишнего не сохраняю.')
         return
     db.set_recording(chat_id, False)
-    await send(event.message, '🔕 Поняла, этот чат — для своих. Видео не '
-                              'расшифровываю, к домам не привязываю, находки '
-                              'не записываю. Позовёте по имени — отвечу, а '
-                              'следа не оставлю. Вернуть запись — /рабочий.')
+    await send(event.message, '🔕 Поняла, этот чат — для своих. Ленту не веду: '
+                              'сообщения не сохраняю, видео не расшифровываю, '
+                              'в сводки отсюда ничего не попадёт. Позовёте по '
+                              'имени — отвечу.\n\n'
+                              '📌 Находку по квартире запишу и здесь — назовите '
+                              'дом, квартиру и что нашли. Это не заявка, '
+                              'дважды она не ляжет. Вернуть ленту — /рабочий.')
 
 
 @dp.message_created(Command(['рабочий', 'rabochiy']))
@@ -2132,6 +2135,50 @@ async def transcribe_later(record_id: int, url: str | None, bot=None, chat_id=No
             queue_series(key, text, house, is_issue, bot, chat_id, mid, istochnik)
     except Exception:
         log.exception('Не удалось расшифровать вложение')
+
+
+def nahodka_bez_lenty(event, text: str):
+    """Находка по квартире из чата, ленту которого мы не ведём.
+
+    Заказчик выключил запись в чате бригады не из-за находок: «она просто
+    заявки оттуда собирала, которые ещё и в обслуживании были». Одно и то
+    же происшествие обсуждают в двух чатах, и лента удваивалась. А находка
+    по квартире — не заявка: «вот информацию сохранить какую-то по
+    находкам — это нужно и в этом чате, и в том, и в личке тоже».
+
+    Само сообщение в ленту не ложится — удвоение шло именно оттуда.
+    Повтор находки из второго чата отсекает db.flat_note_exists: дом,
+    квартира и вид те же — значит, тот же выезд.
+    """
+    if not text:
+        return
+    house = houses.detect_house(text)
+    if not house:
+        return
+    try:
+        otvet = zapisat_nahodku(None, house, text, _uid(event), _uname(event))
+    except Exception:
+        log.exception('Не удалось записать находку из чата без ленты')
+        return
+    if otvet:
+        asyncio.create_task(send(event.message, otvet))
+
+
+async def handle_nahodka(event, text: str, uid: int) -> bool:
+    """Находка, присланная в личку: «Такая-то улица, 105 квартира, подмес».
+
+    В личку диктуют с объекта не реже, чем пишут в чат, — а туда находки
+    не попадали вовсе: сообщение уходило в поиск дома и человек получал
+    карточку дома вместо записи.
+    """
+    house = houses.detect_house(text)
+    if not house:
+        return False
+    otvet = zapisat_nahodku(None, house, text, uid, _uname(event))
+    if not otvet:
+        return False
+    await send(event.message, otvet)
+    return True
 
 
 def record_chat_message(event, text: str):
@@ -3468,10 +3515,13 @@ async def on_text(event: MessageCreated):
         log.info('Сообщение из чата %s: %.60s',
                  getattr(event.message.recipient, 'chat_id', '?'), text)
         # «Личный» чат — например, внутренняя болтовня бригады — Люся не
-        # ведёт: не расшифровывает видео, не привязывает к домам, не пишет
-        # находки. Позовут по имени — ответит, но след не оставляет
+        # ведёт: сообщение в ленту не кладёт и видео не расшифровывает.
+        # Находку по квартире записывает всё равно, из любого чата: её
+        # там и не выключали
         if db.recording_on(_chat_id(event)):
             record_chat_message(event, text)
+        else:
+            nahodka_bez_lenty(event, text)
         # Люся спросила адрес — ответ придёт сюда же, обычным сообщением
         if await handle_plan_choice(event, text, uid):
             return
@@ -3909,6 +3959,11 @@ async def on_text(event: MessageCreated):
         return
 
     if await handle_readings(event, text, uid):
+        return
+
+    # Находка идёт раньше запроса про стояк: «кв. 47» без находки — вопрос
+    # «где этот стояк», а с находкой — отчёт, и его надо записать
+    if await handle_nahodka(event, text, uid):
         return
 
     # Запрос вида «Седова 65а/2 кв 47» — где квартира, какой стояк
