@@ -1,8 +1,14 @@
-"""Команда /отчет: статистика по рабочему чату с самого начала.
+"""Команда /отчет: цифры по рабочему чату и разбор к ним.
 
 Заказчик: «Люся может выдать какой-то отчет за вот этот промежуток
 времени, как мы начали работать по чату обслуживания — сколько там
-заявок, где что, какая статистика».
+заявок, где что, какая статистика». Следом: «можно сделать, чтобы она
+выдавала не только отчёт, но и анализ. Какие-то рекомендации тоже хорошо
+бы было».
+
+Цифры считает код — они должны быть верными и без ИИ. Разбор пишет
+модель, но строго по тем же данным: рекомендация без опоры на строку
+отчёта — выдумка, по ней поедет бригада.
 """
 import types
 
@@ -18,6 +24,14 @@ def temp_db(tmp_path, monkeypatch):
     db.init()
 
 
+@pytest.fixture(autouse=True)
+def bez_ii(monkeypatch):
+    """По умолчанию модель молчит: цифры проверяем отдельно от разбора."""
+    async def net(*a, **kw):
+        return None
+    monkeypatch.setattr(H.ai, 'ask', net)
+
+
 class Event:
     def __init__(self):
         self.sent = []
@@ -29,9 +43,10 @@ class Event:
             recipient = types.SimpleNamespace(user_id=100, chat_id=None, chat_type='dialog')
 
             async def answer(self, text=None, attachments=None):
-                outer.sent.append(text)
+                outer.sent.append(text or '')
 
         self.message = Msg()
+        self.bot = None
 
     @property
     def text(self):
@@ -40,13 +55,15 @@ class Event:
 
 async def call():
     e = Event()
-    await H.on_chat_report(e)
+    await H.run_action('otchet', e.message, 100, e)
     return e.text
 
 
+# ---------- Цифры ----------
+
 async def test_pustaya_lenta_ne_pokazyvaet_statistiku():
     out = await call()
-    assert 'пока пусто' in out
+    assert 'считать нечего' in out
 
 
 async def test_schitaet_vsego_i_s_domom(monkeypatch):
@@ -57,7 +74,7 @@ async def test_schitaet_vsego_i_s_domom(monkeypatch):
 
     out = await call()
     assert 'Всего сообщений: 2' in out
-    assert 'Привязано к домам: 1 из 1 домов' in out
+    assert 'Привязано к домам: 1 сообщ. по 1 домам' in out
     assert 'Похоже на аварийное: 1' in out
 
 
@@ -75,7 +92,7 @@ async def test_pokazyvaet_samye_aktivnye_doma(monkeypatch):
     assert out.index('Седова 71') < out.index('Трилиссера 8')
 
 
-async def test_pokazyvaet_dату_pervoy_zapisi():
+async def test_pokazyvaet_datu_pervoy_zapisi():
     db.add_chat_record(7, 'm1', 100, 'Виталя', 'первое сообщение')
     out = await call()
     day = db.now().split()[0]
@@ -92,7 +109,84 @@ async def test_pokazyvaet_itogi_pasporta(monkeypatch):
     assert 'В паспорта домов записано итогов: 1 по 1 домам' in out
 
 
-async def test_bez_itogov_pasporta_stroka_ne_pokazyvaetsya():
+async def test_bez_ii_tsifry_vsyo_ravno_prihodyat():
+    """Модель недоступна — отчёт обязан остаться на месте."""
     db.add_chat_record(7, 'm1', 100, 'Виталя', 'просто разговор')
     out = await call()
-    assert 'паспорта домов' not in out
+    assert 'Всего сообщений: 1' in out
+    assert 'ИИ сейчас недоступен' in out
+
+
+# ---------- Разбор ----------
+
+async def test_razbor_prihodit_posle_tsifr(monkeypatch):
+    async def fake_ask(prompt, **kw):
+        return 'Аварийное копится по одному дому. Посмотрел бы там розлив.'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+    db.add_chat_record(7, 'm1', 100, 'Виталя', 'течёт', is_issue=True)
+
+    e = Event()
+    await H.run_action('otchet', e.message, 100, e)
+
+    assert 'Всего сообщений: 1' in e.sent[0], 'цифры идут первыми'
+    assert 'розлив' in e.sent[-1]
+    # Люся о себе в женском роде — модель сбивается на мужской
+    assert 'Посмотрела бы' in e.sent[-1]
+
+
+async def test_razboru_otdayut_nahodki_po_kvartiram(monkeypatch):
+    """Рекомендация берётся из повторов, а их видно только по находкам."""
+    house = {'id': 3, 'address': 'Седова 71'}
+    monkeypatch.setattr(H.houses, 'HOUSES_BY_ID', {3: house})
+    db.add_chat_record(7, 'm1', 100, 'Виталя', 'обход', house_id=3)
+    db.add_flat_note(3, 105, 'нашёл подмес', kind='подмес', author='Виталя')
+
+    uvidela = {}
+
+    async def fake_ask(prompt, **kw):
+        uvidela['prompt'] = prompt
+        return 'разбор'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+
+    e = Event()
+    await H.run_action('otchet', e.message, 100, e)
+
+    assert 'кв. 105' in uvidela['prompt']
+    assert 'подмес' in uvidela['prompt']
+
+
+async def test_razboru_otdayut_zabytye_stoyaki(monkeypatch):
+    house = {'id': 3, 'address': 'Седова 71'}
+    monkeypatch.setattr(H.houses, 'HOUSES_BY_ID', {3: house})
+    db.add_chat_record(7, 'm1', 100, 'Виталя', 'перекрыл', house_id=3)
+    db.add_shutoff(3, 105, riser=2, floor=5, flats=[35, 70, 105], by_name='Виталя')
+
+    uvidela = {}
+
+    async def fake_ask(prompt, **kw):
+        uvidela['prompt'] = prompt
+        return 'разбор'
+    monkeypatch.setattr(H.ai, 'ask', fake_ask)
+
+    e = Event()
+    await H.run_action('otchet', e.message, 100, e)
+
+    assert 'перекрыт' in uvidela['prompt'].lower()
+
+
+def test_zadanie_zapreshchaet_obshchie_sovety():
+    """«Усилить контроль» — не рекомендация, а способ ничего не сказать."""
+    assert 'усилить контроль' in H.OTCHET_RAZBOR
+    assert 'не придумывай' in H.OTCHET_RAZBOR
+
+
+# ---------- Сама команда ----------
+
+def test_komanda_est_v_bystrom_menyu():
+    imena = [n for n, _, _ in H.QUICK_COMMANDS]
+    assert 'отчет' in imena
+
+
+def test_komandu_uznayut_i_s_yo():
+    """Андрей набрал «/отчёт» — и Люся промолчала: буква другая."""
+    assert 'отчёт' in H.ALIASES['отчет']

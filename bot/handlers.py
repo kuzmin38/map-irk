@@ -249,7 +249,7 @@ MAIN_TEXT = (
     'Потом достаточно спросить «где мотопомпа».\n\n'
     '⚡️ Чтобы не искать кнопки в ленте, наберите «/» — под полем ввода откроется '
     'быстрое меню: /счетчики, /дома, /сводка — показания за месяц, /опись, '
-    '/заявки, /отчет — статистика по рабочему чату, /меню — сюда.'
+    '/заявки, /отчет — цифры и разбор по рабочему чату, /меню — сюда.'
 )
 
 
@@ -1296,6 +1296,83 @@ def _brief_data_text() -> str:
     return '\n'.join(_brief_lines())
 
 
+# ---------- Отчёт по рабочему чату ----------
+
+def _otchet_lines(stats: dict) -> list:
+    """Сухие цифры ленты: сколько собрано, с какого дня, по каким домам."""
+    since = stats['since'].split()[0] if stats['since'] else '—'
+    lines = [f'📊 Отчёт по рабочему чату — с {since} по сегодня', '',
+             f"Всего сообщений: {stats['total']}",
+             f"Привязано к домам: {stats['with_house']} сообщ. по "
+             f"{stats['houses']} домам",
+             f"Похоже на аварийное: {stats['issues']}",
+             f"С фото, видео или голосовыми: {stats['with_files']}"]
+    top = db.chat_stats_by_house(limit=10)
+    if top:
+        lines += ['', '🏠 Самые активные дома:']
+        for row in top:
+            h = houses.HOUSES_BY_ID.get(row['house_id'])
+            avar = f", аварийных {row['issues']}" if row['issues'] else ''
+            lines.append(f"   • {h['address'] if h else '?'} — {row['n']} сообщ.{avar}")
+    facts = db.house_facts_count()
+    if facts['n']:
+        lines += ['', f"🗂 В паспорта домов записано итогов: {facts['n']} "
+                      f"по {facts['houses']} домам (ночной разбор)"]
+    return lines
+
+
+def _otchet_dannye(stats: dict) -> str:
+    """То же, что видит человек, плюс находки и незакрытые хвосты.
+
+    Разбор без этого выходит пересказом цифр: рекомендация появляется там,
+    где видно повтор по квартире или стояк, перекрытый и забытый.
+    """
+    stroki = list(_otchet_lines(stats))
+    nahodki = db.recent_flat_notes(limit=40)
+    if nahodki:
+        stroki += ['', 'Находки по квартирам (свежие сверху):']
+        for z in nahodki:
+            dom = houses.HOUSES_BY_ID.get(z['house_id'])
+            stroki.append(f"   • {dom['address'] if dom else '—'}, кв. {z['flat']}: "
+                          f"{(z['text'] or '')[:120]} ({z['created_at']})")
+    fakty = db.recent_house_facts(limit=30)
+    if fakty:
+        stroki += ['', 'Итоги дней по домам (ночной разбор ленты):']
+        for f in fakty:
+            dom = houses.HOUSES_BY_ID.get(f['house_id'])
+            stroki.append(f"   • {dom['address'] if dom else '—'} ({f['day']}): "
+                          f"{(f['text'] or '')[:120]}")
+    otkrytye = db.open_shutoffs()
+    if otkrytye:
+        stroki += ['', 'Стояки перекрыты и пока не открыты:']
+        for z in otkrytye:
+            dom = houses.HOUSES_BY_ID.get(z['house_id'])
+            stroki.append(f"   • {dom['address'] if dom else '—'}, кв. {z['flat']}, "
+                          f"перекрыт {z['closed_at']}")
+    zayavki = db.list_requests()
+    if zayavki:
+        stroki += ['', f'Открытых заявок: {len(zayavki)}']
+    return '\n'.join(stroki)
+
+
+OTCHET_RAZBOR = (
+    'Ты инженер управляющей компании. Ниже — всё, что помощница собрала из '
+    'рабочего чата сантехников, и то, что уже записано по домам и '
+    'квартирам.\n\n{dannye}\n\n'
+    'Напиши короткий разбор: сначала три-четыре строки наблюдений, потом '
+    'две-три рекомендации, что сделать дальше. Живым деловым языком, без '
+    'вступлений и без пересказа цифр — их человек видит выше.\n'
+    'Правила, нарушать нельзя:\n'
+    '— только то, что есть в данных. Ни домов, ни квартир, ни работ, ни '
+    'причин, которых тут нет, не придумывай;\n'
+    '— каждая рекомендация опирается на строку из данных: что повторяется, '
+    'где копится аварийное, что висит незакрытым. Общие советы вроде '
+    '«усилить контроль» и «наладить учёт» не пиши вовсе;\n'
+    '— данных мало — так и скажи одной строкой, и не растягивай;\n'
+    '— о себе в женском роде.'
+)
+
+
 # ---------- Старт ----------
 
 @dp.bot_started()
@@ -1355,6 +1432,7 @@ QUICK_COMMANDS = [
     ('журнал', 'Что записано за день', 'jrnl'),
     ('проверка', 'Записи с чужими адресами', 'chk'),
     ('итоги', 'Разобрать день по домам', 'itogi'),
+    ('отчет', 'Отчёт по рабочему чату: цифры и разбор', 'otchet'),
     ('опись', 'Что где лежит: имущество и инструмент', 'inv'),
     ('сезон', 'Сезонные работы: что и когда', 'sez'),
     ('копия', 'Резервная копия и паспорта в Markdown', 'kopiya'),
@@ -1380,6 +1458,7 @@ ALIASES = {
     'журнал': ('jrnl', 'zhurnal'),
     'проверка': ('chk', 'proverka'),
     'итоги': ('itogi',),
+    'отчет': ('отчёт', 'otchet'),      # с «ё» тоже: так его и набирают
     'опись': ('opis', 'inventar'),
     'сезон': ('sezon', 'season'),
     'копия': ('kopiya', 'backup'),
@@ -1548,40 +1627,6 @@ async def on_chat_log(event: MessageCreated):
             lines.append(f"   🎙 {r['transcript'][:200]}")
         elif r['has_files']:
             lines.append('   📎 вложение, расшифровки нет')
-    await send(event.message, '\n'.join(lines))
-
-
-@dp.message_created(Command(['отчет', 'otchet']))
-async def on_chat_report(event: MessageCreated):
-    """Статистика ленты рабочего чата за всё время: сколько собрано, с какого дня."""
-    stats = db.chat_overall_stats()
-    if not stats['total']:
-        await send(event.message, '📊 В ленте пока пусто — статистику показывать не по чему.')
-        return
-
-    since = stats['since'].split()[0] if stats['since'] else '—'
-    lines = [f'📊 Отчёт по рабочему чату — с {since} по сегодня', '']
-    lines.append(f"Всего сообщений: {stats['total']}")
-    lines.append(f"Привязано к домам: {stats['with_house']} из {stats['houses']} домов")
-    lines.append(f"Похоже на аварийное: {stats['issues']}")
-    lines.append(f"С фото, видео или голосовыми: {stats['with_files']}")
-
-    top = db.chat_stats_by_house(limit=10)
-    if top:
-        lines.append('')
-        lines.append('🏠 Самые активные дома:')
-        for row in top:
-            h = houses.HOUSES_BY_ID.get(row['house_id'])
-            adres = h['address'] if h else '?'
-            avar = f", аварийных {row['issues']}" if row['issues'] else ''
-            lines.append(f"   • {adres} — {row['n']} сообщ.{avar}")
-
-    facts = db.house_facts_count()
-    if facts['n']:
-        lines.append('')
-        lines.append(f"🗂 В паспорта домов записано итогов: {facts['n']} "
-                     f"по {facts['houses']} домам (ночной разбор)")
-
     await send(event.message, '\n'.join(lines))
 
 
@@ -4347,6 +4392,26 @@ async def run_action(payload: str, msg, uid: int, event):
                CallbackButton(text='📋 Заявки', payload='rl'))
         kb.row(CallbackButton(text='🏠 Меню', payload='menu'))
         await send(msg, '\n'.join(lines), kb)
+
+    elif action == 'otchet':
+        stats = db.chat_overall_stats()
+        kb = InlineKeyboardBuilder()
+        kb.row(CallbackButton(text='📆 Итоги дня', payload='itogi'),
+               CallbackButton(text='🏠 Меню', payload='menu'))
+        if not stats['total']:
+            await send(msg, '📊 В ленте пока пусто — считать нечего.', kb)
+            return
+        # Цифры уходят сразу: они готовы, а разбор идёт секунды
+        await send(msg, '\n'.join(_otchet_lines(stats)))
+        await pechataet(event)
+        # Имя переменной не «razbor»: так зовётся модуль ночного разбора, и
+        # присваивание сделало бы его локальным на всю функцию — соседний
+        # экран «Итоги дня» падал бы на ровном месте
+        vyvody = await ai.ask(OTCHET_RAZBOR.format(dannye=_otchet_dannye(stats)),
+                              max_tokens=700, temperature=0.2)
+        await send(msg, f'🧠 Что из этого видно:\n\n{feminine.fix(vyvody)}' if vyvody
+                   else '🧠 Разбор не вышел: ИИ сейчас недоступен. Цифры выше — свои, '
+                        'они собраны без него.', kb)
 
     elif action == 'myw':
         works = db.list_my_works(uid)

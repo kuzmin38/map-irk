@@ -1390,6 +1390,18 @@ def flat_notes(house_id, flat=None, limit=50):
         return c.execute(q, args).fetchall()
 
 
+def recent_flat_notes(limit=40):
+    """Находки по квартирам со всех домов, свежие первыми.
+
+    По одному дому их смотрят в карточке, а для разбора нужна вся картина
+    разом: повтор в одной квартире и одинаковая находка по соседним домам
+    видны только так.
+    """
+    with _conn() as c:
+        return c.execute('SELECT * FROM flat_notes ORDER BY id DESC LIMIT ?',
+                         (limit,)).fetchall()
+
+
 def flat_note_exists(house_id, flat, kind, hours=24) -> bool:
     """Такую же находку сегодня уже записали.
 
@@ -1442,6 +1454,13 @@ def house_facts(house_id, limit=30):
         return c.execute('SELECT * FROM house_facts WHERE house_id = ? '
                          'ORDER BY day DESC, id DESC LIMIT ?',
                          (house_id, limit)).fetchall()
+
+
+def recent_house_facts(limit=30):
+    """Итоги дней по всем домам, свежие первыми — для общего разбора."""
+    with _conn() as c:
+        return c.execute('SELECT * FROM house_facts ORDER BY day DESC, id DESC '
+                         'LIMIT ?', (limit,)).fetchall()
 
 
 def facts_for_day(day, limit=200):

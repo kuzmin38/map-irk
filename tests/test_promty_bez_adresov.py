@@ -26,6 +26,7 @@ def zadaniya():
         'правка объявления': announce.ZADANIE_PRAVKI,
         'пересказ отчёта': H.SUMMARY_RULES,
         'разбор дня': razbor.ZADANIE,
+        'разбор отчёта по чату': H.OTCHET_RAZBOR,
     }
 
 
