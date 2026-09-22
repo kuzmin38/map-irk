@@ -155,6 +155,21 @@ async def test_razboru_otdayut_nahodki_po_kvartiram(monkeypatch):
     assert 'подмес' in uvidela['prompt']
 
 
+async def test_zabytyy_stoyak_vidno_i_bez_ii(monkeypatch):
+    """Стояк на Седова 71 висел перекрытым с 3 сентября, а увидела его
+    только модель. Про такое человек должен узнать сам: напоминание о
+    стояке уходит один раз, через четыре часа, — пропустил и всё."""
+    house = {'id': 3, 'address': 'Седова 71'}
+    monkeypatch.setattr(H.houses, 'HOUSES_BY_ID', {3: house})
+    db.add_chat_record(7, 'm1', 100, 'Виталя', 'перекрыл', house_id=3)
+    db.add_shutoff(3, 105, riser=2, floor=5, flats=[35, 70, 105], by_name='Виталя')
+
+    out = await call()
+
+    assert 'Перекрыты и не открыты — 1' in out
+    assert 'Седова 71, кв. 105' in out
+
+
 async def test_razboru_otdayut_zabytye_stoyaki(monkeypatch):
     house = {'id': 3, 'address': 'Седова 71'}
     monkeypatch.setattr(H.houses, 'HOUSES_BY_ID', {3: house})
@@ -171,13 +186,29 @@ async def test_razboru_otdayut_zabytye_stoyaki(monkeypatch):
     e = Event()
     await H.run_action('otchet', e.message, 100, e)
 
-    assert 'перекрыт' in uvidela['prompt'].lower()
+    assert 'Перекрыты и не открыты' in uvidela['prompt']
 
 
 def test_zadanie_zapreshchaet_obshchie_sovety():
     """«Усилить контроль» — не рекомендация, а способ ничего не сказать."""
     assert 'усилить контроль' in H.OTCHET_RAZBOR
     assert 'не придумывай' in H.OTCHET_RAZBOR
+
+
+def test_zadanie_zapreshchaet_privetstvie():
+    """Первый же разбор начался с «Добрый день!» — в переписке это лишняя
+    строка, человек пришёл за делом."""
+    assert 'Ни приветствий' in H.OTCHET_RAZBOR
+
+
+def test_zadanie_zapreshchaet_otgovorku_pro_nehvatku_dannyh():
+    """На 762 сообщениях она закончила «данных пока маловато» — это было
+    моё же правило, и оно сработало против дела."""
+    assert 'не оправдывайся нехваткой данных' in H.OTCHET_RAZBOR
+
+
+def test_zadanie_ne_prosit_pereskazyvat_tsifry():
+    assert 'заново перечислять' in H.OTCHET_RAZBOR
 
 
 # ---------- Сама команда ----------

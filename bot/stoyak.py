@@ -209,8 +209,29 @@ def zhiltsam(dom_addr: str, kvartiry: list, kogda: str, zakryt: bool = True,
 
 
 def dlitelnost(minut: int) -> str:
-    """«1 ч 30 мин», «45 мин»."""
+    """«45 мин», «1 ч 30 мин», «19 дней».
+
+    Сутки появились не для красоты: стояк, перекрытый и забытый, живёт
+    неделями. «456 ч» человек не читает и мимо такой строки пройдёт, а
+    «19 дней» видно сразу.
+    """
     if minut < 60:
         return f'{minut} мин'
     chasy, ost = divmod(minut, 60)
-    return f'{chasy} ч {ost} мин' if ost else f'{chasy} ч'
+    if chasy < 24:
+        return f'{chasy} ч {ost} мин' if ost else f'{chasy} ч'
+    dney, chasy = divmod(chasy, 24)
+    dni = _dney_slovom(dney)
+    return f'{dni} {chasy} ч' if chasy else dni
+
+
+def _dney_slovom(n: int) -> str:
+    """«1 день», «2 дня», «19 дней»."""
+    if 11 <= n % 100 <= 14:
+        return f'{n} дней'
+    ost = n % 10
+    if ost == 1:
+        return f'{n} день'
+    if 2 <= ost <= 4:
+        return f'{n} дня'
+    return f'{n} дней'
