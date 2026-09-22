@@ -3882,8 +3882,16 @@ async def on_text(event: MessageCreated):
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
     if not found:
+        # search() ищет адрес как запрос; detect_house умеет вытащить номер
+        # дома из середины длинного текста («Подмес 28 - 123, ...» — отчёт
+        # обхода). Не отдаём такое ИИ как есть: однажды она не нашла
+        # инструментом и сама придумала, что дома в списке нет
+        hh = houses.detect_house(text)
+        vopros = (f'[Судя по номеру в тексте, речь про дом «{hh["address"]}» — '
+                  f'вызови find_house, чтобы получить его house_id]\n\n{text}'
+                  if hh else text)
         try:
-            ai_answer = await agent.answer(uid, _uname(event), text)
+            ai_answer = await agent.answer(uid, _uname(event), vopros)
         except agent.TooSlow:
             await send(event.message, SLOW_REPLY)
             return
