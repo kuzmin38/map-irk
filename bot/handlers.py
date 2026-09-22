@@ -3340,6 +3340,29 @@ def quoted_text(event) -> str:
     return (getattr(body, 'text', None) or '').strip()
 
 
+def s_domom(text: str) -> str:
+    """Вопрос к ИИ с уже найденным домом впереди — если он в тексте есть.
+
+    Модель раз за разом отвечает про дома, не заглянув ни в один
+    инструмент: в чате на «по 14 дому» она заявила, что дома с номером 14
+    у нас нет, и тут же сама назвала «Красных Мадьяр 14» — единственный
+    дом с этим номером. В логе у всех таких ответов одна пометка: «ответ
+    без обращения к данным».
+
+    Спорить с этим инструкцией бесполезно — запрет выдумывать в задании
+    стоит давно. Поэтому дом ищет код, детерминированно, и кладёт ответ
+    модели прямо в вопрос. Не нашёл — текст уходит как есть.
+    """
+    if not text:
+        return text
+    dom = houses.detect_house(text)
+    if not dom:
+        return text
+    return (f'[Дом из этого текста уже определён кодом: «{dom["address"]}». '
+            f'Это точно, переспрашивать адрес не нужно. Нужен house_id — '
+            f'вызови find_house]\n\n{text}')
+
+
 def strip_address(text: str) -> tuple[bool, str]:
     """Позвали ли Люсю и что осталось от вопроса без обращения."""
     if not text:
@@ -3486,12 +3509,12 @@ async def on_text(event: MessageCreated):
         if await handle_reminder(event, text, uid):
             return
         # Отвечают на её сообщение — она должна понимать, на какое именно
-        vopros = text
+        vopros = s_domom(text)
         if otvet_ey:
             bylo = quoted_text(event)
             if bylo:
                 vopros = (f'Ты писала в чат: «{bylo[:400]}»\n\n'
-                          f'{_uname(event)} отвечает на это: {text or "(без текста)"}')
+                          f'{_uname(event)} отвечает на это: {s_domom(text) or "(без текста)"}')
         try:
             # chat_id — чтобы Люся отвечала по этому чату, а не по личной
             # переписке: они у неё были общей памятью
@@ -3939,16 +3962,8 @@ async def on_text(event: MessageCreated):
     # Режим по умолчанию — поиск дома по адресу
     found = houses.search(text)
     if not found:
-        # search() ищет адрес как запрос; detect_house умеет вытащить номер
-        # дома из середины длинного текста («Подмес 28 - 123, ...» — отчёт
-        # обхода). Не отдаём такое ИИ как есть: однажды она не нашла
-        # инструментом и сама придумала, что дома в списке нет
-        hh = houses.detect_house(text)
-        vopros = (f'[Судя по номеру в тексте, речь про дом «{hh["address"]}» — '
-                  f'вызови find_house, чтобы получить его house_id]\n\n{text}'
-                  if hh else text)
         try:
-            ai_answer = await agent.answer(uid, _uname(event), vopros)
+            ai_answer = await agent.answer(uid, _uname(event), s_domom(text))
         except agent.TooSlow:
             await send(event.message, SLOW_REPLY)
             return
